@@ -1,0 +1,379 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import {
+  MessageSquare,
+  Users,
+  Shield,
+  CreditCard,
+  Check,
+  X,
+  ArrowLeft,
+  Search,
+  Zap,
+} from 'lucide-react';
+
+interface UserProfile {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  sms_credits: number;
+  default_sender_id: string;
+  created_at: string;
+}
+
+interface SenderIdRequest {
+  id: string;
+  user_id: string;
+  sender_id: string;
+  status: string;
+  created_at: string;
+}
+
+export default function Admin() {
+  const { user, isAdmin, loading } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [senderRequests, setSenderRequests] = useState<SenderIdRequest[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (!loading) {
+      if (!user) {
+        navigate('/auth');
+      } else if (!isAdmin) {
+        toast({
+          title: 'Access Denied',
+          description: 'You do not have admin privileges.',
+          variant: 'destructive',
+        });
+        navigate('/dashboard');
+      }
+    }
+  }, [user, isAdmin, loading, navigate, toast]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchUsers();
+      fetchSenderRequests();
+    }
+  }, [isAdmin]);
+
+  const fetchUsers = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setUsers(data as UserProfile[]);
+    }
+  };
+
+  const fetchSenderRequests = async () => {
+    const { data } = await supabase
+      .from('sender_id_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setSenderRequests(data as SenderIdRequest[]);
+    }
+  };
+
+  const handleSetCredits = async (userId: string) => {
+    const amount = parseInt(creditAmounts[userId] || '0');
+    if (isNaN(amount) || amount < 0) {
+      toast({
+        title: 'Invalid Amount',
+        description: 'Please enter a valid number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ sms_credits: amount })
+      .eq('user_id', userId);
+
+    if (error) {
+      toast({
+        title: 'Update Failed',
+        description: 'Could not update credits.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Credits Updated',
+        description: `Set credits to ${amount}.`,
+      });
+      fetchUsers();
+      setCreditAmounts({ ...creditAmounts, [userId]: '' });
+    }
+  };
+
+  const handleAddCredits = async (userId: string) => {
+    const amount = parseInt(creditAmounts[userId] || '0');
+    if (isNaN(amount) || amount <= 0) {
+      toast({
+        title: 'Invalid Amount',
+        description: 'Please enter a positive number.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const currentUser = users.find(u => u.user_id === userId);
+    const newCredits = (currentUser?.sms_credits || 0) + amount;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ sms_credits: newCredits })
+      .eq('user_id', userId);
+
+    if (error) {
+      toast({
+        title: 'Update Failed',
+        description: 'Could not add credits.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Credits Added',
+        description: `Added ${amount} credits.`,
+      });
+      fetchUsers();
+      setCreditAmounts({ ...creditAmounts, [userId]: '' });
+    }
+  };
+
+  const handleSenderRequest = async (requestId: string, approved: boolean, userId: string, senderId: string) => {
+    const { error } = await supabase
+      .from('sender_id_requests')
+      .update({
+        status: approved ? 'approved' : 'rejected',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user?.id,
+      })
+      .eq('id', requestId);
+
+    if (error) {
+      toast({
+        title: 'Update Failed',
+        description: 'Could not process request.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (approved) {
+      await supabase
+        .from('profiles')
+        .update({ default_sender_id: senderId })
+        .eq('user_id', userId);
+    }
+
+    toast({
+      title: approved ? 'Approved' : 'Rejected',
+      description: `Sender ID request has been ${approved ? 'approved' : 'rejected'}.`,
+    });
+    
+    fetchSenderRequests();
+  };
+
+  const filteredUsers = users.filter(u =>
+    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  );
+
+  if (loading || !isAdmin) {
+    return (
+      <div className="min-h-screen hero-gradient flex items-center justify-center">
+        <div className="animate-pulse-glow w-16 h-16 rounded-2xl bg-primary/20" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen hero-gradient">
+      {/* Header */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-primary" />
+              </div>
+              <span className="text-xl font-bold">Admin Panel</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="container mx-auto px-6 py-8">
+        <div className="grid lg:grid-cols-4 gap-8">
+          {/* Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="glass-card p-4 space-y-2">
+              {[
+                { id: 'users', icon: Users, label: 'Manage Users' },
+                { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                    activeTab === item.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.label}
+                  {item.id === 'sender-ids' && senderRequests.length > 0 && (
+                    <span className="ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-1 rounded-full">
+                      {senderRequests.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {activeTab === 'users' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold">Manage Users</h2>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search users..."
+                      className="pl-10 bg-secondary/50 w-64"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {filteredUsers.map((u) => (
+                    <div key={u.id} className="bg-secondary/30 rounded-lg p-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <p className="font-medium">{u.email}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {u.full_name || 'No name'} • Joined {new Date(u.created_at).toLocaleDateString()}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Zap className="w-4 h-4 text-primary" />
+                            <span className="font-semibold">{u.sms_credits}</span>
+                            <span className="text-muted-foreground text-sm">credits</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Amount"
+                            value={creditAmounts[u.user_id] || ''}
+                            onChange={(e) => setCreditAmounts({
+                              ...creditAmounts,
+                              [u.user_id]: e.target.value
+                            })}
+                            className="w-24 bg-secondary/50"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAddCredits(u.user_id)}
+                          >
+                            Add
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSetCredits(u.user_id)}
+                          >
+                            Set
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {filteredUsers.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No users found.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'sender-ids' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <h2 className="text-2xl font-bold mb-6">Sender ID Requests</h2>
+
+                {senderRequests.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No pending requests.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {senderRequests.map((req) => (
+                      <div key={req.id} className="bg-secondary/30 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-mono text-lg font-bold text-primary">{req.sender_id}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Requested: {new Date(req.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={() => handleSenderRequest(req.id, true, req.user_id, req.sender_id)}
+                            >
+                              <Check className="w-4 h-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleSenderRequest(req.id, false, req.user_id, req.sender_id)}
+                            >
+                              <X className="w-4 h-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
