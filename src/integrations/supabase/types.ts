@@ -53,6 +53,51 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_requests: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          credits_amount: number
+          currency: string
+          destination: string
+          id: string
+          package_name: string
+          price: number
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_amount: number
+          currency?: string
+          destination: string
+          id?: string
+          package_name: string
+          price: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_amount?: number
+          currency?: string
+          destination?: string
+          id?: string
+          package_name?: string
+          price?: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       sender_id_requests: {
         Row: {
           created_at: string

@@ -125,10 +125,10 @@ export default function Index() {
       <section id="pricing" className="container mx-auto px-6 py-20">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h2>
-          <p className="text-muted-foreground">Pay only for what you use. No hidden fees.</p>
+          <p className="text-muted-foreground">Pay only for what you use. Volume discounts available.</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
           {/* UK Pricing */}
           <div className="glass-card glow-border p-8 relative overflow-hidden animate-fade-in">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
@@ -143,13 +143,39 @@ export default function Index() {
                 </div>
               </div>
               <div className="mb-6">
-                <span className="text-5xl font-bold">£100</span>
+                <span className="text-5xl font-bold">£15</span>
                 <span className="text-muted-foreground"> / 100 SMS</span>
               </div>
-              <ul className="space-y-3 mb-8">
-                {['High delivery rates', 'Custom sender ID', 'Real-time reporting', 'Bulk upload support'].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-muted-foreground">
-                    <Check className="w-5 h-5 text-primary" />
+              <div className="space-y-2 mb-6 text-sm">
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">100 SMS</span>
+                  <span className="font-semibold">£15</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">500 SMS</span>
+                  <span className="font-semibold">£75</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">1,000 SMS</span>
+                  <span className="font-semibold">£150</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">5,000 SMS</span>
+                  <span className="font-semibold">£750</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">10,000 SMS</span>
+                  <span className="font-semibold">£1,500</span>
+                </div>
+                <div className="flex justify-between py-2 bg-primary/10 rounded px-2">
+                  <span className="font-medium">20,000 SMS</span>
+                  <span className="font-bold text-primary">£3,000</span>
+                </div>
+              </div>
+              <ul className="space-y-2 mb-6">
+                {['High delivery rates', 'Custom sender ID', 'Bulk upload support'].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <Check className="w-4 h-4 text-primary" />
                     {item}
                   </li>
                 ))}
@@ -174,13 +200,39 @@ export default function Index() {
                 </div>
               </div>
               <div className="mb-6">
-                <span className="text-5xl font-bold">$100</span>
+                <span className="text-5xl font-bold">$15</span>
                 <span className="text-muted-foreground"> / 100 SMS</span>
               </div>
-              <ul className="space-y-3 mb-8">
-                {['High delivery rates', 'Custom sender ID', 'Real-time reporting', 'Bulk upload support'].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-muted-foreground">
-                    <Check className="w-5 h-5 text-primary" />
+              <div className="space-y-2 mb-6 text-sm">
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">100 SMS</span>
+                  <span className="font-semibold">$15</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">500 SMS</span>
+                  <span className="font-semibold">$75</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">1,000 SMS</span>
+                  <span className="font-semibold">$150</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">5,000 SMS</span>
+                  <span className="font-semibold">$750</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground">10,000 SMS</span>
+                  <span className="font-semibold">$1,500</span>
+                </div>
+                <div className="flex justify-between py-2 bg-primary/10 rounded px-2">
+                  <span className="font-medium">20,000 SMS</span>
+                  <span className="font-bold text-primary">$3,000</span>
+                </div>
+              </div>
+              <ul className="space-y-2 mb-6">
+                {['High delivery rates', 'Custom sender ID', 'Bulk upload support'].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <Check className="w-4 h-4 text-primary" />
                     {item}
                   </li>
                 ))}
