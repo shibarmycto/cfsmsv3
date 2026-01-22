@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,7 +58,7 @@ interface Order {
   tx_hash: string | null;
 }
 
-export default function BuyCrypto() {
+const BuyCrypto = forwardRef<HTMLDivElement>((_, ref) => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -456,4 +456,8 @@ export default function BuyCrypto() {
       </div>
     </div>
   );
-}
+});
+
+BuyCrypto.displayName = 'BuyCrypto';
+
+export default BuyCrypto;

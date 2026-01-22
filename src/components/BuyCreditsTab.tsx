@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ interface SelectedPackage {
   popular?: boolean;
 }
 
-export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
+const BuyCreditsTab = forwardRef<HTMLDivElement, BuyCreditsTabProps>(({ user, toast }, ref) => {
   const navigate = useNavigate();
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
@@ -59,7 +59,7 @@ export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
   };
 
   return (
-    <div className="glass-card p-8 animate-fade-in">
+    <div ref={ref} className="glass-card p-8 animate-fade-in">
       <h2 className="text-2xl font-bold mb-2">Buy Credits</h2>
       <p className="text-muted-foreground mb-6">Select your country and package to submit a purchase request</p>
 
@@ -184,4 +184,8 @@ export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
       </div>
     </div>
   );
-}
+});
+
+BuyCreditsTab.displayName = 'BuyCreditsTab';
+
+export default BuyCreditsTab;

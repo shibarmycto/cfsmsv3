@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Country, COUNTRIES } from '@/lib/countries';
 
@@ -8,11 +8,12 @@ interface CountrySelectorProps {
   className?: string;
 }
 
-export default function CountrySelector({ selectedCountry, onSelect, className = '' }: CountrySelectorProps) {
+const CountrySelector = forwardRef<HTMLDivElement, CountrySelectorProps>(
+  ({ selectedCountry, onSelect, className = '' }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className={`relative ${className}`}>
+    <div ref={ref} className={`relative ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary border border-border hover:border-primary/50 transition-all"
@@ -63,4 +64,8 @@ export default function CountrySelector({ selectedCountry, onSelect, className =
       )}
     </div>
   );
-}
+});
+
+CountrySelector.displayName = 'CountrySelector';
+
+export default CountrySelector;
