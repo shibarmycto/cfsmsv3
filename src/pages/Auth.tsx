@@ -5,13 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { MessageSquare, Mail, Lock, User, ArrowRight, Phone, Clock } from 'lucide-react';
 import { z } from 'zod';
 
 const authSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   fullName: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  phoneNumber: z.string().min(10, 'Please enter a valid phone number').optional(),
 });
 
 export default function Auth() {
@@ -19,31 +20,37 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string; phoneNumber?: string }>({});
+  const [showPendingMessage, setShowPendingMessage] = useState(false);
   
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, signOut, user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
+    if (!loading && user && profile) {
+      if (profile.is_approved) {
+        navigate('/dashboard');
+      } else {
+        setShowPendingMessage(true);
+      }
     }
-  }, [user, navigate]);
+  }, [user, profile, loading, navigate]);
 
   const validateForm = () => {
     try {
       if (isLogin) {
         authSchema.pick({ email: true, password: true }).parse({ email, password });
       } else {
-        authSchema.parse({ email, password, fullName });
+        authSchema.parse({ email, password, fullName, phoneNumber });
       }
       setErrors({});
       return true;
     } catch (err) {
       if (err instanceof z.ZodError) {
-        const fieldErrors: { email?: string; password?: string; fullName?: string } = {};
+        const fieldErrors: { email?: string; password?: string; fullName?: string; phoneNumber?: string } = {};
         err.errors.forEach((error) => {
           const field = error.path[0] as string;
           fieldErrors[field as keyof typeof fieldErrors] = error.message;
@@ -72,15 +79,10 @@ export default function Auth() {
               : error.message,
             variant: 'destructive',
           });
-        } else {
-          toast({
-            title: 'Welcome back!',
-            description: 'You have successfully logged in.',
-          });
-          navigate('/dashboard');
         }
+        // Navigation is handled by useEffect based on approval status
       } else {
-        const { error } = await signUp(email, password, fullName);
+        const { error } = await signUp(email, password, fullName, phoneNumber);
         if (error) {
           toast({
             title: 'Sign Up Failed',
@@ -92,9 +94,9 @@ export default function Auth() {
         } else {
           toast({
             title: 'Account Created!',
-            description: 'Welcome to CFSMS. Start sending messages now!',
+            description: 'Your account is pending admin approval.',
           });
-          navigate('/dashboard');
+          setShowPendingMessage(true);
         }
       }
     } catch (err) {
@@ -107,6 +109,44 @@ export default function Auth() {
       setIsLoading(false);
     }
   };
+
+  // Show pending approval message
+  if (showPendingMessage) {
+    return (
+      <div className="min-h-screen hero-gradient flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="glass-card glow-border p-8 animate-fade-in text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-warning/10 border border-warning/20 mb-6">
+              <Clock className="w-8 h-8 text-warning" />
+            </div>
+            <h2 className="text-2xl font-bold mb-4">Account Pending Approval</h2>
+            <p className="text-muted-foreground mb-6">
+              Your account has been created and is currently awaiting admin approval. 
+              You will be able to access the platform once an administrator reviews and approves your account.
+            </p>
+            <div className="bg-secondary/30 rounded-lg p-4 text-left space-y-2 mb-6">
+              <p><span className="text-muted-foreground">Email:</span> {email || profile?.email}</p>
+              <p><span className="text-muted-foreground">Name:</span> {fullName || profile?.full_name}</p>
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                await signOut();
+                setShowPendingMessage(false);
+                setEmail('');
+                setPassword('');
+                setFullName('');
+                setPhoneNumber('');
+              }}
+              className="w-full"
+            >
+              Back to Login
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen hero-gradient flex items-center justify-center p-4">
@@ -141,21 +181,39 @@ export default function Auth() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName" className="text-foreground">Full Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="fullName"
-                    type="text"
-                    placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="pl-10 bg-secondary/50 border-border"
-                  />
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName" className="text-foreground">Full Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="fullName"
+                      type="text"
+                      placeholder="John Doe"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="pl-10 bg-secondary/50 border-border"
+                    />
+                  </div>
+                  {errors.fullName && <p className="text-destructive text-sm">{errors.fullName}</p>}
                 </div>
-                {errors.fullName && <p className="text-destructive text-sm">{errors.fullName}</p>}
-              </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phoneNumber" className="text-foreground">Contact Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="phoneNumber"
+                      type="tel"
+                      placeholder="+1234567890"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      className="pl-10 bg-secondary/50 border-border"
+                    />
+                  </div>
+                  {errors.phoneNumber && <p className="text-destructive text-sm">{errors.phoneNumber}</p>}
+                </div>
+              </>
             )}
 
             <div className="space-y-2">

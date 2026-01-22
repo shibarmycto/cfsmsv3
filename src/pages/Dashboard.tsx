@@ -46,8 +46,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
+    } else if (!loading && profile && !profile.is_approved) {
+      navigate('/auth');
     }
-  }, [user, loading, navigate]);
+  }, [user, profile, loading, navigate]);
 
   useEffect(() => {
     if (profile) {
