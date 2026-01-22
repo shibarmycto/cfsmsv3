@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, Check } from 'lucide-react';
+import { ShoppingCart, Check, Wallet } from 'lucide-react';
 import CountrySelector from '@/components/CountrySelector';
 import { COUNTRIES, SMS_PACKAGES, formatPrice, getConvertedPrice, type Country } from '@/lib/countries';
 import type { User } from '@supabase/supabase-js';
@@ -18,6 +19,7 @@ interface SelectedPackage {
 }
 
 export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
+  const navigate = useNavigate();
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,9 +143,34 @@ export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
         <ShoppingCart className="w-5 h-5" />
       </Button>
 
+      {/* Crypto Payment Option */}
+      <div className="mt-6">
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">Or pay instantly with</span>
+          </div>
+        </div>
+        
+        <Button
+          variant="outline"
+          size="lg"
+          className="w-full mt-4"
+          onClick={() => navigate('/buy-crypto')}
+        >
+          <Wallet className="w-5 h-5 mr-2" />
+          Pay with Cryptocurrency
+        </Button>
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          SOL • ETH • BTC - Automatic verification & instant credits
+        </p>
+      </div>
+
       {/* Payment Methods Info */}
       <div className="mt-8 bg-secondary/20 rounded-xl p-6 border border-border">
-        <h3 className="font-bold mb-4">Payment Methods</h3>
+        <h3 className="font-bold mb-4">Manual Payment Methods</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {['Bitcoin', 'Ethereum', 'USDT', 'PayPal'].map((method) => (
             <div key={method} className="bg-secondary/50 rounded-lg p-3 text-center">
@@ -152,7 +179,7 @@ export default function BuyCreditsTab({ user, toast }: BuyCreditsTabProps) {
           ))}
         </div>
         <p className="text-sm text-muted-foreground mt-4">
-          After submitting a request, an admin will review and provide payment details. Credits are added within 24 hours of payment confirmation.
+          For manual payments, submit a request and an admin will provide payment details. Credits are added within 24 hours.
         </p>
       </div>
     </div>
