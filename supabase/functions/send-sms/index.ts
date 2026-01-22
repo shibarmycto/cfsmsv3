@@ -70,11 +70,7 @@ Deno.serve(async (req) => {
     // Validate sender ID (alphanumeric, 1-11 chars)
     const validSenderId = /^[a-zA-Z0-9]{1,11}$/.test(senderId) ? senderId : 'CFSMS';
 
-    // Get EasySendSMS credentials for alphanumeric sender ID support
-    const easySendUsername = Deno.env.get('EASYSENDSMS_USERNAME');
-    const easySendPassword = Deno.env.get('EASYSENDSMS_PASSWORD');
-
-    // Fallback to TextBee if EasySendSMS not configured
+    // TextBee provider (does not support setting alphanumeric Sender IDs)
     const apiKey = Deno.env.get('TEXTBEE_API_KEY');
     const deviceId = Deno.env.get('TEXTBEE_DEVICE_ID');
 
@@ -82,79 +78,39 @@ Deno.serve(async (req) => {
     let responseData: any = {};
     let sentCount = 0;
 
-    // Try EasySendSMS first (supports alphanumeric sender IDs)
-    if (easySendUsername && easySendPassword) {
-      console.log(`Sending SMS via EasySendSMS with sender ID: ${validSenderId}`);
-      
-      // EasySendSMS supports comma-separated recipients
-      const recipientList = recipients.join(',');
-      
-      const easySendUrl = new URL('https://api.easysendsms.app/bulksms');
-      easySendUrl.searchParams.set('username', easySendUsername);
-      easySendUrl.searchParams.set('password', easySendPassword);
-      easySendUrl.searchParams.set('from', validSenderId);
-      easySendUrl.searchParams.set('to', recipientList);
-      easySendUrl.searchParams.set('text', message);
-      easySendUrl.searchParams.set('type', '0'); // Plain text
-
-      try {
-        const response = await fetch(easySendUrl.toString(), {
-          method: 'GET',
-        });
-
-        const responseText = await response.text();
-        console.log(`EasySendSMS response: ${responseText}`);
-        
-        responseData = { provider: 'easysendsms', response: responseText };
-        
-        // EasySendSMS returns "OK" or message ID on success
-        if (responseText.startsWith('OK') || /^[0-9]+$/.test(responseText.trim())) {
-          success = true;
-          sentCount = recipients.length;
-        } else {
-          console.error('EasySendSMS error:', responseText);
-        }
-      } catch (apiError) {
-        console.error('EasySendSMS API error:', apiError);
-      }
-    }
-    
-    // Fallback to TextBee if EasySendSMS failed or not configured
-    if (!success && apiKey && deviceId) {
-      console.log(`Falling back to TextBee for ${recipients.length} recipients`);
-      
-      const textbeeUrl = `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`;
-      
-      try {
-        const response = await fetch(textbeeUrl, {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            recipients: recipients,
-            message: message,
-          }),
-        });
-
-        responseData = await response.json();
-        console.log(`TextBee response:`, JSON.stringify(responseData));
-        
-        success = response.ok;
-        sentCount = success ? recipients.length : 0;
-        responseData.provider = 'textbee';
-      } catch (apiError) {
-        console.error('TextBee API error:', apiError);
-      }
-    }
-
-    if (!success && !apiKey && !easySendUsername) {
-      console.error('No SMS provider configured');
+    if (!apiKey || !deviceId) {
+      console.error('TextBee not configured');
       return new Response(
         JSON.stringify({ error: 'SMS service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    console.log(`Sending SMS via TextBee for ${recipients.length} recipients (requested sender ID: ${validSenderId})`);
+
+    const textbeeUrl = `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`;
+    
+    try {
+      const response = await fetch(textbeeUrl, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipients: recipients,
+          message: message,
+        }),
+      });
+
+      responseData = await response.json();
+      console.log(`TextBee response:`, JSON.stringify(responseData));
+      
+      success = response.ok;
+      sentCount = success ? recipients.length : 0;
+      responseData.provider = 'textbee';
+    } catch (apiError) {
+      console.error('TextBee API error:', apiError);
     }
 
     // Log the SMS for each recipient
@@ -189,7 +145,7 @@ Deno.serve(async (req) => {
         failed: recipients.length - sentCount,
         total: recipients.length,
         senderId: validSenderId,
-        provider: responseData.provider || 'unknown'
+          provider: responseData.provider || 'textbee'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
