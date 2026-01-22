@@ -21,6 +21,8 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          is_approved: boolean
+          phone_number: string | null
           sms_credits: number
           updated_at: string
           user_id: string
@@ -31,6 +33,8 @@ export type Database = {
           email: string
           full_name?: string | null
           id?: string
+          is_approved?: boolean
+          phone_number?: string | null
           sms_credits?: number
           updated_at?: string
           user_id: string
@@ -41,6 +45,8 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          is_approved?: boolean
+          phone_number?: string | null
           sms_credits?: number
           updated_at?: string
           user_id?: string

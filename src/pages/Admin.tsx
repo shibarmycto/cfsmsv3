@@ -9,12 +9,17 @@ import {
   MessageSquare,
   Users,
   Shield,
-  CreditCard,
   Check,
   X,
   ArrowLeft,
   Search,
   Zap,
+  Trash2,
+  UserCheck,
+  Clock,
+  Phone,
+  Mail,
+  User,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -22,8 +27,10 @@ interface UserProfile {
   user_id: string;
   email: string;
   full_name: string | null;
+  phone_number: string | null;
   sms_credits: number;
   default_sender_id: string;
+  is_approved: boolean;
   created_at: string;
 }
 
@@ -36,11 +43,11 @@ interface SenderIdRequest {
 }
 
 export default function Admin() {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState('pending');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [senderRequests, setSenderRequests] = useState<SenderIdRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,6 +96,60 @@ export default function Admin() {
     if (data) {
       setSenderRequests(data as SenderIdRequest[]);
     }
+  };
+
+  const handleApproveUser = async (userId: string) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_approved: true })
+      .eq('user_id', userId);
+
+    if (error) {
+      toast({
+        title: 'Approval Failed',
+        description: 'Could not approve user.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'User Approved',
+        description: 'The user can now access the platform.',
+      });
+      fetchUsers();
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (!confirm(`Are you sure you want to delete ${userEmail}? This action cannot be undone.`)) {
+      return;
+    }
+
+    // Delete profile (this will cascade due to RLS)
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('user_id', userId);
+
+    if (profileError) {
+      toast({
+        title: 'Delete Failed',
+        description: 'Could not delete user profile.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Delete user roles
+    await supabase
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId);
+
+    toast({
+      title: 'User Deleted',
+      description: `${userEmail} has been removed.`,
+    });
+    fetchUsers();
   };
 
   const handleSetCredits = async (userId: string) => {
@@ -192,7 +253,15 @@ export default function Admin() {
     fetchSenderRequests();
   };
 
-  const filteredUsers = users.filter(u =>
+  const pendingUsers = users.filter(u => !u.is_approved);
+  const approvedUsers = users.filter(u => u.is_approved);
+  
+  const filteredPendingUsers = pendingUsers.filter(u =>
+    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  );
+
+  const filteredApprovedUsers = approvedUsers.filter(u =>
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (u.full_name?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
@@ -230,8 +299,9 @@ export default function Admin() {
           <div className="lg:col-span-1">
             <div className="glass-card p-4 space-y-2">
               {[
-                { id: 'users', icon: Users, label: 'Manage Users' },
-                { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests' },
+                { id: 'pending', icon: Clock, label: 'Pending Approval', count: pendingUsers.length },
+                { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
+                { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -244,9 +314,13 @@ export default function Admin() {
                 >
                   <item.icon className="w-5 h-5" />
                   {item.label}
-                  {item.id === 'sender-ids' && senderRequests.length > 0 && (
-                    <span className="ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-1 rounded-full">
-                      {senderRequests.length}
+                  {item.count > 0 && (
+                    <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                      activeTab === item.id 
+                        ? 'bg-primary-foreground/20 text-primary-foreground' 
+                        : 'bg-destructive text-destructive-foreground'
+                    }`}>
+                      {item.count}
                     </span>
                   )}
                 </button>
@@ -256,10 +330,86 @@ export default function Admin() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
+            {/* Pending Approval Tab */}
+            {activeTab === 'pending' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold">Pending Approval</h2>
+                    <p className="text-muted-foreground">Review and approve new user registrations</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search..."
+                      className="pl-10 bg-secondary/50 w-64"
+                    />
+                  </div>
+                </div>
+
+                {filteredPendingUsers.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <UserCheck className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No pending approvals.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredPendingUsers.map((u) => (
+                      <div key={u.id} className="bg-secondary/30 rounded-lg p-6 border border-warning/20">
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-primary" />
+                              <span className="font-semibold text-lg">{u.full_name || 'No name provided'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Mail className="w-4 h-4" />
+                              <span>{u.email}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Phone className="w-4 h-4" />
+                              <span>{u.phone_number || 'No phone number'}</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Registered: {new Date(u.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="default"
+                              onClick={() => handleApproveUser(u.user_id)}
+                              className="bg-success hover:bg-success/90"
+                            >
+                              <Check className="w-4 h-4 mr-2" />
+                              Approve
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleDeleteUser(u.user_id, u.email)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* All Users Tab */}
             {activeTab === 'users' && (
               <div className="glass-card p-8 animate-fade-in">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold">Manage Users</h2>
+                  <div>
+                    <h2 className="text-2xl font-bold">Approved Users</h2>
+                    <p className="text-muted-foreground">Manage user accounts and credits</p>
+                  </div>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -272,14 +422,24 @@ export default function Admin() {
                 </div>
 
                 <div className="space-y-4">
-                  {filteredUsers.map((u) => (
+                  {filteredApprovedUsers.map((u) => (
                     <div key={u.id} className="bg-secondary/30 rounded-lg p-4">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div className="flex-1">
-                          <p className="font-medium">{u.email}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {u.full_name || 'No name'} • Joined {new Date(u.created_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium">{u.full_name || 'No name'}</span>
+                            <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded">Approved</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Mail className="w-3 h-3" />
+                              {u.email}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {u.phone_number || 'N/A'}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-2 mt-2">
                             <Zap className="w-4 h-4 text-primary" />
                             <span className="font-semibold">{u.sms_credits}</span>
@@ -311,21 +471,29 @@ export default function Admin() {
                           >
                             Set
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteUser(u.user_id, u.email)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     </div>
                   ))}
 
-                  {filteredUsers.length === 0 && (
+                  {filteredApprovedUsers.length === 0 && (
                     <div className="text-center py-12 text-muted-foreground">
                       <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No users found.</p>
+                      <p>No approved users found.</p>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
+            {/* Sender ID Requests Tab */}
             {activeTab === 'sender-ids' && (
               <div className="glass-card p-8 animate-fade-in">
                 <h2 className="text-2xl font-bold mb-6">Sender ID Requests</h2>
@@ -349,10 +517,10 @@ export default function Admin() {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
-                              variant="success"
+                              className="bg-success hover:bg-success/90"
                               onClick={() => handleSenderRequest(req.id, true, req.user_id, req.sender_id)}
                             >
-                              <Check className="w-4 h-4" />
+                              <Check className="w-4 h-4 mr-1" />
                               Approve
                             </Button>
                             <Button
@@ -360,7 +528,7 @@ export default function Admin() {
                               variant="destructive"
                               onClick={() => handleSenderRequest(req.id, false, req.user_id, req.sender_id)}
                             >
-                              <X className="w-4 h-4" />
+                              <X className="w-4 h-4 mr-1" />
                               Reject
                             </Button>
                           </div>
