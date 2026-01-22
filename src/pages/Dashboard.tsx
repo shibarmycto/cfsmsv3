@@ -255,49 +255,25 @@ export default function Dashboard() {
           <div className="lg:col-span-3">
             {activeTab === 'send' && (
               <div className="glass-card p-8 animate-fade-in">
-                <h2 className="text-2xl font-bold mb-6">Send Bulk SMS</h2>
+                <h2 className="text-2xl font-bold mb-2">Send SMS</h2>
+                <p className="text-muted-foreground mb-6">
+                  Send messages using Twilio's messaging API. Phone numbers must be in E.164 format.
+                </p>
                 
                 <div className="space-y-6">
-                  {/* Destination */}
+                  {/* From (Twilio Phone Number - Read Only Info) */}
                   <div className="space-y-2">
-                    <Label>Destination Country</Label>
-                    <div className="flex gap-4">
-                      <Button
-                        variant={destination === 'uk' ? 'default' : 'outline'}
-                        onClick={() => setDestination('uk')}
-                        className="flex-1"
-                      >
-                        🇬🇧 UK (£1/SMS)
-                      </Button>
-                      <Button
-                        variant={destination === 'usa' ? 'default' : 'outline'}
-                        onClick={() => setDestination('usa')}
-                        className="flex-1"
-                      >
-                        🇺🇸 USA ($1/SMS)
-                      </Button>
+                    <Label htmlFor="from">From</Label>
+                    <div className="bg-secondary/30 border border-border rounded-md px-4 py-3 text-muted-foreground">
+                      <span className="font-mono">Your Twilio Phone Number</span>
+                      <p className="text-xs mt-1">Configured in your backend settings</p>
                     </div>
                   </div>
 
-                  {/* Sender ID */}
-                  <div className="space-y-2">
-                    <Label>Sender ID</Label>
-                    <Input
-                      value={senderId}
-                      onChange={(e) => setSenderId(e.target.value.slice(0, 11))}
-                      placeholder="CFSMS"
-                      className="bg-secondary/50"
-                      maxLength={11}
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Default: CFSMS. Request custom sender ID in settings.
-                    </p>
-                  </div>
-
-                  {/* Recipients */}
+                  {/* To (Recipients) */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Recipients</Label>
+                      <Label htmlFor="to">To</Label>
                       <label className="cursor-pointer">
                         <input
                           type="file"
@@ -312,29 +288,61 @@ export default function Dashboard() {
                       </label>
                     </div>
                     <Textarea
+                      id="to"
                       value={recipients}
                       onChange={(e) => setRecipients(e.target.value)}
-                      placeholder="Enter phone numbers (one per line)&#10;+447123456789&#10;+447987654321"
-                      className="bg-secondary/50 min-h-[120px]"
+                      placeholder="Enter phone numbers in E.164 format (one per line)&#10;+14155552671&#10;+447700900123&#10;+33612345678"
+                      className="bg-secondary/50 min-h-[140px] font-mono text-sm"
                     />
-                    <p className="text-sm text-muted-foreground">
-                      {recipients.split('\n').filter(r => r.trim()).length} recipients
-                    </p>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>{recipients.split('\n').filter(r => r.trim()).length} recipient(s)</span>
+                      <span className="text-xs">E.164 format: +[country code][number]</span>
+                    </div>
                   </div>
 
-                  {/* Message */}
+                  {/* Body (Message) */}
                   <div className="space-y-2">
-                    <Label>Message</Label>
+                    <Label htmlFor="body">Body</Label>
                     <Textarea
+                      id="body"
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Enter your message..."
-                      className="bg-secondary/50 min-h-[100px]"
-                      maxLength={160}
+                      placeholder="Enter your message content..."
+                      className="bg-secondary/50 min-h-[120px]"
                     />
-                    <p className="text-sm text-muted-foreground">
-                      {message.length}/160 characters
-                    </p>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>{message.length} characters</span>
+                      <span className="text-xs">
+                        {message.length <= 160 
+                          ? '1 SMS segment' 
+                          : `${Math.ceil(message.length / 153)} SMS segments`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Message Info Card */}
+                  <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                    <h4 className="text-sm font-medium mb-2">Message Preview</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Recipients:</span>
+                        <span className="ml-2 font-medium">{recipients.split('\n').filter(r => r.trim()).length}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Credits needed:</span>
+                        <span className="ml-2 font-medium">{recipients.split('\n').filter(r => r.trim()).length}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Your balance:</span>
+                        <span className="ml-2 font-medium">{profile?.sms_credits || 0} credits</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Segments:</span>
+                        <span className="ml-2 font-medium">
+                          {message.length <= 160 ? 1 : Math.ceil(message.length / 153)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <Button
@@ -342,9 +350,9 @@ export default function Dashboard() {
                     size="lg"
                     className="w-full"
                     onClick={handleSendSms}
-                    disabled={isSending}
+                    disabled={isSending || recipients.split('\n').filter(r => r.trim()).length === 0 || !message.trim()}
                   >
-                    {isSending ? 'Sending...' : 'Send SMS'}
+                    {isSending ? 'Sending...' : 'Send Message'}
                     <Send className="w-5 h-5" />
                   </Button>
                 </div>
