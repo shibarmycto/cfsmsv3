@@ -31,7 +31,7 @@ export const COUNTRIES: Country[] = [
 ];
 
 export const SMS_PACKAGES = [
-  { credits: 100, basePrice: 15 },
+  { credits: 100, basePrice: 10 },
   { credits: 500, basePrice: 75 },
   { credits: 1000, basePrice: 150 },
   { credits: 5000, basePrice: 750, popular: true },
