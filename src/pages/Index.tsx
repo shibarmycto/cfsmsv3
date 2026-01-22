@@ -12,7 +12,8 @@ import {
   Upload, 
   CreditCard,
   ArrowRight,
-  Check
+  Check,
+  Send
 } from 'lucide-react';
 
 export default function Index() {
@@ -38,6 +39,14 @@ export default function Index() {
             <span className="text-xl font-bold text-muted-foreground">SMS</span>
           </div>
           <div className="flex items-center gap-4">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => window.open('https://t.me/cfsmsbulkofficialchat', '_blank')}
+              className="rounded-full"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
             {user ? (
               <Button variant="hero" onClick={() => navigate('/dashboard')}>
                 Dashboard
