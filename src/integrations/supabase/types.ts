@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      crypto_orders: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          credits_amount: number
+          crypto_type: string
+          expected_amount: number
+          expires_at: string
+          id: string
+          paid_at: string | null
+          price_usd: number
+          reviewed_by: string | null
+          status: string
+          tx_hash: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_amount: number
+          crypto_type: string
+          expected_amount: number
+          expires_at: string
+          id?: string
+          paid_at?: string | null
+          price_usd: number
+          reviewed_by?: string | null
+          status?: string
+          tx_hash?: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_amount?: number
+          crypto_type?: string
+          expected_amount?: number
+          expires_at?: string
+          id?: string
+          paid_at?: string | null
+          price_usd?: number
+          reviewed_by?: string | null
+          status?: string
+          tx_hash?: string | null
+          user_id?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

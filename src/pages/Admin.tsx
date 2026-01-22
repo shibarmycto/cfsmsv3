@@ -21,6 +21,7 @@ import {
   Mail,
   User,
   ShoppingCart,
+  Wallet,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -56,6 +57,19 @@ interface PurchaseRequest {
   created_at: string;
 }
 
+interface CryptoOrder {
+  id: string;
+  user_id: string;
+  credits_amount: number;
+  price_usd: number;
+  crypto_type: string;
+  expected_amount: number;
+  tx_hash: string | null;
+  status: string;
+  expires_at: string;
+  created_at: string;
+}
+
 export default function Admin() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -65,6 +79,7 @@ export default function Admin() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [senderRequests, setSenderRequests] = useState<SenderIdRequest[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
+  const [cryptoOrders, setCryptoOrders] = useState<CryptoOrder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
 
@@ -88,6 +103,7 @@ export default function Admin() {
       fetchUsers();
       fetchSenderRequests();
       fetchPurchaseRequests();
+      fetchCryptoOrders();
     }
   }, [isAdmin]);
 
@@ -123,6 +139,17 @@ export default function Admin() {
     
     if (data) {
       setPurchaseRequests(data as PurchaseRequest[]);
+    }
+  };
+
+  const fetchCryptoOrders = async () => {
+    const { data } = await supabase
+      .from('crypto_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setCryptoOrders(data as CryptoOrder[]);
     }
   };
 
@@ -389,6 +416,7 @@ export default function Admin() {
             <div className="glass-card p-4 space-y-2">
               {[
                 { id: 'pending', icon: Clock, label: 'Pending Approval', count: pendingUsers.length },
+                { id: 'crypto', icon: Wallet, label: 'Crypto Orders', count: cryptoOrders.filter(o => o.status === 'pending').length },
                 { id: 'purchases', icon: ShoppingCart, label: 'Purchase Requests', count: purchaseRequests.length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
@@ -694,6 +722,83 @@ export default function Admin() {
                               <X className="w-4 h-4 mr-1" />
                               Reject
                             </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Crypto Orders Tab */}
+            {activeTab === 'crypto' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <h2 className="text-2xl font-bold mb-2">Crypto Orders</h2>
+                <p className="text-muted-foreground mb-6">Monitor cryptocurrency payment orders</p>
+
+                {cryptoOrders.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No crypto orders yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {cryptoOrders.map((order) => (
+                      <div 
+                        key={order.id} 
+                        className={`bg-secondary/30 rounded-lg p-6 border ${
+                          order.status === 'paid' ? 'border-success/30' :
+                          order.status === 'expired' ? 'border-destructive/30' :
+                          'border-warning/30'
+                        }`}
+                      >
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-primary" />
+                              <span className="font-semibold">{getUserName(order.user_id)}</span>
+                              <span className="text-muted-foreground">({getUserEmail(order.user_id)})</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground block">Credits</span>
+                                <span className="font-medium">{order.credits_amount.toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block">Price</span>
+                                <span className="font-bold text-primary">${order.price_usd}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block">Crypto</span>
+                                <span className="font-medium uppercase">{order.crypto_type}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block">Amount</span>
+                                <span className="font-mono text-xs">{order.expected_amount.toFixed(6)}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                order.status === 'paid' ? 'bg-success/20 text-success' :
+                                order.status === 'expired' ? 'bg-destructive/20 text-destructive' :
+                                'bg-warning/20 text-warning'
+                              }`}>
+                                {order.status.toUpperCase()}
+                              </span>
+                              {order.tx_hash && (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  TX: {order.tx_hash.slice(0, 16)}...
+                                </span>
+                              )}
+                            </div>
+                            
+                            <p className="text-sm text-muted-foreground">
+                              Created: {new Date(order.created_at).toLocaleString()} | 
+                              Expires: {new Date(order.expires_at).toLocaleString()}
+                            </p>
                           </div>
                         </div>
                       </div>
