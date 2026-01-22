@@ -64,11 +64,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use approved sender ID from profile, or fallback to requested, or default
-    const senderId = profile.default_sender_id || requestedSenderId || 'CFSMS';
+    // Use approved sender ID from profile, or fallback to requested (no default)
+    const senderId = profile.default_sender_id || requestedSenderId || '';
     
-    // Validate sender ID (alphanumeric, 1-11 chars)
-    const validSenderId = /^[a-zA-Z0-9]{1,11}$/.test(senderId) ? senderId : 'CFSMS';
+    // Validate sender ID (alphanumeric, 1-11 chars) - empty string if invalid or not set
+    const validSenderId = senderId && /^[a-zA-Z0-9]{1,11}$/.test(senderId) ? senderId : '';
 
     // TextBee provider (does not support setting alphanumeric Sender IDs)
     const apiKey = Deno.env.get('TEXTBEE_API_KEY');
@@ -86,8 +86,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Prefix message with sender ID so recipients see the brand
-    const prefixedMessage = validSenderId !== 'CFSMS' 
+    // Prefix message with sender ID so recipients see the brand (only if set)
+    const prefixedMessage = validSenderId 
       ? `${validSenderId}: ${message}` 
       : message;
 
