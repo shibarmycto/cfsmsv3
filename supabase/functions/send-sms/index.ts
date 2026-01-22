@@ -64,12 +64,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get API credentials
-    const apiUsername = Deno.env.get('EASYSENDSMS_USERNAME');
-    const apiPassword = Deno.env.get('EASYSENDSMS_PASSWORD');
+    // Get Twilio credentials
+    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+    const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
 
-    if (!apiUsername || !apiPassword) {
-      console.error('SMS API credentials not configured');
+    if (!accountSid || !authToken || !twilioPhoneNumber) {
+      console.error('Twilio credentials not configured');
       return new Response(
         JSON.stringify({ error: 'SMS service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -81,26 +82,30 @@ Deno.serve(async (req) => {
 
     for (const recipient of recipients) {
       try {
-        // Build API URL
-        const params = new URLSearchParams({
-          username: apiUsername,
-          password: apiPassword,
-          to: recipient,
-          from: senderId || 'CFSMS',
-          text: message,
-          type: 'text',
+        // Build Twilio API request
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+        
+        const formData = new URLSearchParams();
+        formData.append('To', recipient);
+        formData.append('From', twilioPhoneNumber);
+        formData.append('Body', message);
+
+        console.log(`Sending SMS to ${recipient} via Twilio`);
+        
+        const response = await fetch(twilioUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: formData.toString(),
         });
 
-        const apiUrl = `https://api.easysendsms.app/bulksms?${params.toString()}`;
+        const responseData = await response.json();
         
-        console.log(`Sending SMS to ${recipient}`);
-        
-        const response = await fetch(apiUrl);
-        const responseText = await response.text();
-        
-        console.log(`SMS API Response for ${recipient}: ${responseText}`);
+        console.log(`Twilio response for ${recipient}:`, JSON.stringify(responseData));
 
-        const status = response.ok && !responseText.toLowerCase().includes('error') ? 'sent' : 'failed';
+        const status = response.ok && responseData.sid ? 'sent' : 'failed';
         
         if (status === 'sent') {
           sentCount++;
@@ -109,19 +114,19 @@ Deno.serve(async (req) => {
         // Log the SMS
         logs.push({
           user_id: user.id,
-          sender_id: senderId || 'CFSMS',
+          sender_id: senderId || twilioPhoneNumber,
           recipient,
           message,
           destination,
           status,
-          api_response: { response: responseText },
+          api_response: responseData,
           credits_used: status === 'sent' ? 1 : 0,
         });
       } catch (err) {
         console.error(`Failed to send to ${recipient}:`, err);
         logs.push({
           user_id: user.id,
-          sender_id: senderId || 'CFSMS',
+          sender_id: senderId || twilioPhoneNumber,
           recipient,
           message,
           destination,
