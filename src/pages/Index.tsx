@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import CountrySelector from '@/components/CountrySelector';
+import { COUNTRIES, SMS_PACKAGES, formatPrice, type Country } from '@/lib/countries';
 import { 
   MessageSquare, 
   Zap, 
@@ -15,6 +18,7 @@ import {
 export default function Index() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
 
   const handleGetStarted = () => {
     if (user) {
@@ -123,120 +127,67 @@ export default function Index() {
 
       {/* Pricing */}
       <section id="pricing" className="container mx-auto px-6 py-20">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h2>
-          <p className="text-muted-foreground">Pay only for what you use. Volume discounts available.</p>
+          <p className="text-muted-foreground mb-6">Same great rates worldwide. Select your country to see prices in your currency.</p>
+          
+          <div className="flex justify-center">
+            <CountrySelector 
+              selectedCountry={selectedCountry} 
+              onSelect={setSelectedCountry} 
+            />
+          </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-          {/* UK Pricing */}
+        <div className="max-w-3xl mx-auto">
           <div className="glass-card glow-border p-8 relative overflow-hidden animate-fade-in">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
             <div className="relative">
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-6">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl">
-                  🇬🇧
+                  {selectedCountry.flag}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">UK SMS</h3>
-                  <p className="text-sm text-muted-foreground">United Kingdom</p>
+                  <h3 className="text-xl font-bold">{selectedCountry.name} SMS</h3>
+                  <p className="text-sm text-muted-foreground">Prices in {selectedCountry.currency}</p>
                 </div>
               </div>
+              
               <div className="mb-6">
-                <span className="text-5xl font-bold">£15</span>
+                <span className="text-5xl font-bold">{formatPrice(15, selectedCountry)}</span>
                 <span className="text-muted-foreground"> / 100 SMS</span>
               </div>
+              
               <div className="space-y-2 mb-6 text-sm">
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">100 SMS</span>
-                  <span className="font-semibold">£15</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">500 SMS</span>
-                  <span className="font-semibold">£75</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">1,000 SMS</span>
-                  <span className="font-semibold">£150</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">5,000 SMS</span>
-                  <span className="font-semibold">£750</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">10,000 SMS</span>
-                  <span className="font-semibold">£1,500</span>
-                </div>
-                <div className="flex justify-between py-2 bg-primary/10 rounded px-2">
-                  <span className="font-medium">20,000 SMS</span>
-                  <span className="font-bold text-primary">£3,000</span>
-                </div>
+                {SMS_PACKAGES.map((pkg, index) => (
+                  <div 
+                    key={pkg.credits}
+                    className={`flex justify-between py-2 ${
+                      pkg.popular 
+                        ? 'bg-primary/10 rounded px-2 -mx-2' 
+                        : index < SMS_PACKAGES.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    <span className={pkg.popular ? 'font-medium' : 'text-muted-foreground'}>
+                      {pkg.credits.toLocaleString()} SMS
+                      {pkg.popular && <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">Popular</span>}
+                    </span>
+                    <span className={pkg.popular ? 'font-bold text-primary' : 'font-semibold'}>
+                      {formatPrice(pkg.basePrice, selectedCountry)}
+                    </span>
+                  </div>
+                ))}
               </div>
+              
               <ul className="space-y-2 mb-6">
-                {['High delivery rates', 'Custom sender ID', 'Bulk upload support'].map((item) => (
+                {['High delivery rates worldwide', 'Custom sender ID', 'Bulk upload support', 'Real-time delivery reports'].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-muted-foreground text-sm">
                     <Check className="w-4 h-4 text-primary" />
                     {item}
                   </li>
                 ))}
               </ul>
-              <Button variant="hero" className="w-full" onClick={handleGetStarted}>
-                Get Started
-              </Button>
-            </div>
-          </div>
-
-          {/* USA Pricing */}
-          <div className="glass-card glow-border p-8 relative overflow-hidden animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-            <div className="relative">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl">
-                  🇺🇸
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold">USA SMS</h3>
-                  <p className="text-sm text-muted-foreground">United States</p>
-                </div>
-              </div>
-              <div className="mb-6">
-                <span className="text-5xl font-bold">$15</span>
-                <span className="text-muted-foreground"> / 100 SMS</span>
-              </div>
-              <div className="space-y-2 mb-6 text-sm">
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">100 SMS</span>
-                  <span className="font-semibold">$15</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">500 SMS</span>
-                  <span className="font-semibold">$75</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">1,000 SMS</span>
-                  <span className="font-semibold">$150</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">5,000 SMS</span>
-                  <span className="font-semibold">$750</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">10,000 SMS</span>
-                  <span className="font-semibold">$1,500</span>
-                </div>
-                <div className="flex justify-between py-2 bg-primary/10 rounded px-2">
-                  <span className="font-medium">20,000 SMS</span>
-                  <span className="font-bold text-primary">$3,000</span>
-                </div>
-              </div>
-              <ul className="space-y-2 mb-6">
-                {['High delivery rates', 'Custom sender ID', 'Bulk upload support'].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-muted-foreground text-sm">
-                    <Check className="w-4 h-4 text-primary" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
+              
               <Button variant="hero" className="w-full" onClick={handleGetStarted}>
                 Get Started
               </Button>
