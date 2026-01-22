@@ -86,7 +86,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Sending SMS via TextBee for ${recipients.length} recipients (requested sender ID: ${validSenderId})`);
+    // Prefix message with sender ID so recipients see the brand
+    const prefixedMessage = validSenderId !== 'CFSMS' 
+      ? `${validSenderId}: ${message}` 
+      : message;
+
+    console.log(`Sending SMS via TextBee for ${recipients.length} recipients (sender ID prefix: ${validSenderId})`);
 
     const textbeeUrl = `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`;
     
@@ -99,7 +104,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           recipients: recipients,
-          message: message,
+          message: prefixedMessage,
         }),
       });
 
