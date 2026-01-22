@@ -39,14 +39,15 @@ export default function Index() {
             <span className="text-xl font-bold text-muted-foreground">SMS</span>
           </div>
           <div className="flex items-center gap-4">
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => window.open('https://t.me/cfsmsbulkofficialchat', '_blank')}
-              className="rounded-full"
+            <a 
+              href="https://t.me/cfsmsbulkofficialchat" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
-              <Send className="w-4 h-4" />
-            </Button>
+              <Send className="w-4 h-4 text-[#0088cc]" />
+              <span className="text-[#0088cc] font-medium text-sm hidden sm:inline">Telegram</span>
+            </a>
             {user ? (
               <Button variant="hero" onClick={() => navigate('/dashboard')}>
                 Dashboard
