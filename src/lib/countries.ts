@@ -31,12 +31,12 @@ export const COUNTRIES: Country[] = [
 ];
 
 export const SMS_PACKAGES = [
-  { credits: 100, basePrice: 10 },
-  { credits: 500, basePrice: 75 },
-  { credits: 1000, basePrice: 150 },
-  { credits: 5000, basePrice: 750, popular: true },
-  { credits: 10000, basePrice: 1500 },
-  { credits: 20000, basePrice: 3000 },
+  { credits: 100, basePrice: 10 },        // £0.100/SMS (base)
+  { credits: 500, basePrice: 49 },        // £0.098/SMS (3% off)
+  { credits: 1000, basePrice: 94 },       // £0.094/SMS (6% off)
+  { credits: 5000, basePrice: 456, popular: true }, // £0.091/SMS (9% off)
+  { credits: 10000, basePrice: 886 },     // £0.089/SMS (12% off)
+  { credits: 20000, basePrice: 1718 },    // £0.086/SMS (15% off)
 ];
 
 export function formatPrice(basePrice: number, country: Country): string {
