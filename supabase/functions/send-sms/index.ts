@@ -64,78 +64,54 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get Twilio credentials
-    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
-    const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
+    // Get TextBee credentials
+    const apiKey = Deno.env.get('TEXTBEE_API_KEY');
+    const deviceId = Deno.env.get('TEXTBEE_DEVICE_ID');
 
-    if (!accountSid || !authToken || !twilioPhoneNumber) {
-      console.error('Twilio credentials not configured');
+    if (!apiKey || !deviceId) {
+      console.error('TextBee credentials not configured');
       return new Response(
         JSON.stringify({ error: 'SMS service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let sentCount = 0;
-    const logs: any[] = [];
+    // TextBee API endpoint
+    const textbeeUrl = `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms`;
 
-    for (const recipient of recipients) {
-      try {
-        // Build Twilio API request
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-        
-        const formData = new URLSearchParams();
-        formData.append('To', recipient);
-        formData.append('From', twilioPhoneNumber);
-        formData.append('Body', message);
+    console.log(`Sending SMS to ${recipients.length} recipients via TextBee`);
+    
+    // TextBee supports bulk sending - send all recipients at once
+    const response = await fetch(textbeeUrl, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipients: recipients,
+        message: message,
+      }),
+    });
 
-        console.log(`Sending SMS to ${recipient} via Twilio`);
-        
-        const response = await fetch(twilioUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: formData.toString(),
-        });
+    const responseData = await response.json();
+    
+    console.log(`TextBee response:`, JSON.stringify(responseData));
 
-        const responseData = await response.json();
-        
-        console.log(`Twilio response for ${recipient}:`, JSON.stringify(responseData));
+    const success = response.ok;
+    const sentCount = success ? recipients.length : 0;
 
-        const status = response.ok && responseData.sid ? 'sent' : 'failed';
-        
-        if (status === 'sent') {
-          sentCount++;
-        }
-
-        // Log the SMS
-        logs.push({
-          user_id: user.id,
-          sender_id: senderId || twilioPhoneNumber,
-          recipient,
-          message,
-          destination,
-          status,
-          api_response: responseData,
-          credits_used: status === 'sent' ? 1 : 0,
-        });
-      } catch (err) {
-        console.error(`Failed to send to ${recipient}:`, err);
-        logs.push({
-          user_id: user.id,
-          sender_id: senderId || twilioPhoneNumber,
-          recipient,
-          message,
-          destination,
-          status: 'failed',
-          api_response: { error: String(err) },
-          credits_used: 0,
-        });
-      }
-    }
+    // Log the SMS for each recipient
+    const logs = recipients.map((recipient) => ({
+      user_id: user.id,
+      sender_id: senderId || 'TextBee',
+      recipient,
+      message,
+      destination,
+      status: success ? 'sent' : 'failed',
+      api_response: responseData,
+      credits_used: success ? 1 : 0,
+    }));
 
     // Insert SMS logs
     if (logs.length > 0) {
