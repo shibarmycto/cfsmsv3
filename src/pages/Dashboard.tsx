@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import BuyCreditsTab from '@/components/BuyCreditsTab';
 import {
   MessageSquare,
   Send,
@@ -16,7 +17,6 @@ import {
   Settings,
   LogOut,
   Zap,
-  Users,
   Shield,
 } from 'lucide-react';
 
@@ -394,47 +394,7 @@ export default function Dashboard() {
             )}
 
             {activeTab === 'buy' && (
-              <div className="glass-card p-8 animate-fade-in">
-                <h2 className="text-2xl font-bold mb-6">Buy Credits</h2>
-                
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
-                  <div className="bg-secondary/30 rounded-xl p-6 border border-border">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-3xl">🇬🇧</span>
-                      <div>
-                        <h3 className="font-bold">UK Credits</h3>
-                        <p className="text-sm text-muted-foreground">£100 = 100 SMS</p>
-                      </div>
-                    </div>
-                    <p className="text-4xl font-bold mb-4">£1<span className="text-lg text-muted-foreground">/SMS</span></p>
-                  </div>
-                  
-                  <div className="bg-secondary/30 rounded-xl p-6 border border-border">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-3xl">🇺🇸</span>
-                      <div>
-                        <h3 className="font-bold">USA Credits</h3>
-                        <p className="text-sm text-muted-foreground">$100 = 100 SMS</p>
-                      </div>
-                    </div>
-                    <p className="text-4xl font-bold mb-4">$1<span className="text-lg text-muted-foreground">/SMS</span></p>
-                  </div>
-                </div>
-
-                <div className="bg-secondary/20 rounded-xl p-6 border border-border">
-                  <h3 className="font-bold mb-4">Payment Methods</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {['Bitcoin', 'Ethereum', 'USDT', 'PayPal'].map((method) => (
-                      <div key={method} className="bg-secondary/50 rounded-lg p-4 text-center">
-                        <p className="font-medium">{method}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-4">
-                    Contact support to purchase credits. Payments are verified manually and credits are added within 24 hours.
-                  </p>
-                </div>
-              </div>
+              <BuyCreditsTab user={user} toast={toast} />
             )}
 
             {activeTab === 'settings' && (
