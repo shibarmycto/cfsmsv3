@@ -263,12 +263,18 @@ export default function Dashboard() {
                 </p>
                 
                 <div className="space-y-6">
-                  {/* From (Twilio Phone Number - Read Only Info) */}
+                  {/* From (Sender ID) */}
                   <div className="space-y-2">
                     <Label htmlFor="from">From</Label>
                     <div className="bg-secondary/30 border border-border rounded-md px-4 py-3 text-muted-foreground">
-                      <span className="font-mono">Your Twilio Phone Number</span>
-                      <p className="text-xs mt-1">Configured in your backend settings</p>
+                      <span className="font-mono">
+                        {profile?.default_sender_id || 'Default Device Number'}
+                      </span>
+                      <p className="text-xs mt-1">
+                        {profile?.default_sender_id 
+                          ? 'Your approved custom sender ID' 
+                          : 'No custom sender ID set - messages sent from default number'}
+                      </p>
                     </div>
                   </div>
 
@@ -409,7 +415,7 @@ export default function Dashboard() {
                       <p><span className="text-muted-foreground">Email:</span> {profile?.email}</p>
                       <p><span className="text-muted-foreground">Name:</span> {profile?.full_name || 'Not set'}</p>
                       <p><span className="text-muted-foreground">Credits:</span> {profile?.sms_credits}</p>
-                      <p><span className="text-muted-foreground">Default Sender ID:</span> {profile?.default_sender_id}</p>
+                      <p><span className="text-muted-foreground">Default Sender ID:</span> {profile?.default_sender_id || 'Not set'}</p>
                     </div>
                   </div>
 
