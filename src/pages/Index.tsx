@@ -230,6 +230,15 @@ export default function Index() {
             </div>
             <span className="font-semibold">CFSMS</span>
           </div>
+          <a 
+            href="https://t.me/cfsmsbulkofficialchat" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
+            <Send className="w-5 h-5 text-[#0088cc]" />
+            <span className="text-[#0088cc] font-medium">@cfsmsbulkofficialchat</span>
+          </a>
           <p className="text-muted-foreground text-sm">
             © 2024 CFSMS. CloudFlare-Powered Bulk SMS Platform.
           </p>
