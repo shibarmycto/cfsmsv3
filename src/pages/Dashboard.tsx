@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [urlDescription, setUrlDescription] = useState('');
   const [urlRequests, setUrlRequests] = useState<any[]>([]);
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
+  const [approvedSenderId, setApprovedSenderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -75,8 +76,29 @@ export default function Dashboard() {
     if (user) {
       fetchSmsLogs();
       fetchUrlRequests();
+      fetchApprovedSenderId();
     }
   }, [user]);
+
+  const fetchApprovedSenderId = async () => {
+    if (!user) return;
+    
+    // Get approved sender IDs that are NOT 'CFSMS'
+    const { data } = await supabase
+      .from('sender_id_requests')
+      .select('sender_id')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .neq('sender_id', 'CFSMS')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    if (data && data.length > 0) {
+      setApprovedSenderId(data[0].sender_id);
+    } else {
+      setApprovedSenderId(null);
+    }
+  };
 
   const fetchUrlRequests = async () => {
     const { data } = await supabase
@@ -161,17 +183,15 @@ export default function Dashboard() {
     setShowPreview(true);
   };
 
-  // Check if user has a valid approved custom sender ID (not default 'CFSMS')
-  const hasApprovedCustomSenderId = profile?.default_sender_id && 
-    profile.default_sender_id !== 'CFSMS' && 
-    /^[a-zA-Z0-9]{1,11}$/.test(profile.default_sender_id);
+  // Check if user has a valid approved custom sender ID from sender_id_requests
+  const hasApprovedCustomSenderId = !!approvedSenderId && /^[a-zA-Z0-9]{1,11}$/.test(approvedSenderId);
 
   const handleConfirmSend = async () => {
     const recipientList = recipients.split('\n').filter(r => r.trim());
     
     // Only use custom sender ID if user has an approved one AND toggle is on
     const shouldUseCustomSender = useCustomSenderId && hasApprovedCustomSenderId;
-    const effectiveSenderId = shouldUseCustomSender ? profile!.default_sender_id : '';
+    const effectiveSenderId = shouldUseCustomSender ? approvedSenderId! : '';
     
     setShowPreview(false);
     setIsSending(true);
@@ -329,10 +349,8 @@ export default function Dashboard() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="from">From</Label>
-                      {/* Only show toggle if user has an approved custom sender ID (not just default 'CFSMS') */}
-                      {profile?.default_sender_id && 
-                       profile.default_sender_id !== 'CFSMS' && 
-                       /^[a-zA-Z0-9]{1,11}$/.test(profile.default_sender_id) && (
+                      {/* Only show toggle if user has an approved custom sender ID */}
+                      {hasApprovedCustomSenderId && (
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
                             Custom Sender ID
@@ -345,14 +363,11 @@ export default function Dashboard() {
                       )}
                     </div>
                     <div className="bg-secondary/30 border border-border rounded-md px-4 py-3">
-                      {/* Only show custom sender if toggle is on AND user has approved non-default sender ID */}
-                      {useCustomSenderId && 
-                       profile?.default_sender_id && 
-                       profile.default_sender_id !== 'CFSMS' &&
-                       /^[a-zA-Z0-9]{1,11}$/.test(profile.default_sender_id) ? (
+                      {/* Only show custom sender if toggle is on AND user has approved sender ID */}
+                      {useCustomSenderId && hasApprovedCustomSenderId ? (
                         <>
                           <span className="font-mono text-primary font-semibold">
-                            {profile.default_sender_id}
+                            {approvedSenderId}
                           </span>
                           <p className="text-xs text-muted-foreground mt-1">
                             Using your approved custom sender ID
@@ -511,7 +526,7 @@ export default function Dashboard() {
                 {/* iPhone Message Preview Modal */}
                 {showPreview && (
                   <IPhoneMessagePreview
-                    senderId={useCustomSenderId && hasApprovedCustomSenderId ? profile!.default_sender_id : 'Unknown Number'}
+                    senderId={useCustomSenderId && hasApprovedCustomSenderId ? approvedSenderId! : 'Unknown Number'}
                     message={message}
                     recipientCount={recipients.split('\n').filter(r => r.trim()).length}
                     onConfirm={handleConfirmSend}
