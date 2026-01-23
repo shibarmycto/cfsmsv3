@@ -39,6 +39,9 @@ export default function Index() {
             <span className="text-xl font-bold text-muted-foreground">SMS</span>
           </div>
           <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => navigate('/about')}>
+              About
+            </Button>
             <a 
               href="https://t.me/cfsmsbulkofficialchat" 
               target="_blank" 
