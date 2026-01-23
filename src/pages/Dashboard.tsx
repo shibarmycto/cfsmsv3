@@ -24,6 +24,7 @@ import {
   Shield,
   Sparkles,
   Link,
+  Mail,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -687,6 +688,25 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground mt-2">
                       Sender IDs must be 1-11 alphanumeric characters. Approval typically takes 24 hours.
                     </p>
+                  </div>
+
+                  {/* Help Section */}
+                  <div>
+                    <h3 className="font-semibold mb-4">Need Help?</h3>
+                    <div className="bg-secondary/30 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <Mail className="w-5 h-5 text-primary" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Contact us at:</p>
+                          <a 
+                            href="mailto:customercare@cfsmsbulk.com" 
+                            className="text-primary hover:underline font-medium"
+                          >
+                            customercare@cfsmsbulk.com
+                          </a>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
