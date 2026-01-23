@@ -269,9 +269,9 @@ export default function Dashboard() {
             </div>
             
             {isAdmin && (
-              <Button variant="outline" size="sm" onClick={() => navigate('/admin')} className="hidden sm:flex">
+              <Button variant="outline" size="sm" onClick={() => navigate('/admin')} className="flex">
                 <Shield className="w-4 h-4" />
-                <span className="hidden md:inline">Admin</span>
+                <span className="hidden sm:inline">Admin</span>
               </Button>
             )}
             
