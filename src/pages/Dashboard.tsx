@@ -259,7 +259,7 @@ export default function Dashboard() {
               <div className="glass-card p-8 animate-fade-in">
                 <h2 className="text-2xl font-bold mb-2">Send SMS</h2>
                 <p className="text-muted-foreground mb-6">
-                  Send messages using Twilio's messaging API. Phone numbers must be in E.164 format.
+                  Send messages using CF SMS messaging API. Phone numbers must be in +44 format.
                 </p>
                 
                 <div className="space-y-6">
@@ -299,12 +299,12 @@ export default function Dashboard() {
                       id="to"
                       value={recipients}
                       onChange={(e) => setRecipients(e.target.value)}
-                      placeholder="Enter phone numbers in E.164 format (one per line)&#10;+14155552671&#10;+447700900123&#10;+33612345678"
+                      placeholder="Enter phone numbers in +44 format (one per line)&#10;+447700900123&#10;+447911123456&#10;+447555555555"
                       className="bg-secondary/50 min-h-[140px] font-mono text-sm"
                     />
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                       <span>{recipients.split('\n').filter(r => r.trim()).length} recipient(s)</span>
-                      <span className="text-xs">E.164 format: +[country code][number]</span>
+                      <span className="text-xs">+44 format: +44[number]</span>
                     </div>
                   </div>
 
