@@ -258,6 +258,58 @@ export default function Admin() {
     fetchCryptoOrders();
   };
 
+  const handleApproveCryptoOrder = async (order: CryptoOrder) => {
+    if (!confirm(`Approve this order and add ${order.credits_amount} credits to the user?`)) {
+      return;
+    }
+
+    // Update order status to approved
+    const { error: orderError } = await supabase
+      .from('crypto_orders')
+      .update({
+        status: 'approved',
+        paid_at: new Date().toISOString(),
+        reviewed_by: user?.id,
+      })
+      .eq('id', order.id);
+
+    if (orderError) {
+      toast({
+        title: 'Approval Failed',
+        description: 'Could not approve crypto order.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Add credits to user
+    const userProfile = users.find(u => u.user_id === order.user_id);
+    const newCredits = (userProfile?.sms_credits || 0) + order.credits_amount;
+
+    await supabase
+      .from('profiles')
+      .update({ sms_credits: newCredits })
+      .eq('user_id', order.user_id);
+
+    // Create transaction record
+    await supabase.from('transactions').insert({
+      user_id: order.user_id,
+      amount: order.price_usd,
+      credits_purchased: order.credits_amount,
+      payment_method: `crypto_${order.crypto_type}`,
+      currency: 'USD',
+      status: 'completed',
+    });
+
+    toast({
+      title: 'Order Approved',
+      description: `Added ${order.credits_amount} credits to ${getUserEmail(order.user_id)}.`,
+    });
+
+    fetchCryptoOrders();
+    fetchUsers();
+  };
+
   const getUserEmail = (userId: string) => {
     const userProfile = users.find(u => u.user_id === userId);
     return userProfile?.email || 'Unknown';
@@ -908,13 +960,25 @@ export default function Admin() {
                             </p>
                           </div>
                           
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteCryptoOrder(order.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {order.status === 'pending' && (
+                              <Button
+                                className="bg-success hover:bg-success/90"
+                                size="sm"
+                                onClick={() => handleApproveCryptoOrder(order)}
+                              >
+                                <Check className="w-4 h-4 mr-1" />
+                                Approve
+                              </Button>
+                            )}
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteCryptoOrder(order.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))}
