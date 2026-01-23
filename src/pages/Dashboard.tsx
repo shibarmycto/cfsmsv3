@@ -32,6 +32,7 @@ import {
   Sparkles,
   Link,
   Mail,
+  Trash2,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -65,6 +66,8 @@ export default function Dashboard() {
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
   const [approvedSenderIds, setApprovedSenderIds] = useState<string[]>([]);
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
+  const [senderIdRequests, setSenderIdRequests] = useState<any[]>([]);
+  const [isDeletingSenderId, setIsDeletingSenderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -85,6 +88,7 @@ export default function Dashboard() {
       fetchSmsLogs();
       fetchUrlRequests();
       fetchApprovedSenderIds();
+      fetchSenderIdRequests();
     }
   }, [user]);
 
@@ -110,6 +114,47 @@ export default function Dashboard() {
     } else {
       setApprovedSenderIds([]);
       setSelectedSenderId('');
+    }
+  };
+
+  const fetchSenderIdRequests = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('sender_id_requests')
+      .select('*')
+      .eq('user_id', user.id)
+      .neq('sender_id', 'CFSMS')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setSenderIdRequests(data);
+    }
+  };
+
+  const handleDeleteSenderId = async (requestId: string, senderId: string) => {
+    setIsDeletingSenderId(requestId);
+    
+    const { error } = await supabase
+      .from('sender_id_requests')
+      .delete()
+      .eq('id', requestId);
+    
+    setIsDeletingSenderId(null);
+    
+    if (error) {
+      toast({
+        title: 'Delete Failed',
+        description: 'Could not delete sender ID.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Sender ID Deleted',
+        description: `"${senderId}" has been removed.`,
+      });
+      fetchApprovedSenderIds();
+      fetchSenderIdRequests();
     }
   };
 
@@ -739,6 +784,42 @@ export default function Dashboard() {
                       Sender IDs must be 1-11 alphanumeric characters. Approval typically takes 24 hours.
                     </p>
                   </div>
+
+                  {/* Your Sender IDs */}
+                  {senderIdRequests.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-4">Your Sender IDs</h3>
+                      <div className="space-y-3">
+                        {senderIdRequests.map((req) => (
+                          <div key={req.id} className="bg-secondary/30 rounded-lg p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-primary font-semibold">{req.sender_id}</span>
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                req.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                                req.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>
+                                {req.status}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteSenderId(req.id, req.sender_id)}
+                              disabled={isDeletingSenderId === req.id}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            >
+                              {isDeletingSenderId === req.id ? (
+                                <span className="text-xs">Deleting...</span>
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Help Section */}
                   <div>
