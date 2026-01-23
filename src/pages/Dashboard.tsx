@@ -164,7 +164,7 @@ export default function Dashboard() {
 
       toast({
         title: 'SMS Sent!',
-        description: `Successfully sent ${data.sent} messages via ${data.provider === 'gatewayapi' ? 'GatewayAPI' : 'TextBee'}.`,
+        description: `Successfully sent ${data.sent} messages via CF SMS.`,
       });
 
       setRecipients('');
@@ -316,7 +316,7 @@ export default function Dashboard() {
                             {profile.default_sender_id}
                           </span>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Using your approved custom sender ID via GatewayAPI
+                            Using your approved custom sender ID
                           </p>
                         </>
                       ) : (
@@ -325,7 +325,7 @@ export default function Dashboard() {
                             Default Device Number
                           </span>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Messages sent from default API number via TextBee
+                            Messages sent from CF SMS default number
                           </p>
                         </>
                       )}
