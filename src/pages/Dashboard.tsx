@@ -379,26 +379,22 @@ export default function Dashboard() {
                       {/* Only show custom sender if toggle is on AND user has approved sender ID */}
                       {useCustomSenderId && hasApprovedCustomSenderId ? (
                         <>
-                          {approvedSenderIds.length > 1 ? (
-                            <Select value={selectedSenderId} onValueChange={setSelectedSenderId}>
-                              <SelectTrigger className="w-full bg-transparent border-0 p-0 h-auto font-mono text-primary font-semibold focus:ring-0">
-                                <SelectValue placeholder="Select Sender ID" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {approvedSenderIds.map((id) => (
-                                  <SelectItem key={id} value={id}>
-                                    {id}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="font-mono text-primary font-semibold">
-                              {selectedSenderId}
-                            </span>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Using your approved custom sender ID
+                          <Select value={selectedSenderId} onValueChange={setSelectedSenderId}>
+                            <SelectTrigger className="w-full bg-background border border-border rounded-md px-3 py-2 h-auto font-mono text-primary font-semibold">
+                              <SelectValue placeholder="Select Sender ID" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-background border border-border z-50">
+                              {approvedSenderIds.map((id) => (
+                                <SelectItem key={id} value={id} className="font-mono">
+                                  {id}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {approvedSenderIds.length > 1 
+                              ? `You have ${approvedSenderIds.length} approved sender IDs` 
+                              : 'Using your approved custom sender ID'}
                           </p>
                         </>
                       ) : (
