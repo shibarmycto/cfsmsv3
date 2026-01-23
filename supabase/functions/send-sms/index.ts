@@ -38,17 +38,25 @@ async function sendViaGatewayAPI(
     // GatewayAPI uses Basic auth with the token
     const authHeader = 'Basic ' + btoa(apiToken + ':');
     
+    // Build request body - only include sender if provided
+    // When sender is empty, GatewayAPI will use a virtual number
+    const requestBody: any = {
+      message: message,
+      recipients: recipients.map(r => ({ msisdn: r.replace('+', '') })),
+    };
+    
+    // Only add sender if it's not empty
+    if (senderId && senderId.trim() !== '') {
+      requestBody.sender = senderId;
+    }
+    
     const response = await fetch('https://gatewayapi.com/rest/mtsms', {
       method: 'POST',
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        sender: senderId,
-        message: message,
-        recipients: recipients.map(r => ({ msisdn: r.replace('+', '') })),
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const responseData = await response.json();
@@ -233,8 +241,10 @@ Deno.serve(async (req) => {
 
     // Handle international recipients - always use GatewayAPI
     if (intlRecipients.length > 0) {
-      const intlSenderId = shouldUseCustomSender ? validSenderId : 'CFSMS';
-      console.log(`International recipients (${intlRecipients.length}), using GatewayAPI with sender: ${intlSenderId}`);
+      // If user has custom sender ID enabled, use it; otherwise pass empty string
+      // GatewayAPI will automatically assign a virtual number when no sender is specified
+      const intlSenderId = shouldUseCustomSender ? validSenderId : '';
+      console.log(`International recipients (${intlRecipients.length}), using GatewayAPI with sender: ${intlSenderId || '(virtual number)'}`);
       intlResult = await sendViaGatewayAPI(intlRecipients, message, intlSenderId);
       
       if (!intlResult.success) {
