@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import BuyCreditsTab from '@/components/BuyCreditsTab';
 import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
+import SendingOverlay from '@/components/SendingOverlay';
 import { Switch } from '@/components/ui/switch';
 import {
   MessageSquare,
@@ -147,6 +148,7 @@ export default function Dashboard() {
       ? profile.default_sender_id 
       : '';
     
+    setShowPreview(false);
     setIsSending(true);
 
     try {
@@ -223,6 +225,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen hero-gradient">
+      {/* Sending Overlay */}
+      {isSending && (
+        <SendingOverlay recipientCount={recipients.split('\n').filter(r => r.trim()).length} />
+      )}
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-xl sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
