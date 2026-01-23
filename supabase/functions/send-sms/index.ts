@@ -13,6 +13,12 @@ interface SendSmsRequest {
   useCustomSender?: boolean;
 }
 
+// Check if a phone number is a UK number
+function isUkNumber(phone: string): boolean {
+  const cleaned = phone.replace(/\s+/g, '');
+  return cleaned.startsWith('+44') || cleaned.startsWith('44');
+}
+
 // Send SMS via GatewayAPI (supports custom alphanumeric sender IDs)
 async function sendViaGatewayAPI(
   recipients: string[],
@@ -202,24 +208,51 @@ Deno.serve(async (req) => {
     let result: { success: boolean; data: any; sentCount: number };
     let usedProvider = 'textbee';
 
-    // If user wants to use custom sender ID and has an approved one, try GatewayAPI
-    if (shouldUseCustomSender) {
-      console.log(`User opted to use custom sender ID: ${validSenderId}, trying GatewayAPI`);
-      result = await sendViaGatewayAPI(recipients, message, validSenderId);
-      
-      if (result.success) {
-        usedProvider = 'gatewayapi';
+    // Separate UK and international recipients
+    const ukRecipients = recipients.filter(r => isUkNumber(r));
+    const intlRecipients = recipients.filter(r => !isUkNumber(r));
+
+    let ukResult: { success: boolean; data: any; sentCount: number } = { success: true, data: {}, sentCount: 0 };
+    let intlResult: { success: boolean; data: any; sentCount: number } = { success: true, data: {}, sentCount: 0 };
+
+    // Handle UK recipients
+    if (ukRecipients.length > 0) {
+      if (shouldUseCustomSender) {
+        console.log(`UK recipients with custom sender ID: ${validSenderId}, trying GatewayAPI`);
+        ukResult = await sendViaGatewayAPI(ukRecipients, message, validSenderId);
+        
+        if (!ukResult.success) {
+          console.log('GatewayAPI failed for UK, falling back to TextBee');
+          ukResult = await sendViaTextBee(ukRecipients, message, validSenderId);
+        }
       } else {
-        // Fallback to TextBee if GatewayAPI fails (e.g., insufficient credits)
-        console.log('GatewayAPI failed, falling back to TextBee');
-        result = await sendViaTextBee(recipients, message, validSenderId);
-        usedProvider = 'textbee';
+        console.log(`UK recipients without custom sender ID, using TextBee`);
+        ukResult = await sendViaTextBee(ukRecipients, message, '');
       }
-    } else {
-      // Custom sender ID is OFF or not approved, use TextBee directly (no sender ID prefix)
-      console.log(`Custom sender ID OFF (useCustomSender=${useCustomSender}), using TextBee directly`);
-      result = await sendViaTextBee(recipients, message, '');
     }
+
+    // Handle international recipients - always use GatewayAPI
+    if (intlRecipients.length > 0) {
+      const intlSenderId = shouldUseCustomSender ? validSenderId : 'CFSMS';
+      console.log(`International recipients (${intlRecipients.length}), using GatewayAPI with sender: ${intlSenderId}`);
+      intlResult = await sendViaGatewayAPI(intlRecipients, message, intlSenderId);
+      
+      if (!intlResult.success) {
+        console.log('GatewayAPI failed for international, no fallback available');
+      }
+    }
+
+    // Combine results
+    const totalSent = ukResult.sentCount + intlResult.sentCount;
+    const allSuccess = (ukRecipients.length === 0 || ukResult.success) && (intlRecipients.length === 0 || intlResult.success);
+    
+    result = {
+      success: allSuccess,
+      data: { uk: ukResult.data, international: intlResult.data },
+      sentCount: totalSent,
+    };
+    
+    usedProvider = intlRecipients.length > 0 ? 'gatewayapi' : (ukResult.data?.provider || 'textbee');
 
     // Log the SMS for each recipient
     const logs = recipients.map((recipient) => ({
