@@ -10,6 +10,7 @@ interface SendSmsRequest {
   message: string;
   senderId?: string;
   destination: 'uk' | 'usa';
+  useCustomSender?: boolean;
 }
 
 // Send SMS via GatewayAPI (supports custom alphanumeric sender IDs)
@@ -145,7 +146,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { recipients, message, senderId: requestedSenderId, destination }: SendSmsRequest = await req.json();
+    const { recipients, message, senderId: requestedSenderId, destination, useCustomSender }: SendSmsRequest = await req.json();
 
     if (!recipients || !message || recipients.length === 0) {
       return new Response(
@@ -189,21 +190,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use approved sender ID from profile, or fallback to requested (no default)
-    const senderId = profile.default_sender_id || requestedSenderId || '';
-    
-    // Validate sender ID (alphanumeric, 1-11 chars) - empty string if invalid or not set
-    const validSenderId = senderId && /^[a-zA-Z0-9]{1,11}$/.test(senderId) ? senderId : '';
-    
     // Determine if user has an approved custom sender ID
     const hasApprovedSenderId = !!profile.default_sender_id && /^[a-zA-Z0-9]{1,11}$/.test(profile.default_sender_id);
+    
+    // Only use custom sender ID if toggle is ON and user has an approved one
+    const shouldUseCustomSender = useCustomSender === true && hasApprovedSenderId;
+    
+    // Use approved sender ID from profile only if custom sender is enabled
+    const validSenderId = shouldUseCustomSender ? profile.default_sender_id : '';
 
     let result: { success: boolean; data: any; sentCount: number };
     let usedProvider = 'textbee';
 
-    // If user has approved custom sender ID, try GatewayAPI first (supports alphanumeric sender IDs)
-    if (hasApprovedSenderId) {
-      console.log(`User has approved sender ID: ${validSenderId}, trying GatewayAPI first`);
+    // If user wants to use custom sender ID and has an approved one, try GatewayAPI
+    if (shouldUseCustomSender) {
+      console.log(`User opted to use custom sender ID: ${validSenderId}, trying GatewayAPI`);
       result = await sendViaGatewayAPI(recipients, message, validSenderId);
       
       if (result.success) {
@@ -215,9 +216,9 @@ Deno.serve(async (req) => {
         usedProvider = 'textbee';
       }
     } else {
-      // No custom sender ID, use TextBee directly
-      console.log('No custom sender ID, using TextBee');
-      result = await sendViaTextBee(recipients, message, validSenderId);
+      // Custom sender ID is OFF or not approved, use TextBee directly (no sender ID prefix)
+      console.log(`Custom sender ID OFF (useCustomSender=${useCustomSender}), using TextBee directly`);
+      result = await sendViaTextBee(recipients, message, '');
     }
 
     // Log the SMS for each recipient
