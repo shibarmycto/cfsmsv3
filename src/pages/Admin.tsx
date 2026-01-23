@@ -23,6 +23,7 @@ import {
   ShoppingCart,
   Wallet,
   Link,
+  History,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -81,6 +82,18 @@ interface UrlWhitelistRequest {
   created_at: string;
 }
 
+interface SmsLog {
+  id: string;
+  user_id: string;
+  recipient: string;
+  message: string;
+  sender_id: string;
+  status: string | null;
+  destination: string;
+  credits_used: number;
+  created_at: string;
+}
+
 export default function Admin() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -92,6 +105,7 @@ export default function Admin() {
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [cryptoOrders, setCryptoOrders] = useState<CryptoOrder[]>([]);
   const [urlRequests, setUrlRequests] = useState<UrlWhitelistRequest[]>([]);
+  const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
 
@@ -117,6 +131,7 @@ export default function Admin() {
       fetchPurchaseRequests();
       fetchCryptoOrders();
       fetchUrlRequests();
+      fetchSmsLogs();
     }
   }, [isAdmin]);
 
@@ -202,6 +217,45 @@ export default function Admin() {
     });
     
     fetchUrlRequests();
+  };
+
+  const fetchSmsLogs = async () => {
+    const { data } = await supabase
+      .from('sms_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    
+    if (data) {
+      setSmsLogs(data as SmsLog[]);
+    }
+  };
+
+  const handleDeleteCryptoOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to delete this crypto order?')) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('crypto_orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) {
+      toast({
+        title: 'Delete Failed',
+        description: 'Could not delete crypto order.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Order Deleted',
+      description: 'Crypto order has been removed.',
+    });
+    
+    fetchCryptoOrders();
   };
 
   const getUserEmail = (userId: string) => {
@@ -470,6 +524,7 @@ export default function Admin() {
                 { id: 'crypto', icon: Wallet, label: 'Crypto Orders', count: cryptoOrders.filter(o => o.status === 'pending').length },
                 { id: 'purchases', icon: ShoppingCart, label: 'Purchase Requests', count: purchaseRequests.length },
                 { id: 'urls', icon: Link, label: 'URL Requests', count: urlRequests.filter(r => r.status === 'pending').length },
+                { id: 'sms-history', icon: History, label: 'SMS History', count: smsLogs.length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
               ].map((item) => (
@@ -852,6 +907,14 @@ export default function Admin() {
                               Expires: {new Date(order.expires_at).toLocaleString()}
                             </p>
                           </div>
+                          
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteCryptoOrder(order.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -935,6 +998,76 @@ export default function Admin() {
                               </Button>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SMS History Tab */}
+            {activeTab === 'sms-history' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold">SMS History</h2>
+                    <p className="text-muted-foreground">View all SMS messages sent by users</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search messages..."
+                      className="pl-10 bg-secondary/50 w-64"
+                    />
+                  </div>
+                </div>
+
+                {smsLogs.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No SMS messages sent yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {smsLogs
+                      .filter(log => 
+                        log.recipient.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        getUserEmail(log.user_id).toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((log) => (
+                      <div key={log.id} className="bg-secondary/30 rounded-lg p-4">
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
+                                {getUserEmail(log.user_id)}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                log.status === 'sent' ? 'bg-success/20 text-success' : 
+                                log.status === 'failed' ? 'bg-destructive/20 text-destructive' :
+                                'bg-warning/20 text-warning'
+                              }`}>
+                                {log.status || 'pending'}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {log.destination.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className="font-mono text-muted-foreground">{log.recipient}</span>
+                              <span className="text-xs text-muted-foreground">
+                                From: {log.sender_id || 'Default'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground line-clamp-2">{log.message}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(log.created_at).toLocaleString()} • {log.credits_used} credit{log.credits_used !== 1 ? 's' : ''}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     ))}
