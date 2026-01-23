@@ -154,6 +154,27 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if user is admin
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .single();
+    
+    const isAdmin = !!roleData;
+    const maxRecipients = isAdmin ? 100 : 30;
+
+    // Check recipient limit
+    if (recipients.length > maxRecipients) {
+      return new Response(
+        JSON.stringify({ 
+          error: `Maximum ${maxRecipients} recipients allowed per send${isAdmin ? '' : ' (upgrade to admin for 100)'}` 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get user profile with approved sender ID and check credits
     const { data: profile } = await supabase
       .from('profiles')

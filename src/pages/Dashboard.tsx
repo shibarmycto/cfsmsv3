@@ -101,6 +101,8 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
+  const maxRecipients = isAdmin ? 100 : 30;
+
   const handlePreviewSms = () => {
     if (!recipients.trim() || !message.trim()) {
       toast({
@@ -113,6 +115,16 @@ export default function Dashboard() {
 
     const recipientList = recipients.split('\n').filter(r => r.trim());
     const creditsNeeded = recipientList.length;
+
+    // Check recipient limit
+    if (recipientList.length > maxRecipients) {
+      toast({
+        title: 'Recipient Limit Exceeded',
+        description: `Maximum ${maxRecipients} recipients allowed per send.${!isAdmin ? ' Contact admin for higher limits.' : ''}`,
+        variant: 'destructive',
+      });
+      return;
+    }
 
     if ((profile?.sms_credits || 0) < creditsNeeded) {
       toast({
@@ -344,8 +356,10 @@ export default function Dashboard() {
                       placeholder="Enter phone numbers with + country code (one per line)&#10;+447700900123&#10;+14155552671&#10;+33612345678"
                       className="bg-secondary/50 min-h-[140px] font-mono text-sm"
                     />
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>{recipients.split('\n').filter(r => r.trim()).length} recipient(s)</span>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className={recipients.split('\n').filter(r => r.trim()).length > maxRecipients ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                        {recipients.split('\n').filter(r => r.trim()).length} / {maxRecipients} recipient(s)
+                      </span>
                       <span className="text-xs">Format: +[country code][number] (e.g. +44, +1, +33)</span>
                     </div>
                   </div>
