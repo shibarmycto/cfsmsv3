@@ -233,60 +233,60 @@ export default function Dashboard() {
         <SendingOverlay recipientCount={recipients.split('\n').filter(r => r.trim()).length} />
       )}
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-primary" />
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+        <div className="container mx-auto px-3 md:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 md:w-5 md:h-5 text-primary" />
             </div>
-            <span className="text-xl font-bold text-gradient">CFSMS</span>
+            <span className="text-lg md:text-xl font-bold text-primary">CFSMS</span>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="stat-card py-2 px-4">
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" />
-                <span className="font-semibold">{profile?.sms_credits || 0}</span>
-                <span className="text-muted-foreground text-sm">credits</span>
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="bg-secondary/50 border border-border rounded-lg py-1.5 px-2 md:py-2 md:px-4">
+              <div className="flex items-center gap-1 md:gap-2">
+                <Zap className="w-3 h-3 md:w-4 md:h-4 text-primary" />
+                <span className="font-semibold text-sm md:text-base">{profile?.sms_credits || 0}</span>
+                <span className="text-muted-foreground text-xs md:text-sm hidden sm:inline">credits</span>
               </div>
             </div>
             
             {isAdmin && (
-              <Button variant="outline" onClick={() => navigate('/admin')}>
+              <Button variant="outline" size="sm" onClick={() => navigate('/admin')} className="hidden sm:flex">
                 <Shield className="w-4 h-4" />
-                Admin
+                <span className="hidden md:inline">Admin</span>
               </Button>
             )}
             
-            <Button variant="ghost" onClick={signOut}>
+            <Button variant="ghost" size="sm" onClick={signOut} className="touch-manipulation">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Sidebar */}
+      <div className="container mx-auto px-3 md:px-6 py-4 md:py-8">
+        <div className="grid lg:grid-cols-4 gap-4 md:gap-8">
+          {/* Mobile Tab Bar */}
           <div className="lg:col-span-1">
-            <div className="glass-card p-4 space-y-2">
+            <div className="flex lg:flex-col gap-1 lg:gap-2 overflow-x-auto pb-2 lg:pb-0 bg-card/50 lg:bg-transparent rounded-lg lg:rounded-none p-2 lg:p-4 border border-border lg:border-border/50">
               {[
-                { id: 'send', icon: Send, label: 'Send SMS' },
+                { id: 'send', icon: Send, label: 'Send' },
                 { id: 'history', icon: History, label: 'History' },
-                { id: 'buy', icon: CreditCard, label: 'Buy Credits' },
+                { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-3 rounded-lg transition-colors touch-manipulation ${
                     activeTab === item.id
                       ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+                      : 'bg-secondary/50 lg:bg-transparent text-muted-foreground active:bg-secondary'
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
+                  <item.icon className="w-4 h-4 lg:w-5 lg:h-5" />
+                  <span className="text-sm lg:text-base whitespace-nowrap">{item.label}</span>
                 </button>
               ))}
             </div>
@@ -295,10 +295,10 @@ export default function Dashboard() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             {activeTab === 'send' && (
-              <div className="glass-card p-8 animate-fade-in">
-                <h2 className="text-2xl font-bold mb-2">Send SMS</h2>
-                <p className="text-muted-foreground mb-6">
-                  Send messages using CF SMS messaging API. Phone numbers must start with + followed by country code (e.g. +44 for UK, +1 for USA).
+              <div className="bg-card/50 border border-border rounded-lg p-4 md:p-8">
+                <h2 className="text-xl md:text-2xl font-bold mb-1 md:mb-2">Send SMS</h2>
+                <p className="text-muted-foreground text-sm md:text-base mb-4 md:mb-6">
+                  Paste numbers below - we auto-format them.
                 </p>
                 
                 <div className="space-y-6">
@@ -396,11 +396,11 @@ export default function Dashboard() {
                         setFormatStats(result.stats);
                         toast({
                           title: 'Numbers Auto-Formatted',
-                          description: `Detected ${Object.keys(result.stats.countries).join(', ') || 'numbers'}. ${result.stats.valid} valid, ${result.stats.invalid} need review.`,
+                          description: `${result.stats.valid} valid numbers detected.`,
                         });
                       }}
-                      placeholder="Paste or type phone numbers - we'll auto-format them!&#10;Examples: 07700900123, 4155552671, +33612345678&#10;We detect UK, USA, France, Germany, Australia & more"
-                      className="bg-secondary/50 min-h-[140px] font-mono text-sm"
+                      placeholder="Paste phone numbers here..."
+                      className="bg-secondary/50 min-h-[100px] md:min-h-[140px] font-mono text-sm touch-manipulation"
                     />
                     <div className="flex items-center justify-between text-sm">
                       <span className={recipients.split('\n').filter(r => r.trim()).length > maxRecipients ? 'text-destructive font-medium' : 'text-muted-foreground'}>
