@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import BuyCreditsTab from '@/components/BuyCreditsTab';
+import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
 import {
   MessageSquare,
   Send,
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [isSending, setIsSending] = useState(false);
   const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
   const [customSenderId, setCustomSenderId] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -97,7 +99,7 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
-  const handleSendSms = async () => {
+  const handlePreviewSms = () => {
     if (!recipients.trim() || !message.trim()) {
       toast({
         title: 'Missing Information',
@@ -119,6 +121,13 @@ export default function Dashboard() {
       return;
     }
 
+    // Show the preview modal
+    setShowPreview(true);
+  };
+
+  const handleConfirmSend = async () => {
+    const recipientList = recipients.split('\n').filter(r => r.trim());
+    
     setIsSending(true);
 
     try {
@@ -135,11 +144,12 @@ export default function Dashboard() {
 
       toast({
         title: 'SMS Sent!',
-        description: `Successfully sent ${data.sent} messages.`,
+        description: `Successfully sent ${data.sent} messages via ${data.provider === 'gatewayapi' ? 'GatewayAPI' : 'TextBee'}.`,
       });
 
       setRecipients('');
       setMessage('');
+      setShowPreview(false);
       refreshProfile();
       fetchSmsLogs();
     } catch (err: any) {
@@ -357,13 +367,25 @@ export default function Dashboard() {
                     variant="hero"
                     size="lg"
                     className="w-full"
-                    onClick={handleSendSms}
+                    onClick={handlePreviewSms}
                     disabled={isSending || recipients.split('\n').filter(r => r.trim()).length === 0 || !message.trim()}
                   >
-                    {isSending ? 'Sending...' : 'Send Message'}
+                    Preview & Send
                     <Send className="w-5 h-5" />
                   </Button>
                 </div>
+
+                {/* iPhone Message Preview Modal */}
+                {showPreview && (
+                  <IPhoneMessagePreview
+                    senderId={profile?.default_sender_id || 'CF SMS'}
+                    message={message}
+                    recipientCount={recipients.split('\n').filter(r => r.trim()).length}
+                    onConfirm={handleConfirmSend}
+                    onCancel={() => setShowPreview(false)}
+                    isLoading={isSending}
+                  />
+                )}
               </div>
             )}
 
