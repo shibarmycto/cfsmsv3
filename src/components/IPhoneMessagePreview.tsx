@@ -1,4 +1,4 @@
-import { X, Wifi, Signal, Battery } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface IPhoneMessagePreviewProps {
@@ -25,96 +25,95 @@ export default function IPhoneMessagePreview({
   });
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="relative max-w-sm w-full">
+    <div 
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div className="relative w-full max-w-[320px] my-auto">
         {/* Close button */}
         <button
           onClick={onCancel}
-          className="absolute -top-12 right-0 text-white/80 hover:text-white transition-colors"
+          className="absolute -top-10 right-0 text-white/80 hover:text-white p-2 touch-manipulation"
+          aria-label="Close preview"
         >
-          <X className="w-8 h-8" />
+          <X className="w-6 h-6" />
         </button>
 
-        {/* iPhone Frame */}
-        <div className="bg-black rounded-[3rem] p-3 shadow-2xl">
-          {/* Dynamic Island */}
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 w-28 h-7 bg-black rounded-full z-10" />
+        {/* Phone Frame - Simplified for mobile */}
+        <div className="bg-black rounded-[2rem] p-2 shadow-xl">
+          {/* Notch */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-full z-10" />
           
           {/* Screen */}
-          <div className="bg-gradient-to-b from-gray-100 to-gray-200 rounded-[2.5rem] overflow-hidden">
+          <div className="bg-gray-100 rounded-[1.75rem] overflow-hidden">
             {/* Status Bar */}
-            <div className="flex items-center justify-between px-8 pt-4 pb-2">
-              <span className="text-sm font-semibold text-black">{currentTime}</span>
+            <div className="flex items-center justify-between px-6 pt-3 pb-1 text-black text-xs">
+              <span className="font-semibold">{currentTime}</span>
               <div className="flex items-center gap-1">
-                <Signal className="w-4 h-4 text-black" />
-                <Wifi className="w-4 h-4 text-black" />
-                <Battery className="w-5 h-5 text-black" />
+                <div className="flex gap-0.5">
+                  <div className="w-1 h-2 bg-black rounded-sm" />
+                  <div className="w-1 h-2.5 bg-black rounded-sm" />
+                  <div className="w-1 h-3 bg-black rounded-sm" />
+                  <div className="w-1 h-3.5 bg-black rounded-sm" />
+                </div>
+                <div className="w-4 h-2 bg-black rounded-sm ml-1" />
               </div>
             </div>
 
             {/* Messages Header */}
-            <div className="bg-gray-100/80 backdrop-blur-xl border-b border-gray-300 px-4 py-3">
-              <div className="flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-10 h-10 bg-gray-400 rounded-full mx-auto mb-1 flex items-center justify-center">
-                    <span className="text-white text-lg font-semibold">
-                      {senderId.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <span className="text-sm font-semibold text-black">
-                    {senderId || 'Unknown'}
+            <div className="bg-gray-100 border-b border-gray-300 px-4 py-2">
+              <div className="text-center">
+                <div className="w-8 h-8 bg-gray-400 rounded-full mx-auto mb-1 flex items-center justify-center">
+                  <span className="text-white text-sm font-semibold">
+                    {senderId.charAt(0).toUpperCase()}
                   </span>
                 </div>
+                <span className="text-xs font-semibold text-black">
+                  {senderId || 'Unknown'}
+                </span>
               </div>
             </div>
 
             {/* Message Content */}
-            <div className="min-h-[300px] p-4 bg-gradient-to-b from-gray-100 to-gray-50">
+            <div className="min-h-[180px] max-h-[240px] p-3 bg-gray-50 overflow-y-auto">
               {/* Today indicator */}
-              <div className="text-center mb-4">
-                <span className="text-xs text-gray-500 bg-gray-200/50 px-3 py-1 rounded-full">
+              <div className="text-center mb-3">
+                <span className="text-[10px] text-gray-500 bg-gray-200/50 px-2 py-0.5 rounded-full">
                   Today {currentTime}
                 </span>
               </div>
 
               {/* Message Bubble */}
               <div className="flex justify-start">
-                <div className="max-w-[85%] bg-[#E9E9EB] rounded-2xl rounded-tl-md px-4 py-2 shadow-sm">
-                  <p className="text-black text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                <div className="max-w-[90%] bg-[#E9E9EB] rounded-2xl rounded-tl-md px-3 py-2">
+                  <p className="text-black text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {message || 'Your message will appear here...'}
                   </p>
                 </div>
               </div>
-
-              {/* Delivery info */}
-              <div className="text-center mt-6 space-y-1">
-                <p className="text-xs text-gray-500">
-                  This message will be sent to {recipientCount} recipient{recipientCount !== 1 ? 's' : ''}
-                </p>
-                {senderId && (
-                  <p className="text-xs text-gray-400">
-                    From: {senderId}
-                  </p>
-                )}
-              </div>
             </div>
 
-            {/* iMessage Input Bar (decorative) */}
-            <div className="bg-gray-100 border-t border-gray-300 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-white rounded-full px-4 py-2 border border-gray-300">
-                  <span className="text-gray-400 text-sm">iMessage</span>
-                </div>
-              </div>
+            {/* Delivery info */}
+            <div className="bg-gray-100 border-t border-gray-200 px-4 py-3 text-center">
+              <p className="text-xs text-gray-600">
+                Sending to <span className="font-semibold">{recipientCount}</span> recipient{recipientCount !== 1 ? 's' : ''}
+              </p>
+              {senderId && (
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  From: {senderId}
+                </p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 mt-6">
+        {/* Action Buttons - Fixed at bottom on mobile */}
+        <div className="flex gap-2 mt-4">
           <Button
             variant="outline"
-            className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+            className="flex-1 bg-white/10 border-white/30 text-white hover:bg-white/20 h-11 text-sm touch-manipulation"
             onClick={onCancel}
             disabled={isLoading}
           >
@@ -122,11 +121,11 @@ export default function IPhoneMessagePreview({
           </Button>
           <Button
             variant="hero"
-            className="flex-1"
+            className="flex-1 h-11 text-sm touch-manipulation"
             onClick={onConfirm}
             disabled={isLoading}
           >
-            {isLoading ? 'Sending...' : `Send to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}`}
+            {isLoading ? 'Sending...' : `Send (${recipientCount})`}
           </Button>
         </div>
       </div>
