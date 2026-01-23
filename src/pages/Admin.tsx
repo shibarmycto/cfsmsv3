@@ -22,6 +22,7 @@ import {
   User,
   ShoppingCart,
   Wallet,
+  Link,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -70,6 +71,16 @@ interface CryptoOrder {
   created_at: string;
 }
 
+interface UrlWhitelistRequest {
+  id: string;
+  user_id: string;
+  url: string;
+  description: string | null;
+  status: string;
+  admin_notes: string | null;
+  created_at: string;
+}
+
 export default function Admin() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -80,6 +91,7 @@ export default function Admin() {
   const [senderRequests, setSenderRequests] = useState<SenderIdRequest[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [cryptoOrders, setCryptoOrders] = useState<CryptoOrder[]>([]);
+  const [urlRequests, setUrlRequests] = useState<UrlWhitelistRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
 
@@ -104,6 +116,7 @@ export default function Admin() {
       fetchSenderRequests();
       fetchPurchaseRequests();
       fetchCryptoOrders();
+      fetchUrlRequests();
     }
   }, [isAdmin]);
 
@@ -151,6 +164,44 @@ export default function Admin() {
     if (data) {
       setCryptoOrders(data as CryptoOrder[]);
     }
+  };
+
+  const fetchUrlRequests = async () => {
+    const { data } = await supabase
+      .from('url_whitelist_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setUrlRequests(data as UrlWhitelistRequest[]);
+    }
+  };
+
+  const handleUrlRequest = async (requestId: string, approved: boolean) => {
+    const { error } = await supabase
+      .from('url_whitelist_requests')
+      .update({
+        status: approved ? 'approved' : 'rejected',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user?.id,
+      })
+      .eq('id', requestId);
+
+    if (error) {
+      toast({
+        title: 'Update Failed',
+        description: 'Could not process URL request.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: approved ? 'Approved' : 'Rejected',
+      description: `URL whitelist request has been ${approved ? 'approved' : 'rejected'}.`,
+    });
+    
+    fetchUrlRequests();
   };
 
   const getUserEmail = (userId: string) => {
@@ -418,6 +469,7 @@ export default function Admin() {
                 { id: 'pending', icon: Clock, label: 'Pending Approval', count: pendingUsers.length },
                 { id: 'crypto', icon: Wallet, label: 'Crypto Orders', count: cryptoOrders.filter(o => o.status === 'pending').length },
                 { id: 'purchases', icon: ShoppingCart, label: 'Purchase Requests', count: purchaseRequests.length },
+                { id: 'urls', icon: Link, label: 'URL Requests', count: urlRequests.filter(r => r.status === 'pending').length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
               ].map((item) => (
@@ -800,6 +852,89 @@ export default function Admin() {
                               Expires: {new Date(order.expires_at).toLocaleString()}
                             </p>
                           </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* URL Whitelist Requests Tab */}
+            {activeTab === 'urls' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <h2 className="text-2xl font-bold mb-2">URL Whitelist Requests</h2>
+                <p className="text-muted-foreground mb-6">Review and approve URL whitelist requests</p>
+
+                {urlRequests.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Link className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No URL requests yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {urlRequests.map((req) => (
+                      <div 
+                        key={req.id} 
+                        className={`bg-secondary/30 rounded-lg p-6 border ${
+                          req.status === 'approved' ? 'border-success/30' :
+                          req.status === 'rejected' ? 'border-destructive/30' :
+                          'border-warning/30'
+                        }`}
+                      >
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-primary" />
+                              <span className="font-semibold">{getUserName(req.user_id)}</span>
+                              <span className="text-muted-foreground">({getUserEmail(req.user_id)})</span>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <div>
+                                <span className="text-muted-foreground text-sm block">URL</span>
+                                <span className="font-mono text-primary break-all">{req.url}</span>
+                              </div>
+                              {req.description && (
+                                <div>
+                                  <span className="text-muted-foreground text-sm block">Description</span>
+                                  <span className="text-sm">{req.description}</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                req.status === 'approved' ? 'bg-success/20 text-success' :
+                                req.status === 'rejected' ? 'bg-destructive/20 text-destructive' :
+                                'bg-warning/20 text-warning'
+                              }`}>
+                                {req.status.toUpperCase()}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {new Date(req.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {req.status === 'pending' && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                className="bg-success hover:bg-success/90"
+                                onClick={() => handleUrlRequest(req.id, true)}
+                              >
+                                <Check className="w-4 h-4 mr-2" />
+                                Approve
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleUrlRequest(req.id, false)}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
