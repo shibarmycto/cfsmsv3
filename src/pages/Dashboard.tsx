@@ -13,6 +13,13 @@ import SendingOverlay from '@/components/SendingOverlay';
 import { Switch } from '@/components/ui/switch';
 import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   MessageSquare,
   Send,
   Upload,
@@ -56,7 +63,8 @@ export default function Dashboard() {
   const [urlDescription, setUrlDescription] = useState('');
   const [urlRequests, setUrlRequests] = useState<any[]>([]);
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
-  const [approvedSenderId, setApprovedSenderId] = useState<string | null>(null);
+  const [approvedSenderIds, setApprovedSenderIds] = useState<string[]>([]);
+  const [selectedSenderId, setSelectedSenderId] = useState<string>('');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -76,27 +84,32 @@ export default function Dashboard() {
     if (user) {
       fetchSmsLogs();
       fetchUrlRequests();
-      fetchApprovedSenderId();
+      fetchApprovedSenderIds();
     }
   }, [user]);
 
-  const fetchApprovedSenderId = async () => {
+  const fetchApprovedSenderIds = async () => {
     if (!user) return;
     
-    // Get approved sender IDs that are NOT 'CFSMS'
+    // Get ALL approved sender IDs that are NOT 'CFSMS'
     const { data } = await supabase
       .from('sender_id_requests')
       .select('sender_id')
       .eq('user_id', user.id)
       .eq('status', 'approved')
       .neq('sender_id', 'CFSMS')
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
     
     if (data && data.length > 0) {
-      setApprovedSenderId(data[0].sender_id);
+      const senderIds = data.map(d => d.sender_id);
+      setApprovedSenderIds(senderIds);
+      // Set the first one as default if none selected
+      if (!selectedSenderId || !senderIds.includes(selectedSenderId)) {
+        setSelectedSenderId(senderIds[0]);
+      }
     } else {
-      setApprovedSenderId(null);
+      setApprovedSenderIds([]);
+      setSelectedSenderId('');
     }
   };
 
@@ -183,15 +196,15 @@ export default function Dashboard() {
     setShowPreview(true);
   };
 
-  // Check if user has a valid approved custom sender ID from sender_id_requests
-  const hasApprovedCustomSenderId = !!approvedSenderId && /^[a-zA-Z0-9]{1,11}$/.test(approvedSenderId);
+  // Check if user has valid approved custom sender IDs
+  const hasApprovedCustomSenderId = approvedSenderIds.length > 0 && !!selectedSenderId;
 
   const handleConfirmSend = async () => {
     const recipientList = recipients.split('\n').filter(r => r.trim());
     
     // Only use custom sender ID if user has an approved one AND toggle is on
     const shouldUseCustomSender = useCustomSenderId && hasApprovedCustomSenderId;
-    const effectiveSenderId = shouldUseCustomSender ? approvedSenderId! : '';
+    const effectiveSenderId = shouldUseCustomSender ? selectedSenderId : '';
     
     setShowPreview(false);
     setIsSending(true);
@@ -366,9 +379,24 @@ export default function Dashboard() {
                       {/* Only show custom sender if toggle is on AND user has approved sender ID */}
                       {useCustomSenderId && hasApprovedCustomSenderId ? (
                         <>
-                          <span className="font-mono text-primary font-semibold">
-                            {approvedSenderId}
-                          </span>
+                          {approvedSenderIds.length > 1 ? (
+                            <Select value={selectedSenderId} onValueChange={setSelectedSenderId}>
+                              <SelectTrigger className="w-full bg-transparent border-0 p-0 h-auto font-mono text-primary font-semibold focus:ring-0">
+                                <SelectValue placeholder="Select Sender ID" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {approvedSenderIds.map((id) => (
+                                  <SelectItem key={id} value={id}>
+                                    {id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="font-mono text-primary font-semibold">
+                              {selectedSenderId}
+                            </span>
+                          )}
                           <p className="text-xs text-muted-foreground mt-1">
                             Using your approved custom sender ID
                           </p>
@@ -526,7 +554,7 @@ export default function Dashboard() {
                 {/* iPhone Message Preview Modal */}
                 {showPreview && (
                   <IPhoneMessagePreview
-                    senderId={useCustomSenderId && hasApprovedCustomSenderId ? approvedSenderId! : 'Unknown Number'}
+                    senderId={useCustomSenderId && hasApprovedCustomSenderId ? selectedSenderId : 'Unknown Number'}
                     message={message}
                     recipientCount={recipients.split('\n').filter(r => r.trim()).length}
                     onConfirm={handleConfirmSend}
