@@ -11,6 +11,7 @@ import BuyCreditsTab from '@/components/BuyCreditsTab';
 import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
 import SendingOverlay from '@/components/SendingOverlay';
 import { Switch } from '@/components/ui/switch';
+import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import {
   MessageSquare,
   Send,
@@ -21,6 +22,7 @@ import {
   LogOut,
   Zap,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -47,6 +49,7 @@ export default function Dashboard() {
   const [customSenderId, setCustomSenderId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [useCustomSenderId, setUseCustomSenderId] = useState(true);
+  const [formatStats, setFormatStats] = useState<{ valid: number; invalid: number; countries: Record<string, number> } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -342,32 +345,80 @@ export default function Dashboard() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="to">To</Label>
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          accept=".csv,.txt"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
-                        <span className="flex items-center gap-2 text-sm text-primary hover:underline">
-                          <Upload className="w-4 h-4" />
-                          Upload CSV
-                        </span>
-                      </label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (recipients.trim()) {
+                              const result = formatPhoneNumbers(recipients);
+                              setRecipients(result.formatted);
+                              setFormatStats(result.stats);
+                              toast({
+                                title: 'Numbers Formatted',
+                                description: `${result.stats.valid} valid, ${result.stats.invalid} invalid numbers detected.`,
+                              });
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          Auto-Format
+                        </button>
+                        <label className="cursor-pointer">
+                          <input
+                            type="file"
+                            accept=".csv,.txt"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                          />
+                          <span className="flex items-center gap-2 text-sm text-primary hover:underline">
+                            <Upload className="w-4 h-4" />
+                            Upload CSV
+                          </span>
+                        </label>
+                      </div>
                     </div>
                     <Textarea
                       id="to"
                       value={recipients}
-                      onChange={(e) => setRecipients(e.target.value)}
-                      placeholder="Enter phone numbers with + country code (one per line)&#10;+447700900123&#10;+14155552671&#10;+33612345678"
+                      onChange={(e) => {
+                        setRecipients(e.target.value);
+                        setFormatStats(null);
+                      }}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        const pastedText = e.clipboardData.getData('text');
+                        const result = formatPhoneNumbers(pastedText);
+                        setRecipients(prev => {
+                          const newValue = prev ? `${prev}\n${result.formatted}` : result.formatted;
+                          return newValue;
+                        });
+                        setFormatStats(result.stats);
+                        toast({
+                          title: 'Numbers Auto-Formatted',
+                          description: `Detected ${Object.keys(result.stats.countries).join(', ') || 'numbers'}. ${result.stats.valid} valid, ${result.stats.invalid} need review.`,
+                        });
+                      }}
+                      placeholder="Paste or type phone numbers - we'll auto-format them!&#10;Examples: 07700900123, 4155552671, +33612345678&#10;We detect UK, USA, France, Germany, Australia & more"
                       className="bg-secondary/50 min-h-[140px] font-mono text-sm"
                     />
                     <div className="flex items-center justify-between text-sm">
                       <span className={recipients.split('\n').filter(r => r.trim()).length > maxRecipients ? 'text-destructive font-medium' : 'text-muted-foreground'}>
                         {recipients.split('\n').filter(r => r.trim()).length} / {maxRecipients} recipient(s)
                       </span>
-                      <span className="text-xs">Format: +[country code][number] (e.g. +44, +1, +33)</span>
+                      {formatStats && formatStats.valid > 0 ? (
+                        <span className="text-xs text-primary">
+                          ✓ {Object.entries(formatStats.countries).map(([country, count]) => `${count} ${country}`).join(', ')}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Paste numbers - auto-format on paste</span>
+                      )}
                     </div>
+                    {formatStats && formatStats.invalid > 0 && (
+                      <p className="text-xs text-warning">
+                        ⚠ {formatStats.invalid} number(s) couldn't be auto-formatted. Please check they start with + and country code.
+                      </p>
+                    )}
                   </div>
 
                   {/* Body (Message) */}
