@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import BuyCreditsTab from '@/components/BuyCreditsTab';
 import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
+import { Switch } from '@/components/ui/switch';
 import {
   MessageSquare,
   Send,
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
   const [customSenderId, setCustomSenderId] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [useCustomSenderId, setUseCustomSenderId] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -128,6 +130,11 @@ export default function Dashboard() {
   const handleConfirmSend = async () => {
     const recipientList = recipients.split('\n').filter(r => r.trim());
     
+    // Determine which sender ID to use
+    const effectiveSenderId = useCustomSenderId && profile?.default_sender_id 
+      ? profile.default_sender_id 
+      : '';
+    
     setIsSending(true);
 
     try {
@@ -135,8 +142,9 @@ export default function Dashboard() {
         body: {
           recipients: recipientList,
           message,
-          senderId,
+          senderId: effectiveSenderId,
           destination,
+          useCustomSender: useCustomSenderId && !!profile?.default_sender_id,
         },
       });
 
@@ -274,17 +282,41 @@ export default function Dashboard() {
                 
                 <div className="space-y-6">
                   {/* From (Sender ID) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="from">From</Label>
-                    <div className="bg-secondary/30 border border-border rounded-md px-4 py-3 text-muted-foreground">
-                      <span className="font-mono">
-                        {profile?.default_sender_id || 'Default Device Number'}
-                      </span>
-                      <p className="text-xs mt-1">
-                        {profile?.default_sender_id 
-                          ? 'Your approved custom sender ID' 
-                          : 'No custom sender ID set - messages sent from default number'}
-                      </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="from">From</Label>
+                      {profile?.default_sender_id && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            Custom Sender ID
+                          </span>
+                          <Switch
+                            checked={useCustomSenderId}
+                            onCheckedChange={setUseCustomSenderId}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="bg-secondary/30 border border-border rounded-md px-4 py-3">
+                      {useCustomSenderId && profile?.default_sender_id ? (
+                        <>
+                          <span className="font-mono text-primary font-semibold">
+                            {profile.default_sender_id}
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Using your approved custom sender ID via GatewayAPI
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-mono text-muted-foreground">
+                            Default Device Number
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Messages sent from default API number via TextBee
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -378,7 +410,7 @@ export default function Dashboard() {
                 {/* iPhone Message Preview Modal */}
                 {showPreview && (
                   <IPhoneMessagePreview
-                    senderId={profile?.default_sender_id || 'CF SMS'}
+                    senderId={useCustomSenderId && profile?.default_sender_id ? profile.default_sender_id : 'Unknown Number'}
                     message={message}
                     recipientCount={recipients.split('\n').filter(r => r.trim()).length}
                     onConfirm={handleConfirmSend}
