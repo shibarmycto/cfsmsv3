@@ -23,6 +23,7 @@ import {
   Zap,
   Shield,
   Sparkles,
+  Link,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -50,6 +51,10 @@ export default function Dashboard() {
   const [showPreview, setShowPreview] = useState(false);
   const [useCustomSenderId, setUseCustomSenderId] = useState(true);
   const [formatStats, setFormatStats] = useState<{ valid: number; invalid: number; countries: Record<string, number> } | null>(null);
+  const [urlRequest, setUrlRequest] = useState('');
+  const [urlDescription, setUrlDescription] = useState('');
+  const [urlRequests, setUrlRequests] = useState<any[]>([]);
+  const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -68,8 +73,20 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       fetchSmsLogs();
+      fetchUrlRequests();
     }
   }, [user]);
+
+  const fetchUrlRequests = async () => {
+    const { data } = await supabase
+      .from('url_whitelist_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setUrlRequests(data);
+    }
+  };
 
   const fetchSmsLogs = async () => {
     const { data } = await supabase
@@ -274,6 +291,7 @@ export default function Dashboard() {
                 { id: 'send', icon: Send, label: 'Send' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
+                { id: 'urls', icon: Link, label: 'URLs' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -526,6 +544,113 @@ export default function Dashboard() {
 
             {activeTab === 'buy' && (
               <BuyCreditsTab user={user} toast={toast} />
+            )}
+
+            {activeTab === 'urls' && (
+              <div className="bg-card/50 border border-border rounded-lg p-4 md:p-8">
+                <h2 className="text-xl md:text-2xl font-bold mb-1">Request URL Whitelist</h2>
+                <p className="text-muted-foreground text-sm mb-6">
+                  Submit URLs for whitelisting approval
+                </p>
+
+                {/* Submit Form */}
+                <div className="space-y-4 mb-8">
+                  <div>
+                    <Label htmlFor="url">URL</Label>
+                    <Input
+                      id="url"
+                      value={urlRequest}
+                      onChange={(e) => setUrlRequest(e.target.value)}
+                      placeholder="https://example.com"
+                      className="bg-secondary/50 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="description">Description (optional)</Label>
+                    <Textarea
+                      id="description"
+                      value={urlDescription}
+                      onChange={(e) => setUrlDescription(e.target.value)}
+                      placeholder="Why do you need this URL whitelisted?"
+                      className="bg-secondary/50 mt-1 min-h-[80px]"
+                    />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!urlRequest.trim()) {
+                        toast({
+                          title: 'Missing URL',
+                          description: 'Please enter a URL to request.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      setIsSubmittingUrl(true);
+                      const { error } = await supabase.from('url_whitelist_requests').insert({
+                        user_id: user?.id,
+                        url: urlRequest.trim(),
+                        description: urlDescription.trim() || null,
+                      });
+                      setIsSubmittingUrl(false);
+                      if (error) {
+                        toast({
+                          title: 'Request Failed',
+                          description: 'Could not submit URL request.',
+                          variant: 'destructive',
+                        });
+                      } else {
+                        toast({
+                          title: 'Request Submitted',
+                          description: 'Your URL whitelist request is pending approval.',
+                        });
+                        setUrlRequest('');
+                        setUrlDescription('');
+                        fetchUrlRequests();
+                      }
+                    }}
+                    disabled={isSubmittingUrl}
+                    className="w-full md:w-auto"
+                  >
+                    {isSubmittingUrl ? 'Submitting...' : 'Submit Request'}
+                  </Button>
+                </div>
+
+                {/* Previous Requests */}
+                <div>
+                  <h3 className="font-semibold mb-4">Your Requests</h3>
+                  {urlRequests.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Link className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                      <p>No URL requests yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {urlRequests.map((req) => (
+                        <div key={req.id} className="bg-secondary/30 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-mono text-sm text-primary truncate">{req.url}</p>
+                              {req.description && (
+                                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{req.description}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                {new Date(req.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                              req.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                              req.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {req.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {activeTab === 'settings' && (
