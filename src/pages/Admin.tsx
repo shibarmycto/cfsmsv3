@@ -26,6 +26,7 @@ import {
   History,
   Bot,
   Play,
+  Send,
 } from 'lucide-react';
 
 interface UserProfile {
@@ -149,6 +150,9 @@ export default function Admin() {
   const [startingCampaign, setStartingCampaign] = useState<string | null>(null);
   const [selectedCampaignLogs, setSelectedCampaignLogs] = useState<string | null>(null);
   const [campaignLogs, setCampaignLogs] = useState<AICampaignLog[]>([]);
+  const [testWhatsappNumber, setTestWhatsappNumber] = useState('');
+  const [testWhatsappMessage, setTestWhatsappMessage] = useState('🧪 Test message from CFSMS Admin Panel. WhatsApp integration is working!');
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -821,6 +825,55 @@ export default function Admin() {
     fetchUsers();
   };
 
+  const handleTestWhatsapp = async () => {
+    if (!testWhatsappNumber.trim()) {
+      toast({
+        title: 'Missing Number',
+        description: 'Please enter a WhatsApp number to test.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSendingWhatsapp(true);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            to: testWhatsappNumber,
+            message: testWhatsappMessage,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to send WhatsApp message');
+      }
+
+      toast({
+        title: 'WhatsApp Sent!',
+        description: `Test message sent successfully. SID: ${result.messageSid}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'WhatsApp Failed',
+        description: error.message || 'Could not send WhatsApp message.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
+
   const pendingUsers = users.filter(u => !u.is_approved);
   const approvedUsers = users.filter(u => u.is_approved);
   
@@ -875,6 +928,7 @@ export default function Admin() {
                 { id: 'sms-history', icon: History, label: 'SMS History', count: smsLogs.length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
+                { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -1784,6 +1838,82 @@ export default function Admin() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* WhatsApp Test Tab */}
+            {activeTab === 'whatsapp-test' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 rounded-xl bg-success/10 border border-success/20 flex items-center justify-center">
+                    <Send className="w-6 h-6 text-success" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Test WhatsApp Integration</h2>
+                    <p className="text-muted-foreground">Send a test message to verify Twilio WhatsApp is working</p>
+                  </div>
+                </div>
+
+                <div className="max-w-xl space-y-6">
+                  <div className="bg-secondary/30 rounded-lg p-6 border border-border">
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-primary" />
+                      Recipient WhatsApp Number
+                    </h3>
+                    <Input
+                      type="tel"
+                      placeholder="+44 7XXX XXX XXX"
+                      value={testWhatsappNumber}
+                      onChange={(e) => setTestWhatsappNumber(e.target.value)}
+                      className="bg-background"
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Enter the phone number with country code (e.g., +447123456789)
+                    </p>
+                  </div>
+
+                  <div className="bg-secondary/30 rounded-lg p-6 border border-border">
+                    <h3 className="font-semibold mb-4 flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-primary" />
+                      Test Message
+                    </h3>
+                    <textarea
+                      value={testWhatsappMessage}
+                      onChange={(e) => setTestWhatsappMessage(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+                      placeholder="Enter your test message..."
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleTestWhatsapp}
+                    disabled={sendingWhatsapp || !testWhatsappNumber.trim()}
+                    className="w-full bg-success hover:bg-success/90"
+                    size="lg"
+                  >
+                    {sendingWhatsapp ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 border-2 border-success-foreground/30 border-t-success-foreground rounded-full animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Test WhatsApp
+                      </>
+                    )}
+                  </Button>
+
+                  <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
+                    <h4 className="font-semibold text-warning mb-2">Important Notes</h4>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>• For Twilio Sandbox: The recipient must first join your sandbox by sending a message to your Twilio WhatsApp number</li>
+                      <li>• For Production: Ensure your Twilio WhatsApp number is fully registered and approved</li>
+                      <li>• Messages can only be sent to users who have opted in within the last 24 hours</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             )}
           </div>
