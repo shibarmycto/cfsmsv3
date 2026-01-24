@@ -96,6 +96,32 @@ interface SmsLog {
   created_at: string;
 }
 
+interface AICampaign {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  target_audience: string;
+  message_template: string;
+  recipients: string[];
+  destination: string;
+  whatsapp_number: string;
+  days_requested: number;
+  daily_cost: number;
+  total_cost: number;
+  total_recipients: number;
+  sent_count: number;
+  failed_count: number;
+  status: string;
+  admin_notes: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function Admin() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -108,8 +134,10 @@ export default function Admin() {
   const [cryptoOrders, setCryptoOrders] = useState<CryptoOrder[]>([]);
   const [urlRequests, setUrlRequests] = useState<UrlWhitelistRequest[]>([]);
   const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
+  const [aiCampaigns, setAiCampaigns] = useState<AICampaign[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
+  const [startingCampaign, setStartingCampaign] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading) {
@@ -134,6 +162,7 @@ export default function Admin() {
       fetchCryptoOrders();
       fetchUrlRequests();
       fetchSmsLogs();
+      fetchAiCampaigns();
     }
   }, [isAdmin]);
 
@@ -232,6 +261,158 @@ export default function Admin() {
       setSmsLogs(data as SmsLog[]);
     }
   };
+
+  const fetchAiCampaigns = async () => {
+    const { data } = await supabase
+      .from('ai_campaigns')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setAiCampaigns(data as AICampaign[]);
+    }
+  };
+
+  const handleApproveCampaign = async (campaignId: string) => {
+    const { error } = await supabase
+      .from('ai_campaigns')
+      .update({
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        approved_by: user?.id,
+      })
+      .eq('id', campaignId);
+
+    if (error) {
+      toast({
+        title: 'Approval Failed',
+        description: 'Could not approve campaign.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Campaign Approved',
+      description: 'Campaign has been approved and is ready to start.',
+    });
+    
+    fetchAiCampaigns();
+  };
+
+  const handleRejectCampaign = async (campaignId: string) => {
+    const reason = prompt('Enter rejection reason (optional):');
+    
+    const { error } = await supabase
+      .from('ai_campaigns')
+      .update({
+        status: 'rejected',
+        admin_notes: reason || 'Rejected by admin',
+      })
+      .eq('id', campaignId);
+
+    if (error) {
+      toast({
+        title: 'Rejection Failed',
+        description: 'Could not reject campaign.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Campaign Rejected',
+      description: 'Campaign has been rejected.',
+    });
+    
+    fetchAiCampaigns();
+  };
+
+  const handleStartCampaign = async (campaign: AICampaign) => {
+    if (!confirm(`Start campaign "${campaign.name}" with ${campaign.total_recipients} recipients?`)) {
+      return;
+    }
+
+    setStartingCampaign(campaign.id);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-ai-campaign`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ campaignId: campaign.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to start campaign');
+      }
+
+      toast({
+        title: 'Campaign Started',
+        description: `Campaign is now running. ${result.totalRecipients} messages will be sent.`,
+      });
+      
+      fetchAiCampaigns();
+    } catch (error: any) {
+      toast({
+        title: 'Start Failed',
+        description: error.message || 'Could not start campaign.',
+        variant: 'destructive',
+      });
+    } finally {
+      setStartingCampaign(null);
+    }
+  };
+
+  const handleDeleteCampaign = async (campaignId: string) => {
+    if (!confirm('Are you sure you want to delete this campaign?')) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('ai_campaigns')
+      .delete()
+      .eq('id', campaignId);
+
+    if (error) {
+      toast({
+        title: 'Delete Failed',
+        description: 'Could not delete campaign.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Campaign Deleted',
+      description: 'Campaign has been removed.',
+    });
+    
+    fetchAiCampaigns();
+  };
+
+  const getCampaignStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending_payment': return 'bg-warning/20 text-warning';
+      case 'pending_approval': return 'bg-primary/20 text-primary';
+      case 'approved': return 'bg-success/20 text-success';
+      case 'running': return 'bg-blue-500/20 text-blue-500';
+      case 'completed': return 'bg-success/20 text-success';
+      case 'rejected': return 'bg-destructive/20 text-destructive';
+      case 'failed': return 'bg-destructive/20 text-destructive';
+      default: return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const pendingApprovalCampaigns = aiCampaigns.filter(c => c.status === 'pending_approval');
+  const approvedCampaigns = aiCampaigns.filter(c => c.status === 'approved');
 
   const handleDeleteCryptoOrder = async (orderId: string) => {
     if (!confirm('Are you sure you want to delete this crypto order?')) {
@@ -575,6 +756,7 @@ export default function Admin() {
             <div className="glass-card p-4 space-y-2">
               {[
                 { id: 'pending', icon: Clock, label: 'Pending Approval', count: pendingUsers.length },
+                { id: 'ai-campaigns', icon: Bot, label: 'AI Campaigns', count: pendingApprovalCampaigns.length },
                 { id: 'crypto', icon: Wallet, label: 'Crypto Orders', count: cryptoOrders.filter(o => o.status === 'pending').length },
                 { id: 'purchases', icon: ShoppingCart, label: 'Purchase Requests', count: purchaseRequests.length },
                 { id: 'urls', icon: Link, label: 'URL Requests', count: urlRequests.filter(r => r.status === 'pending').length },
@@ -678,6 +860,256 @@ export default function Admin() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* AI Campaigns Tab */}
+            {activeTab === 'ai-campaigns' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold">AI Campaigns</h2>
+                    <p className="text-muted-foreground">Review, approve, and manage AI SMS campaigns</p>
+                  </div>
+                </div>
+
+                {/* Pending Approval Section */}
+                {pendingApprovalCampaigns.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-warning" />
+                      Pending Approval ({pendingApprovalCampaigns.length})
+                    </h3>
+                    <div className="space-y-4">
+                      {pendingApprovalCampaigns.map((campaign) => (
+                        <div key={campaign.id} className="bg-secondary/30 rounded-lg p-6 border border-warning/20">
+                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Bot className="w-5 h-5 text-primary" />
+                                <span className="font-semibold text-lg">{campaign.name}</span>
+                                <span className={`text-xs px-2 py-1 rounded-full ${getCampaignStatusColor(campaign.status)}`}>
+                                  {campaign.status.replace('_', ' ')}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <User className="w-4 h-4" />
+                                <span>{getUserName(campaign.user_id)} ({getUserEmail(campaign.user_id)})</span>
+                              </div>
+
+                              {campaign.description && (
+                                <p className="text-sm text-muted-foreground">{campaign.description}</p>
+                              )}
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground block">Target Audience</span>
+                                  <span className="font-medium">{campaign.target_audience}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block">Recipients</span>
+                                  <span className="font-medium">{campaign.total_recipients.toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block">Duration</span>
+                                  <span className="font-medium">{campaign.days_requested} day(s)</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block">Total Cost</span>
+                                  <span className="font-bold text-primary">£{campaign.total_cost}</span>
+                                </div>
+                              </div>
+
+                              <div className="bg-secondary/50 rounded p-3 mt-2">
+                                <span className="text-muted-foreground text-xs block mb-1">Message Template</span>
+                                <p className="text-sm font-mono">{campaign.message_template}</p>
+                              </div>
+
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  WhatsApp: {campaign.whatsapp_number}
+                                </span>
+                                <span>Region: {campaign.destination.toUpperCase()}</span>
+                              </div>
+                              
+                              <p className="text-sm text-muted-foreground">
+                                Created: {new Date(campaign.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                className="bg-success hover:bg-success/90"
+                                onClick={() => handleApproveCampaign(campaign.id)}
+                              >
+                                <Check className="w-4 h-4 mr-2" />
+                                Approve
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleRejectCampaign(campaign.id)}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Reject
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Approved - Ready to Start Section */}
+                {approvedCampaigns.length > 0 && (
+                  <div className="mb-8">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Check className="w-5 h-5 text-success" />
+                      Ready to Start ({approvedCampaigns.length})
+                    </h3>
+                    <div className="space-y-4">
+                      {approvedCampaigns.map((campaign) => (
+                        <div key={campaign.id} className="bg-secondary/30 rounded-lg p-6 border border-success/20">
+                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Bot className="w-5 h-5 text-primary" />
+                                <span className="font-semibold text-lg">{campaign.name}</span>
+                                <span className={`text-xs px-2 py-1 rounded-full ${getCampaignStatusColor(campaign.status)}`}>
+                                  {campaign.status}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <User className="w-4 h-4" />
+                                <span>{getUserName(campaign.user_id)} ({getUserEmail(campaign.user_id)})</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground block">Recipients</span>
+                                  <span className="font-medium">{campaign.total_recipients.toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block">Duration</span>
+                                  <span className="font-medium">{campaign.days_requested} day(s)</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block">Total Cost</span>
+                                  <span className="font-bold text-primary">£{campaign.total_cost}</span>
+                                </div>
+                              </div>
+
+                              <p className="text-sm text-muted-foreground">
+                                Approved: {campaign.approved_at ? new Date(campaign.approved_at).toLocaleString() : 'N/A'}
+                              </p>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                onClick={() => handleStartCampaign(campaign)}
+                                disabled={startingCampaign === campaign.id}
+                                className="bg-primary hover:bg-primary/90"
+                              >
+                                {startingCampaign === campaign.id ? (
+                                  <>
+                                    <div className="w-4 h-4 mr-2 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                                    Starting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-4 h-4 mr-2" />
+                                    Start Campaign
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteCampaign(campaign.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* All Campaigns Table */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <History className="w-5 h-5 text-muted-foreground" />
+                    All Campaigns ({aiCampaigns.length})
+                  </h3>
+                  
+                  {aiCampaigns.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No AI campaigns yet.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="text-left py-3 px-2">Campaign</th>
+                            <th className="text-left py-3 px-2">User</th>
+                            <th className="text-left py-3 px-2">Recipients</th>
+                            <th className="text-left py-3 px-2">Progress</th>
+                            <th className="text-left py-3 px-2">Status</th>
+                            <th className="text-left py-3 px-2">Created</th>
+                            <th className="text-right py-3 px-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aiCampaigns.map((campaign) => (
+                            <tr key={campaign.id} className="border-b border-border/50 hover:bg-secondary/20">
+                              <td className="py-3 px-2">
+                                <div className="font-medium">{campaign.name}</div>
+                                <div className="text-xs text-muted-foreground">{campaign.destination.toUpperCase()}</div>
+                              </td>
+                              <td className="py-3 px-2">
+                                <div className="text-muted-foreground">{getUserEmail(campaign.user_id)}</div>
+                              </td>
+                              <td className="py-3 px-2">{campaign.total_recipients.toLocaleString()}</td>
+                              <td className="py-3 px-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-success">{campaign.sent_count}</span>
+                                  <span className="text-muted-foreground">/</span>
+                                  <span className="text-destructive">{campaign.failed_count}</span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-2">
+                                <span className={`text-xs px-2 py-1 rounded-full ${getCampaignStatusColor(campaign.status)}`}>
+                                  {campaign.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="py-3 px-2 text-muted-foreground">
+                                {new Date(campaign.created_at).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteCampaign(campaign.id)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
