@@ -42,9 +42,10 @@ serve(async (req) => {
       );
     }
 
-    if (campaign.status !== 'approved') {
+    // Allow both 'approved' and 'scheduled' statuses
+    if (!['approved', 'scheduled'].includes(campaign.status)) {
       return new Response(
-        JSON.stringify({ error: "Campaign is not approved" }),
+        JSON.stringify({ error: "Campaign is not approved or scheduled" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

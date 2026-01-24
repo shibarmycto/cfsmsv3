@@ -390,10 +390,31 @@ export default function Admin() {
   };
 
   const handleApproveCampaign = async (campaignId: string) => {
+    // First, get the campaign to check if it's scheduled
+    const { data: campaign, error: fetchError } = await supabase
+      .from('ai_campaigns')
+      .select('is_scheduled, scheduled_at, name')
+      .eq('id', campaignId)
+      .single();
+
+    if (fetchError || !campaign) {
+      toast({
+        title: 'Approval Failed',
+        description: 'Could not find campaign.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Determine the status based on whether campaign is scheduled
+    const newStatus = campaign.is_scheduled && campaign.scheduled_at 
+      ? 'scheduled' 
+      : 'approved';
+
     const { error } = await supabase
       .from('ai_campaigns')
       .update({
-        status: 'approved',
+        status: newStatus,
         approved_at: new Date().toISOString(),
         approved_by: user?.id,
       })
@@ -408,9 +429,13 @@ export default function Admin() {
       return;
     }
 
+    const description = campaign.is_scheduled && campaign.scheduled_at
+      ? `Campaign "${campaign.name}" is scheduled to run at ${new Date(campaign.scheduled_at).toLocaleString()}`
+      : 'Campaign has been approved and is ready to start.';
+
     toast({
       title: 'Campaign Approved',
-      description: 'Campaign has been approved and is ready to start.',
+      description,
     });
     
     fetchAiCampaigns();
@@ -1099,6 +1124,15 @@ export default function Admin() {
                                 </span>
                                 <span>Region: {campaign.destination.toUpperCase()}</span>
                               </div>
+
+                              {(campaign as any).is_scheduled && (campaign as any).scheduled_at && (
+                                <div className="flex items-center gap-2 text-sm bg-primary/10 text-primary rounded-lg p-2">
+                                  <Clock className="w-4 h-4" />
+                                  <span>
+                                    Scheduled for: {new Date((campaign as any).scheduled_at).toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
                               
                               <p className="text-sm text-muted-foreground">
                                 Created: {new Date(campaign.created_at).toLocaleString()}

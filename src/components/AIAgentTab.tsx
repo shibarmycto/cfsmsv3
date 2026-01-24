@@ -22,7 +22,13 @@ import {
   Loader2,
   Wallet,
   Send,
+  CalendarClock,
+  Calendar,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { format } from 'date-fns';
 import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import { useNavigate } from 'react-router-dom';
 
@@ -51,6 +57,8 @@ interface Campaign {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  is_scheduled: boolean;
+  scheduled_at: string | null;
 }
 
 interface CampaignLog {
@@ -82,6 +90,9 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [daysRequested, setDaysRequested] = useState(1);
   const [destination, setDestination] = useState('uk');
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [scheduledTime, setScheduledTime] = useState('09:00');
 
   useEffect(() => {
     if (user) {
@@ -191,6 +202,15 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
       return;
     }
 
+    // Calculate scheduled_at timestamp if scheduling
+    let scheduledAt: string | null = null;
+    if (isScheduled && scheduledDate) {
+      const [hours, minutes] = scheduledTime.split(':').map(Number);
+      const scheduled = new Date(scheduledDate);
+      scheduled.setHours(hours, minutes, 0, 0);
+      scheduledAt = scheduled.toISOString();
+    }
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('ai-campaign-agent', {
@@ -205,6 +225,8 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
             whatsappNumber,
             daysRequested,
             destination,
+            isScheduled,
+            scheduledAt,
           },
         },
       });
@@ -225,6 +247,9 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
       setRecipients('');
       setWhatsappNumber('');
       setDaysRequested(1);
+      setIsScheduled(false);
+      setScheduledDate(undefined);
+      setScheduledTime('09:00');
       
       fetchCampaigns();
       setActiveSubTab('campaigns');
@@ -284,6 +309,7 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
       pending_payment: { variant: 'outline', icon: <CreditCard className="w-3 h-3" />, label: 'Awaiting Payment' },
       pending_approval: { variant: 'secondary', icon: <Clock className="w-3 h-3" />, label: 'Pending Approval' },
       approved: { variant: 'default', icon: <CheckCircle className="w-3 h-3" />, label: 'Approved' },
+      scheduled: { variant: 'secondary', icon: <CalendarClock className="w-3 h-3" />, label: 'Scheduled' },
       running: { variant: 'default', icon: <Play className="w-3 h-3" />, label: 'Running' },
       completed: { variant: 'default', icon: <CheckCircle className="w-3 h-3" />, label: 'Completed' },
       rejected: { variant: 'destructive', icon: <XCircle className="w-3 h-3" />, label: 'Rejected' },
@@ -507,6 +533,72 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
                 </div>
               </div>
 
+              {/* Schedule Campaign */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="schedule-toggle" className="flex items-center gap-2">
+                      <CalendarClock className="w-4 h-4" />
+                      Schedule for Later
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Set a specific date and time for your campaign to start
+                    </p>
+                  </div>
+                  <Switch
+                    id="schedule-toggle"
+                    checked={isScheduled}
+                    onCheckedChange={setIsScheduled}
+                  />
+                </div>
+
+                {isScheduled && (
+                  <div className="grid grid-cols-2 gap-4 p-4 bg-secondary/30 rounded-lg">
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal"
+                          >
+                            <Calendar className="mr-2 h-4 w-4" />
+                            {scheduledDate ? format(scheduledDate, 'PPP') : 'Pick a date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={scheduledDate}
+                            onSelect={setScheduledDate}
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="scheduled-time">Time</Label>
+                      <Input
+                        id="scheduled-time"
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="bg-background"
+                      />
+                    </div>
+                    {scheduledDate && (
+                      <div className="col-span-2 text-sm text-muted-foreground">
+                        Campaign will start on{' '}
+                        <span className="font-medium text-foreground">
+                          {format(scheduledDate, 'EEEE, MMMM d, yyyy')} at {scheduledTime}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Cost Summary */}
               <div className="bg-secondary/30 rounded-lg p-4 space-y-2">
                 <h4 className="font-medium">Cost Summary</h4>
@@ -535,14 +627,16 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
                 size="lg"
                 className="w-full"
                 onClick={handleCreateCampaign}
-                disabled={isLoading || !campaignName || !targetAudience || !messageTemplate || recipientCount === 0 || !whatsappNumber}
+                disabled={isLoading || !campaignName || !targetAudience || !messageTemplate || recipientCount === 0 || !whatsappNumber || (isScheduled && !scheduledDate)}
               >
                 {isLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                ) : isScheduled ? (
+                  <CalendarClock className="w-5 h-5 mr-2" />
                 ) : (
                   <Bot className="w-5 h-5 mr-2" />
                 )}
-                Create Campaign (£{totalCost})
+                {isScheduled ? `Schedule Campaign (£${totalCost})` : `Create Campaign (£${totalCost})`}
               </Button>
             </CardContent>
           </Card>
@@ -589,6 +683,19 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
                         <span className="font-medium">£{campaign.total_cost}</span>
                       </div>
                     </div>
+                    
+                    {campaign.is_scheduled && campaign.scheduled_at && (
+                      <div className="flex items-center gap-2 text-sm bg-secondary/30 rounded-lg p-3">
+                        <CalendarClock className="w-4 h-4 text-primary" />
+                        <span>
+                          Scheduled for:{' '}
+                          <span className="font-medium">
+                            {format(new Date(campaign.scheduled_at), 'PPP')} at{' '}
+                            {format(new Date(campaign.scheduled_at), 'HH:mm')}
+                          </span>
+                        </span>
+                      </div>
+                    )}
 
                     {campaign.status === 'pending_payment' && (
                       <div className="flex gap-2 pt-2">
