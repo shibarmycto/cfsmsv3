@@ -186,6 +186,39 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          is_deleted_by_receiver: boolean
+          is_deleted_by_sender: boolean
+          is_read: boolean
+          message: string
+          receiver_id: string
+          sender_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_deleted_by_receiver?: boolean
+          is_deleted_by_sender?: boolean
+          is_read?: boolean
+          message: string
+          receiver_id: string
+          sender_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_deleted_by_receiver?: boolean
+          is_deleted_by_sender?: boolean
+          is_read?: boolean
+          message?: string
+          receiver_id?: string
+          sender_id?: string
+        }
+        Relationships: []
+      }
       crypto_orders: {
         Row: {
           admin_notes: string | null
@@ -236,6 +269,182 @@ export type Database = {
           wallet_address?: string
         }
         Relationships: []
+      }
+      friend_requests: {
+        Row: {
+          created_at: string
+          from_user_id: string
+          id: string
+          responded_at: string | null
+          status: string
+          to_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          from_user_id: string
+          id?: string
+          responded_at?: string | null
+          status?: string
+          to_user_id: string
+        }
+        Update: {
+          created_at?: string
+          from_user_id?: string
+          id?: string
+          responded_at?: string | null
+          status?: string
+          to_user_id?: string
+        }
+        Relationships: []
+      }
+      friends: {
+        Row: {
+          created_at: string
+          friend_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          friend_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          friend_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      large_transaction_approvals: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          from_wallet_id: string
+          id: string
+          otp_code: string | null
+          otp_expires_at: string | null
+          status: string
+          to_wallet_id: string
+          transaction_id: string | null
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          from_wallet_id: string
+          id?: string
+          otp_code?: string | null
+          otp_expires_at?: string | null
+          status?: string
+          to_wallet_id: string
+          transaction_id?: string | null
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          from_wallet_id?: string
+          id?: string
+          otp_code?: string | null
+          otp_expires_at?: string | null
+          status?: string
+          to_wallet_id?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "large_transaction_approvals_from_wallet_id_fkey"
+            columns: ["from_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "large_transaction_approvals_to_wallet_id_fkey"
+            columns: ["to_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      miner_requests: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mining_sessions: {
+        Row: {
+          captchas_completed: number
+          id: string
+          is_active: boolean
+          session_end: string | null
+          session_start: string
+          tokens_earned: number
+          user_id: string
+          wallet_id: string
+        }
+        Insert: {
+          captchas_completed?: number
+          id?: string
+          is_active?: boolean
+          session_end?: string | null
+          session_start?: string
+          tokens_earned?: number
+          user_id: string
+          wallet_id: string
+        }
+        Update: {
+          captchas_completed?: number
+          id?: string
+          is_active?: boolean
+          session_end?: string | null
+          session_start?: string
+          tokens_earned?: number
+          user_id?: string
+          wallet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mining_sessions_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -479,6 +688,167 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      wallet_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          device_info: string | null
+          from_wallet_id: string | null
+          id: string
+          ip_address: string | null
+          is_deleted_by_receiver: boolean
+          is_deleted_by_sender: boolean
+          metadata: Json | null
+          status: string
+          to_wallet_id: string | null
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          device_info?: string | null
+          from_wallet_id?: string | null
+          id?: string
+          ip_address?: string | null
+          is_deleted_by_receiver?: boolean
+          is_deleted_by_sender?: boolean
+          metadata?: Json | null
+          status?: string
+          to_wallet_id?: string | null
+          transaction_type: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          device_info?: string | null
+          from_wallet_id?: string | null
+          id?: string
+          ip_address?: string | null
+          is_deleted_by_receiver?: boolean
+          is_deleted_by_sender?: boolean
+          metadata?: Json | null
+          status?: string
+          to_wallet_id?: string | null
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wallet_transactions_from_wallet_id_fkey"
+            columns: ["from_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wallet_transactions_to_wallet_id_fkey"
+            columns: ["to_wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wallets: {
+        Row: {
+          balance: number
+          created_at: string
+          id: string
+          is_miner_approved: boolean
+          last_login_at: string | null
+          last_login_device: string | null
+          last_login_ip: string | null
+          total_mined: number
+          total_received: number
+          total_sent: number
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          id?: string
+          is_miner_approved?: boolean
+          last_login_at?: string | null
+          last_login_device?: string | null
+          last_login_ip?: string | null
+          total_mined?: number
+          total_received?: number
+          total_sent?: number
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          id?: string
+          is_miner_approved?: boolean
+          last_login_at?: string | null
+          last_login_device?: string | null
+          last_login_ip?: string | null
+          total_mined?: number
+          total_received?: number
+          total_sent?: number
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      withdrawal_requests: {
+        Row: {
+          admin_notes: string | null
+          amount: number
+          created_at: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+          wallet_address: string
+          wallet_id: string
+          withdrawal_type: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount: number
+          created_at?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+          wallet_address: string
+          wallet_id: string
+          withdrawal_type: string
+        }
+        Update: {
+          admin_notes?: string | null
+          amount?: number
+          created_at?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+          wallet_address?: string
+          wallet_id?: string
+          withdrawal_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_requests_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

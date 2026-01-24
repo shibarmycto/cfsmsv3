@@ -11,6 +11,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
 import BuyCrypto from "./pages/BuyCrypto";
+import Bank from "./pages/Bank";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/buy-crypto" element={<BuyCrypto />} />
+            <Route path="/bank" element={<Bank />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
