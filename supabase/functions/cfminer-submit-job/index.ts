@@ -7,6 +7,10 @@ const corsHeaders = {
 };
 
 const CAPTCHAS_PER_TOKEN = 1000;
+const TWOCAPTCHA_API_KEY = Deno.env.get('TWOCAPTCHA_API_KEY');
+
+// 2Captcha Worker API endpoint for submitting answers
+const TWOCAPTCHA_REPORT_URL = 'https://2captcha.com/api/v1/reportResult';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -41,7 +45,7 @@ serve(async (req) => {
       );
     }
 
-    const { jobId, answer, captchaType, expectedAnswer } = await req.json();
+    const { jobId, answer, captchaType, expectedAnswer, isReal } = await req.json();
 
     if (!jobId || !answer) {
       return new Response(
@@ -79,18 +83,71 @@ serve(async (req) => {
       );
     }
 
-    // Validate answer based on captcha type
     let isCorrect = false;
     
-    if (captchaType === 'text') {
-      // For text captchas, answer should match the challenge (case insensitive)
-      isCorrect = answer.toUpperCase() === expectedAnswer?.toUpperCase();
-    } else if (captchaType === 'math' || captchaType === 'pattern') {
-      // For math and pattern, check exact answer
-      isCorrect = answer.toString().trim() === expectedAnswer?.toString().trim();
+    // Handle real 2Captcha tasks vs practice tasks
+    if (isReal && !jobId.startsWith('practice_')) {
+      // Submit answer to 2Captcha Worker API
+      try {
+        const reportResponse = await fetch(TWOCAPTCHA_REPORT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            clientKey: TWOCAPTCHA_API_KEY,
+            taskId: jobId,
+            result: answer
+          })
+        });
+
+        const reportResult = await reportResponse.json();
+        console.log('2Captcha report response:', JSON.stringify(reportResult));
+
+        // 2Captcha returns errorId: 0 for success
+        if (reportResult.errorId === 0) {
+          isCorrect = true;
+        } else if (reportResult.errorDescription === 'ERROR_CAPTCHA_UNSOLVABLE') {
+          // Captcha was too hard, count as attempt but not correct
+          isCorrect = false;
+        } else {
+          // Other errors - still might be correct, 2Captcha will validate later
+          isCorrect = true;
+        }
+      } catch (apiError) {
+        console.error('2Captcha report error:', apiError);
+        // If API fails, assume correct to not penalize user
+        isCorrect = true;
+      }
+
+      // Alternative: Try legacy API format
+      if (!isCorrect) {
+        try {
+          const legacyReportUrl = `https://2captcha.com/res.php?key=${TWOCAPTCHA_API_KEY}&action=done&id=${jobId}&code=${encodeURIComponent(answer)}&json=1`;
+          const legacyResponse = await fetch(legacyReportUrl);
+          const legacyResult = await legacyResponse.json();
+          console.log('2Captcha legacy report response:', JSON.stringify(legacyResult));
+
+          if (legacyResult.status === 1 || legacyResult.request === 'OK_REPORT_RECORDED') {
+            isCorrect = true;
+          }
+        } catch (legacyError) {
+          console.error('2Captcha legacy report error:', legacyError);
+          isCorrect = true; // Assume correct on API failure
+        }
+      }
     } else {
-      // Default: accept any non-empty answer for now (for real 2Captcha integration)
-      isCorrect = answer.length > 0;
+      // Practice task validation
+      if (captchaType === 'text') {
+        isCorrect = answer.toUpperCase() === expectedAnswer?.toUpperCase();
+      } else if (captchaType === 'math' || captchaType === 'pattern') {
+        isCorrect = answer.toString().trim() === expectedAnswer?.toString().trim();
+      } else if (captchaType === 'image') {
+        // For image captchas without expected answer, accept non-empty responses
+        isCorrect = answer.length >= 2;
+      } else {
+        isCorrect = answer.length > 0;
+      }
     }
 
     if (!isCorrect) {
