@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
 import BuyCrypto from "./pages/BuyCrypto";
 import Bank from "./pages/Bank";
+import CFMiner from "./pages/CFMiner";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/buy-crypto" element={<BuyCrypto />} />
             <Route path="/bank" element={<Bank />} />
+            <Route path="/miner" element={<CFMiner />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -1056,9 +1056,9 @@ export default function Bank() {
                         <li>• Exchange tokens for SMS credits or withdraw to crypto</li>
                       </ul>
                     </div>
-                    <Button className="w-full" size="lg">
+                    <Button className="w-full" size="lg" onClick={() => navigate('/miner')}>
                       <Pickaxe className="w-4 h-4 mr-2" />
-                      Start Mining (Coming Soon)
+                      Open CFMiner
                     </Button>
                   </div>
                 )}
