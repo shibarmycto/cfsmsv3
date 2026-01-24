@@ -21,11 +21,12 @@ import {
 } from 'lucide-react';
 
 interface CaptchaJob {
-  type: 'text' | 'math' | 'pattern';
+  type: 'text' | 'math' | 'pattern' | 'image';
   challenge: string;
   answer?: string;
   jobId: string;
   hint: string;
+  isReal?: boolean;
 }
 
 interface MiningSession {
@@ -119,7 +120,8 @@ export default function CFMiner() {
           jobId: currentJob.jobId,
           answer: answer.trim(),
           captchaType: currentJob.type,
-          expectedAnswer: currentJob.answer || currentJob.challenge
+          expectedAnswer: currentJob.answer || currentJob.challenge,
+          isReal: currentJob.isReal || false
         }
       });
 
@@ -330,27 +332,66 @@ export default function CFMiner() {
               <div className="space-y-6">
                 {/* Challenge Display */}
                 <div className="p-8 bg-muted/50 rounded-lg text-center">
+                  {currentJob.type === 'image' && (
+                    <div className="space-y-4">
+                      <img 
+                        src={currentJob.challenge.startsWith('data:') 
+                          ? currentJob.challenge 
+                          : `data:image/png;base64,${currentJob.challenge}`}
+                        alt="Captcha"
+                        className="max-w-full h-auto mx-auto rounded border select-none"
+                        style={{ maxHeight: '200px' }}
+                        draggable={false}
+                      />
+                      {currentJob.isReal && (
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">
+                          Live Task
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {currentJob.type === 'text' && (
-                    <div 
-                      className="text-4xl md:text-5xl font-mono font-bold tracking-widest select-none"
-                      style={{
-                        textShadow: '2px 2px 4px rgba(0,0,0,0.1)',
-                        letterSpacing: '0.5em',
-                        fontStyle: 'italic',
-                        transform: `rotate(${Math.random() * 6 - 3}deg)`
-                      }}
-                    >
-                      {currentJob.challenge}
+                    <div className="space-y-2">
+                      <div 
+                        className="text-4xl md:text-5xl font-mono font-bold tracking-widest select-none"
+                        style={{
+                          textShadow: '2px 2px 4px rgba(0,0,0,0.1)',
+                          letterSpacing: '0.5em',
+                          fontStyle: 'italic',
+                          transform: `rotate(${Math.random() * 6 - 3}deg)`
+                        }}
+                      >
+                        {currentJob.challenge}
+                      </div>
+                      {!currentJob.isReal && (
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                          Practice Mode
+                        </span>
+                      )}
                     </div>
                   )}
                   {currentJob.type === 'math' && (
-                    <div className="text-3xl md:text-4xl font-mono font-bold">
-                      {currentJob.challenge}
+                    <div className="space-y-2">
+                      <div className="text-3xl md:text-4xl font-mono font-bold">
+                        {currentJob.challenge}
+                      </div>
+                      {!currentJob.isReal && (
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                          Practice Mode
+                        </span>
+                      )}
                     </div>
                   )}
                   {currentJob.type === 'pattern' && (
-                    <div className="text-2xl md:text-3xl font-mono">
-                      {currentJob.challenge}
+                    <div className="space-y-2">
+                      <div className="text-2xl md:text-3xl font-mono">
+                        {currentJob.challenge}
+                      </div>
+                      {!currentJob.isReal && (
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-muted text-muted-foreground rounded-full">
+                          Practice Mode
+                        </span>
+                      )}
                     </div>
                   )}
                   <p className="text-sm text-muted-foreground mt-4">{currentJob.hint}</p>

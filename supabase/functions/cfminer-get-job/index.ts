@@ -8,6 +8,9 @@ const corsHeaders = {
 
 const TWOCAPTCHA_API_KEY = Deno.env.get('TWOCAPTCHA_API_KEY');
 
+// 2Captcha Worker API endpoint for getting captcha tasks
+const TWOCAPTCHA_GET_TASK_URL = 'https://2captcha.com/api/v1/getTask';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -77,24 +80,96 @@ serve(async (req) => {
       session = newSession;
     }
 
-    // Request a captcha job from 2Captcha
-    // Using the worker API to get image captchas
-    const response = await fetch(
-      `http://2captcha.com/in.php?key=${TWOCAPTCHA_API_KEY}&method=userrecaptcha&googlekey=demo&pageurl=https://cfsms.app&json=1`
-    );
-
-    // For image captchas, we'll use a simpler approach - fetch available tasks
-    // The 2Captcha worker API provides captcha images to solve
-    const taskResponse = await fetch(
-      `https://2captcha.com/api/v2/get-task?clientKey=${TWOCAPTCHA_API_KEY}`
-    );
-
-    // If no real tasks available, generate practice captchas
-    // This allows the system to work even without live 2Captcha tasks
-    const captchaTypes = ['text', 'math', 'image'];
-    const selectedType = captchaTypes[Math.floor(Math.random() * captchaTypes.length)];
+    // Try to get a real captcha task from 2Captcha Worker API
+    let captchaData = null;
     
-    let captchaData;
+    try {
+      // Request a captcha task from 2Captcha using the worker API
+      const taskResponse = await fetch(TWOCAPTCHA_GET_TASK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientKey: TWOCAPTCHA_API_KEY,
+          languagePool: 'en'
+        })
+      });
+
+      const taskResult = await taskResponse.json();
+      console.log('2Captcha task response:', JSON.stringify(taskResult));
+
+      if (taskResult.errorId === 0 && taskResult.task) {
+        // Successfully got a real task
+        const task = taskResult.task;
+        
+        if (task.type === 'ImageToTextTask') {
+          // Image-based captcha
+          captchaData = {
+            type: 'image',
+            challenge: task.body, // Base64 encoded image
+            jobId: taskResult.taskId,
+            hint: task.comment || 'Type the characters you see in the image',
+            isReal: true
+          };
+        } else if (task.type === 'NoCaptchaTask' || task.type === 'RecaptchaV2Task') {
+          // For reCAPTCHA tasks, we need to handle differently
+          // These require browser interaction, so we'll skip for now
+          console.log('Skipping reCAPTCHA task, not suitable for text input');
+        }
+      }
+    } catch (apiError) {
+      console.error('2Captcha API error:', apiError);
+      // Fall through to fallback captchas
+    }
+
+    // Alternative: Try the legacy API format
+    if (!captchaData) {
+      try {
+        const legacyResponse = await fetch(
+          `https://2captcha.com/in.php?key=${TWOCAPTCHA_API_KEY}&action=getTask&json=1`
+        );
+        const legacyResult = await legacyResponse.json();
+        console.log('2Captcha legacy response:', JSON.stringify(legacyResult));
+
+        if (legacyResult.status === 1 && legacyResult.request) {
+          // Parse the task data
+          const taskData = legacyResult.request;
+          if (typeof taskData === 'object' && taskData.captcha) {
+            captchaData = {
+              type: 'image',
+              challenge: taskData.captcha, // Base64 image
+              jobId: taskData.id || `2c_${Date.now()}`,
+              hint: taskData.comment || 'Type the characters you see',
+              isReal: true
+            };
+          }
+        }
+      } catch (legacyError) {
+        console.error('2Captcha legacy API error:', legacyError);
+      }
+    }
+
+    // If we got a real captcha, return it
+    if (captchaData) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          captcha: captchaData,
+          session: {
+            id: session.id,
+            captchasCompleted: session.captchas_completed,
+            tokensEarned: session.tokens_earned
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fallback: No real tasks available, generate practice captchas
+    // This keeps the system working when 2Captcha queue is empty
+    const captchaTypes = ['text', 'math', 'pattern'];
+    const selectedType = captchaTypes[Math.floor(Math.random() * captchaTypes.length)];
     
     if (selectedType === 'text') {
       // Generate random text captcha
@@ -106,8 +181,10 @@ serve(async (req) => {
       captchaData = {
         type: 'text',
         challenge: text,
-        jobId: `cf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        hint: 'Type the characters you see'
+        answer: text,
+        jobId: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        hint: 'Type the characters you see (Practice Mode)',
+        isReal: false
       };
     } else if (selectedType === 'math') {
       // Generate math captcha
@@ -126,11 +203,12 @@ serve(async (req) => {
         type: 'math',
         challenge: `${num1} ${op} ${num2} = ?`,
         answer: answer,
-        jobId: `cf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        hint: 'Solve the math problem'
+        jobId: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        hint: 'Solve the math problem (Practice Mode)',
+        isReal: false
       };
     } else {
-      // Image-based challenge (pattern recognition)
+      // Pattern recognition
       const patterns = [
         { pattern: '🔴🔵🔴🔵', next: '🔴', hint: 'What comes next in the pattern?' },
         { pattern: '1, 2, 4, 8, ?', next: '16', hint: 'Complete the sequence' },
@@ -142,8 +220,9 @@ serve(async (req) => {
         type: 'pattern',
         challenge: selected.pattern,
         answer: selected.next,
-        jobId: `cf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        hint: selected.hint
+        jobId: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        hint: `${selected.hint} (Practice Mode)`,
+        isReal: false
       };
     }
 
