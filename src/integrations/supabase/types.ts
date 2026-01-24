@@ -855,6 +855,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_mining_leaderboard: {
+        Args: { limit_count?: number }
+        Returns: {
+          captchas_completed: number
+          is_current_user: boolean
+          rank: number
+          tokens_earned: number
+          username: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
