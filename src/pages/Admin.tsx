@@ -27,7 +27,9 @@ import {
   Bot,
   Play,
   Send,
+  Coins,
 } from 'lucide-react';
+import AdminBankTab from '@/components/AdminBankTab';
 
 interface UserProfile {
   id: string;
@@ -953,6 +955,7 @@ export default function Admin() {
                 { id: 'sms-history', icon: History, label: 'SMS History', count: smsLogs.length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
+                { id: 'bank', icon: Coins, label: 'CFSMS Bank', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -1872,6 +1875,22 @@ export default function Admin() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* CFSMS Bank Tab */}
+            {activeTab === 'bank' && (
+              <div className="animate-fade-in">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <Coins className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">CFSMS Digital Bank</h2>
+                    <p className="text-muted-foreground">Manage wallets, withdrawals, miners, and transactions</p>
+                  </div>
+                </div>
+                <AdminBankTab />
               </div>
             )}
 

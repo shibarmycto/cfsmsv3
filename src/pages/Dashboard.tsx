@@ -35,6 +35,7 @@ import {
   Mail,
   Trash2,
   Bot,
+  Coins,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -377,6 +378,7 @@ export default function Dashboard() {
                 { id: 'ai-agent', icon: Bot, label: 'AI Agent' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
+                { id: 'bank', icon: Coins, label: 'Bank' },
                 { id: 'urls', icon: Link, label: 'URLs' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
@@ -752,6 +754,26 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'bank' && (
+              <div className="glass-card p-8 animate-fade-in text-center">
+                <div className="max-w-md mx-auto space-y-6">
+                  <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
+                    <Coins className="w-8 h-8 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">CFSMS Digital Bank</h2>
+                    <p className="text-muted-foreground">
+                      Access your CFSMS token wallet, send tokens to friends, chat, and mine tokens.
+                    </p>
+                  </div>
+                  <Button onClick={() => navigate('/bank')} size="lg" className="w-full">
+                    <Coins className="w-4 h-4 mr-2" />
+                    Open CFSMS Bank
+                  </Button>
                 </div>
               </div>
             )}

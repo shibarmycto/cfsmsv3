@@ -221,16 +221,29 @@ export default function Bank() {
     
     const { data } = await supabase
       .from('wallet_transactions')
-      .select(`
-        *,
-        from_wallet:from_wallet_id(username),
-        to_wallet:to_wallet_id(username)
-      `)
+      .select('*')
       .or(`from_wallet_id.eq.${wallet.id},to_wallet_id.eq.${wallet.id}`)
       .order('created_at', { ascending: false })
       .limit(50);
     
-    if (data) setTransactions(data);
+    if (data) {
+      // Fetch wallet usernames separately
+      const walletIds = [...new Set([...data.map(t => t.from_wallet_id), ...data.map(t => t.to_wallet_id)].filter(Boolean))];
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('id, username')
+        .in('id', walletIds as string[]);
+      
+      const walletMap = new Map(wallets?.map(w => [w.id, w.username]) || []);
+      
+      const transactionsWithWallets = data.map(tx => ({
+        ...tx,
+        from_wallet: tx.from_wallet_id ? { username: walletMap.get(tx.from_wallet_id) || 'Unknown' } : null,
+        to_wallet: tx.to_wallet_id ? { username: walletMap.get(tx.to_wallet_id) || 'Unknown' } : null
+      }));
+      
+      setTransactions(transactionsWithWallets);
+    }
   };
 
   const fetchFriends = async () => {
@@ -238,14 +251,27 @@ export default function Bank() {
     
     const { data } = await supabase
       .from('friends')
-      .select(`
-        *,
-        friend_wallet:friend_id(username, user_id),
-        user_wallet:user_id(username, user_id)
-      `)
+      .select('*')
       .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
     
-    if (data) setFriends(data);
+    if (data) {
+      // Fetch wallet info for friends
+      const userIds = [...new Set([...data.map(f => f.friend_id), ...data.map(f => f.user_id)])];
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('id, username, user_id')
+        .in('user_id', userIds);
+      
+      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username, user_id: w.user_id }]) || []);
+      
+      const friendsWithWallets = data.map(f => ({
+        ...f,
+        friend_wallet: walletMap.get(f.friend_id) || undefined,
+        user_wallet: walletMap.get(f.user_id) || undefined
+      }));
+      
+      setFriends(friendsWithWallets);
+    }
   };
 
   const fetchFriendRequests = async () => {
@@ -253,11 +279,27 @@ export default function Bank() {
     
     const { data } = await supabase
       .from('friend_requests')
-      .select(`*, from_wallet:from_user_id(username)`)
+      .select('*')
       .eq('to_user_id', user.id)
       .eq('status', 'pending');
     
-    if (data) setFriendRequests(data);
+    if (data) {
+      // Fetch wallet info for requesters
+      const userIds = data.map(r => r.from_user_id);
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('username, user_id')
+        .in('user_id', userIds);
+      
+      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username }]) || []);
+      
+      const requestsWithWallets = data.map(r => ({
+        ...r,
+        from_wallet: walletMap.get(r.from_user_id)
+      }));
+      
+      setFriendRequests(requestsWithWallets);
+    }
   };
 
   const fetchMinerRequest = async () => {
