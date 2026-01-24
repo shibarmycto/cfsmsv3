@@ -18,6 +18,8 @@ interface CampaignRequest {
     whatsappNumber: string;
     daysRequested: number;
     destination: string;
+    isScheduled?: boolean;
+    scheduledAt?: string;
   };
 }
 
@@ -156,6 +158,8 @@ serve(async (req) => {
             total_cost: totalCost,
             destination: campaignData.destination,
             status: 'pending_payment',
+            is_scheduled: campaignData.isScheduled || false,
+            scheduled_at: campaignData.scheduledAt || null,
           })
           .select()
           .single();
@@ -169,9 +173,14 @@ serve(async (req) => {
         }
 
         // Log campaign creation
-        await logCampaign(supabaseAdmin, campaign.id, 'info', 'Campaign created and awaiting payment', {
+        const scheduleInfo = campaignData.isScheduled && campaignData.scheduledAt 
+          ? ` Scheduled for ${new Date(campaignData.scheduledAt).toISOString()}`
+          : '';
+        await logCampaign(supabaseAdmin, campaign.id, 'info', `Campaign created and awaiting payment.${scheduleInfo}`, {
           original_message: campaignData.messageTemplate,
           optimized_message: optimizedMessage,
+          is_scheduled: campaignData.isScheduled || false,
+          scheduled_at: campaignData.scheduledAt || null,
         });
 
         return new Response(
@@ -179,7 +188,9 @@ serve(async (req) => {
             success: true,
             campaign,
             optimizedMessage,
-            message: "Campaign created. Please complete payment to proceed.",
+            message: campaignData.isScheduled 
+              ? "Scheduled campaign created. Please complete payment to proceed."
+              : "Campaign created. Please complete payment to proceed.",
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

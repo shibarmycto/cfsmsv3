@@ -115,9 +115,11 @@ export type Database = {
           destination: string
           failed_count: number
           id: string
+          is_scheduled: boolean
           message_template: string
           name: string
           recipients: string[]
+          scheduled_at: string | null
           sent_count: number
           started_at: string | null
           status: string
@@ -140,9 +142,11 @@ export type Database = {
           destination?: string
           failed_count?: number
           id?: string
+          is_scheduled?: boolean
           message_template: string
           name: string
           recipients?: string[]
+          scheduled_at?: string | null
           sent_count?: number
           started_at?: string | null
           status?: string
@@ -165,9 +169,11 @@ export type Database = {
           destination?: string
           failed_count?: number
           id?: string
+          is_scheduled?: boolean
           message_template?: string
           name?: string
           recipients?: string[]
+          scheduled_at?: string | null
           sent_count?: number
           started_at?: string | null
           status?: string
