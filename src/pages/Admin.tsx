@@ -24,6 +24,8 @@ import {
   Wallet,
   Link,
   History,
+  Bot,
+  Play,
 } from 'lucide-react';
 
 interface UserProfile {
