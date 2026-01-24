@@ -1191,10 +1191,42 @@ export default function Admin() {
                               </td>
                               <td className="py-3 px-2">{campaign.total_recipients.toLocaleString()}</td>
                               <td className="py-3 px-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-success">{campaign.sent_count}</span>
-                                  <span className="text-muted-foreground">/</span>
-                                  <span className="text-destructive">{campaign.failed_count}</span>
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span>
+                                      <span className="text-success">{campaign.sent_count}</span>
+                                      <span className="text-muted-foreground"> / </span>
+                                      <span className="text-destructive">{campaign.failed_count}</span>
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {campaign.total_recipients > 0 
+                                        ? Math.round(((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100)
+                                        : 0}%
+                                    </span>
+                                  </div>
+                                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full flex"
+                                      style={{ width: `${campaign.total_recipients > 0 ? ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100 : 0}%` }}
+                                    >
+                                      <div 
+                                        className="bg-success h-full"
+                                        style={{ 
+                                          width: `${(campaign.sent_count + campaign.failed_count) > 0 
+                                            ? (campaign.sent_count / (campaign.sent_count + campaign.failed_count)) * 100 
+                                            : 0}%` 
+                                        }}
+                                      />
+                                      <div 
+                                        className="bg-destructive h-full"
+                                        style={{ 
+                                          width: `${(campaign.sent_count + campaign.failed_count) > 0 
+                                            ? (campaign.failed_count / (campaign.sent_count + campaign.failed_count)) * 100 
+                                            : 0}%` 
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                               <td className="py-3 px-2">
