@@ -14,6 +14,172 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_campaign_logs: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          id: string
+          log_type: string
+          message: string
+          metadata: Json | null
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          id?: string
+          log_type?: string
+          message: string
+          metadata?: Json | null
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          log_type?: string
+          message?: string
+          metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_campaign_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ai_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_campaign_payments: {
+        Row: {
+          admin_notes: string | null
+          amount: number
+          campaign_id: string
+          created_at: string
+          currency: string
+          id: string
+          payment_method: string
+          payment_reference: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount: number
+          campaign_id: string
+          created_at?: string
+          currency?: string
+          id?: string
+          payment_method: string
+          payment_reference?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          amount?: number
+          campaign_id?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          payment_method?: string
+          payment_reference?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_campaign_payments_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ai_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_campaigns: {
+        Row: {
+          admin_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          completed_at: string | null
+          created_at: string
+          daily_cost: number
+          days_requested: number
+          description: string | null
+          destination: string
+          failed_count: number
+          id: string
+          message_template: string
+          name: string
+          recipients: string[]
+          sent_count: number
+          started_at: string | null
+          status: string
+          target_audience: string
+          total_cost: number
+          total_recipients: number
+          updated_at: string
+          user_id: string
+          whatsapp_number: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          daily_cost?: number
+          days_requested?: number
+          description?: string | null
+          destination?: string
+          failed_count?: number
+          id?: string
+          message_template: string
+          name: string
+          recipients?: string[]
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          target_audience: string
+          total_cost?: number
+          total_recipients?: number
+          updated_at?: string
+          user_id: string
+          whatsapp_number: string
+        }
+        Update: {
+          admin_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          daily_cost?: number
+          days_requested?: number
+          description?: string | null
+          destination?: string
+          failed_count?: number
+          id?: string
+          message_template?: string
+          name?: string
+          recipients?: string[]
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          target_audience?: string
+          total_cost?: number
+          total_recipients?: number
+          updated_at?: string
+          user_id?: string
+          whatsapp_number?: string
+        }
+        Relationships: []
+      }
       crypto_orders: {
         Row: {
           admin_notes: string | null

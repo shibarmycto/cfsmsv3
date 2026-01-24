@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import BuyCreditsTab from '@/components/BuyCreditsTab';
 import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
 import SendingOverlay from '@/components/SendingOverlay';
+import AIAgentTab from '@/components/AIAgentTab';
 import { Switch } from '@/components/ui/switch';
 import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import {
@@ -33,6 +34,7 @@ import {
   Link,
   Mail,
   Trash2,
+  Bot,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -372,6 +374,7 @@ export default function Dashboard() {
             <div className="flex lg:flex-col gap-1 lg:gap-2 overflow-x-auto pb-2 lg:pb-0 bg-card/50 lg:bg-transparent rounded-lg lg:rounded-none p-2 lg:p-4 border border-border lg:border-border/50">
               {[
                 { id: 'send', icon: Send, label: 'Send' },
+                { id: 'ai-agent', icon: Bot, label: 'AI Agent' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'urls', icon: Link, label: 'URLs' },
@@ -636,6 +639,10 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+            )}
+
+            {activeTab === 'ai-agent' && (
+              <AIAgentTab user={user} toast={toast} />
             )}
 
             {activeTab === 'buy' && (
