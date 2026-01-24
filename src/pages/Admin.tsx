@@ -166,6 +166,44 @@ export default function Admin() {
     }
   }, [isAdmin]);
 
+  // Realtime subscription for AI campaigns
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const channel = supabase
+      .channel('ai-campaigns-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_campaigns',
+        },
+        (payload) => {
+          console.log('AI Campaign update:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            setAiCampaigns((prev) => [payload.new as AICampaign, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setAiCampaigns((prev) =>
+              prev.map((campaign) =>
+                campaign.id === payload.new.id ? (payload.new as AICampaign) : campaign
+              )
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setAiCampaigns((prev) =>
+              prev.filter((campaign) => campaign.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
   const fetchUsers = async () => {
     const { data } = await supabase
       .from('profiles')
