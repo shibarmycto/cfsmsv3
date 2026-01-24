@@ -55,7 +55,7 @@ async function optimizeMessage(message: string, targetAudience: string): Promise
         "X-Title": "CFSMS AI Agent",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "anthropic/claude-sonnet-4",
         messages: [
           {
             role: "system",
