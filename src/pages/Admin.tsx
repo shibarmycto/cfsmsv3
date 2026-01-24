@@ -122,6 +122,15 @@ interface AICampaign {
   updated_at: string;
 }
 
+interface AICampaignLog {
+  id: string;
+  campaign_id: string;
+  message: string;
+  log_type: string;
+  metadata: any;
+  created_at: string;
+}
+
 export default function Admin() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -138,6 +147,8 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
   const [startingCampaign, setStartingCampaign] = useState<string | null>(null);
+  const [selectedCampaignLogs, setSelectedCampaignLogs] = useState<string | null>(null);
+  const [campaignLogs, setCampaignLogs] = useState<AICampaignLog[]>([]);
 
   useEffect(() => {
     if (!loading) {
@@ -203,6 +214,69 @@ export default function Admin() {
       supabase.removeChannel(channel);
     };
   }, [isAdmin]);
+
+  // Realtime subscription for campaign logs
+  useEffect(() => {
+    if (!isAdmin || !selectedCampaignLogs) return;
+
+    const channel = supabase
+      .channel('campaign-logs-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'ai_campaign_logs',
+          filter: `campaign_id=eq.${selectedCampaignLogs}`,
+        },
+        (payload) => {
+          setCampaignLogs((prev) => [payload.new as AICampaignLog, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, selectedCampaignLogs]);
+
+  const fetchCampaignLogs = async (campaignId: string) => {
+    const { data } = await supabase
+      .from('ai_campaign_logs')
+      .select('*')
+      .eq('campaign_id', campaignId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    
+    if (data) {
+      setCampaignLogs(data as AICampaignLog[]);
+    }
+  };
+
+  const handleViewLogs = (campaignId: string) => {
+    setSelectedCampaignLogs(campaignId);
+    fetchCampaignLogs(campaignId);
+  };
+
+  const getLogTypeColor = (logType: string) => {
+    switch (logType) {
+      case 'success': return 'text-success';
+      case 'error': return 'text-destructive';
+      case 'warning': return 'text-warning';
+      case 'info': return 'text-primary';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const getLogTypeIcon = (logType: string) => {
+    switch (logType) {
+      case 'success': return '✓';
+      case 'error': return '✗';
+      case 'warning': return '⚠';
+      case 'info': return 'ℹ';
+      default: return '•';
+    }
+  };
 
   const fetchUsers = async () => {
     const { data } = await supabase
@@ -1132,14 +1206,24 @@ export default function Admin() {
                                 {new Date(campaign.created_at).toLocaleDateString()}
                               </td>
                               <td className="py-3 px-2 text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteCampaign(campaign.id)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleViewLogs(campaign.id)}
+                                    className="text-primary hover:text-primary"
+                                  >
+                                    <History className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteCampaign(campaign.id)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1148,6 +1232,65 @@ export default function Admin() {
                     </div>
                   )}
                 </div>
+
+                {/* Campaign Logs Viewer */}
+                {selectedCampaignLogs && (
+                  <div className="mt-8 border-t border-border pt-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <History className="w-5 h-5 text-primary" />
+                        Campaign Logs
+                        <span className="text-sm font-normal text-muted-foreground">
+                          ({aiCampaigns.find(c => c.id === selectedCampaignLogs)?.name})
+                        </span>
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCampaignLogs(null);
+                          setCampaignLogs([]);
+                        }}
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Close
+                      </Button>
+                    </div>
+
+                    {campaignLogs.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground bg-secondary/20 rounded-lg">
+                        <History className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p>No logs available for this campaign.</p>
+                      </div>
+                    ) : (
+                      <div className="bg-secondary/20 rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+                        {campaignLogs.map((log) => (
+                          <div
+                            key={log.id}
+                            className="flex items-start gap-3 p-3 bg-background/50 rounded border border-border/50"
+                          >
+                            <span className={`font-mono text-lg ${getLogTypeColor(log.log_type)}`}>
+                              {getLogTypeIcon(log.log_type)}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${getLogTypeColor(log.log_type)}`}>
+                                {log.message}
+                              </p>
+                              {log.metadata && (
+                                <pre className="text-xs text-muted-foreground mt-1 overflow-x-auto">
+                                  {JSON.stringify(log.metadata, null, 2)}
+                                </pre>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(log.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
