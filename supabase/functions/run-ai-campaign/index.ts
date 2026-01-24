@@ -167,14 +167,41 @@ serve(async (req) => {
     });
 
     // Send WhatsApp notification to user
-    // In production, integrate with WhatsApp Business API
-    console.log(`WhatsApp notification to ${campaign.whatsapp_number}: Your CFSMS AI campaign "${campaign.name}" has completed! Sent: ${sentCount}, Failed: ${failedCount}`);
+    const whatsappMessage = `🎉 Your CFSMS AI campaign "${campaign.name}" has completed!\n\n📊 Results:\n✅ Sent: ${sentCount}\n❌ Failed: ${failedCount}\n📞 Total Recipients: ${recipients.length}\n\nThank you for using CFSMS!`;
+    
+    try {
+      const whatsappResponse = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          to: campaign.whatsapp_number,
+          message: whatsappMessage,
+        }),
+      });
 
-    await supabaseAdmin.from('ai_campaign_logs').insert({
-      campaign_id: campaignId,
-      log_type: 'info',
-      message: `WhatsApp notification sent to ${campaign.whatsapp_number}`,
-    });
+      const whatsappResult = await whatsappResponse.json();
+
+      if (whatsappResult.success) {
+        await supabaseAdmin.from('ai_campaign_logs').insert({
+          campaign_id: campaignId,
+          log_type: 'success',
+          message: `WhatsApp notification sent to ${campaign.whatsapp_number}`,
+          metadata: { messageSid: whatsappResult.messageSid },
+        });
+      } else {
+        throw new Error(whatsappResult.error || 'WhatsApp send failed');
+      }
+    } catch (whatsappError) {
+      console.error('WhatsApp notification error:', whatsappError);
+      await supabaseAdmin.from('ai_campaign_logs').insert({
+        campaign_id: campaignId,
+        log_type: 'warning',
+        message: `WhatsApp notification failed: ${whatsappError instanceof Error ? whatsappError.message : 'Unknown error'}`,
+      });
+    }
 
     return new Response(
       JSON.stringify({
