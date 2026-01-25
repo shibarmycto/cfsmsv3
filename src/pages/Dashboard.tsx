@@ -40,6 +40,7 @@ import {
   Pickaxe,
   TrendingUp,
   PlusCircle,
+  Gamepad2,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -388,6 +389,7 @@ export default function Dashboard() {
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
                 { id: 'miner', icon: Pickaxe, label: 'Miner', isLink: true, href: '/miner' },
+                { id: 'roleplay', icon: Gamepad2, label: 'RP', isLink: true, href: '/roleplay' },
                 { id: 'urls', icon: Link, label: 'URLs' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (

@@ -18,6 +18,7 @@ import AITwin from "./pages/AITwin";
 import Forum from "./pages/Forum";
 import Promo from "./pages/Promo";
 import Exchange from "./pages/Exchange";
+import Roleplay from "./pages/Roleplay";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/forum" element={<Forum />} />
             <Route path="/promo" element={<Promo />} />
             <Route path="/exchange" element={<Exchange />} />
+            <Route path="/roleplay" element={<Roleplay />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
