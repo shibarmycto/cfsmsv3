@@ -373,15 +373,15 @@ export default function Dashboard() {
         <div className="grid lg:grid-cols-4 gap-4 md:gap-8">
           {/* Mobile Tab Bar */}
           <div className="lg:col-span-1">
-            <div className="flex lg:flex-col gap-1 lg:gap-2 overflow-x-auto pb-2 lg:pb-0 bg-card/50 lg:bg-transparent rounded-lg lg:rounded-none p-2 lg:p-4 border border-border lg:border-border/50">
+            <div className="grid grid-cols-5 lg:flex lg:flex-col gap-1 lg:gap-2 bg-card/50 lg:bg-transparent rounded-lg lg:rounded-none p-2 lg:p-4 border border-border lg:border-border/50">
               {[
                 { id: 'send', icon: Send, label: 'Send' },
-                { id: 'ai-agent', icon: Bot, label: 'AI Agent' },
-                { id: 'ai-twin', icon: Phone, label: 'AI Twin', isLink: true, href: '/ai-twin' },
+                { id: 'ai-agent', icon: Bot, label: 'AI' },
+                { id: 'ai-twin', icon: Phone, label: 'Twin', isLink: true, href: '/ai-twin' },
                 { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
-                { id: 'bank', icon: Coins, label: 'Bank' },
+                { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
                 { id: 'urls', icon: Link, label: 'URLs' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
@@ -394,14 +394,14 @@ export default function Dashboard() {
                       setActiveTab(item.id);
                     }
                   }}
-                  className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-3 rounded-lg transition-colors touch-manipulation ${
+                  className={`flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-2 px-2 py-2 lg:px-4 lg:py-3 rounded-lg transition-colors touch-manipulation ${
                     activeTab === item.id
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-secondary/50 lg:bg-transparent text-muted-foreground active:bg-secondary'
                   }`}
                 >
                   <item.icon className="w-4 h-4 lg:w-5 lg:h-5" />
-                  <span className="text-sm lg:text-base whitespace-nowrap">{item.label}</span>
+                  <span className="text-[10px] lg:text-base whitespace-nowrap">{item.label}</span>
                 </button>
               ))}
             </div>
