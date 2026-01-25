@@ -1314,6 +1314,7 @@ export type Database = {
           created_at: string
           id: string
           is_miner_approved: boolean
+          is_verified: boolean | null
           last_login_at: string | null
           last_login_device: string | null
           last_login_ip: string | null
@@ -1329,6 +1330,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_miner_approved?: boolean
+          is_verified?: boolean | null
           last_login_at?: string | null
           last_login_device?: string | null
           last_login_ip?: string | null
@@ -1344,6 +1346,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_miner_approved?: boolean
+          is_verified?: boolean | null
           last_login_at?: string | null
           last_login_device?: string | null
           last_login_ip?: string | null
