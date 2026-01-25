@@ -16,7 +16,7 @@ export default function HeroSection({ onGetStarted, onViewPricing }: HeroSection
         </div>
         
         <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-          <span className="text-gradient">CRYPTO FUND SMS</span>
+          <span className="text-gradient">CF SMS Network</span>
           <br />
           <span className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground font-medium">
             Where Social Meets Blockchain
