@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import TokenPriceChart from '@/components/TokenPriceChart';
+import { TradeHistoryPanel } from '@/components/TradeHistoryPanel';
 
 interface Token {
   id: string;
@@ -812,6 +813,12 @@ export default function Exchange() {
                       )}
                       {tradeType === 'buy' ? 'Buy' : 'Sell'} {selectedToken.symbol}
                     </Button>
+
+                    {/* Trade History Panel */}
+                    <TradeHistoryPanel 
+                      tokenId={selectedToken.id}
+                      tokenSymbol={selectedToken.symbol}
+                    />
                   </>
                 ) : (
                   <div className="text-center py-8">
