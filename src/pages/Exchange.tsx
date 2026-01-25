@@ -18,6 +18,7 @@ import {
 import VerifiedBadge from '@/components/VerifiedBadge';
 import TokenPriceChart from '@/components/TokenPriceChart';
 import { TradeHistoryPanel } from '@/components/TradeHistoryPanel';
+import { TokenLeaderboard } from '@/components/TokenLeaderboard';
 
 interface Token {
   id: string;
@@ -407,6 +408,13 @@ export default function Exchange() {
 
               {/* Market Tab */}
               <TabsContent value="market" className="space-y-4">
+                {/* Token Leaderboard */}
+                <TokenLeaderboard 
+                  onTokenSelect={(tokenId) => {
+                    const token = tokens.find(t => t.id === tokenId);
+                    if (token) setSelectedToken(token);
+                  }}
+                />
                 <div className="flex items-center gap-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
