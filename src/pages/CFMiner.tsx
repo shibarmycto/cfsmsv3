@@ -546,10 +546,42 @@ export default function CFMiner() {
                     </div>
                   </div>
                 ) : countdown.youtube > 0 ? (
-                  <p className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Next video available in {formatCountdown(countdown.youtube)}
-                  </p>
+                  <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                    {/* Circular countdown timer */}
+                    <div className="relative w-32 h-32">
+                      <svg className="w-32 h-32 transform -rotate-90">
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="56"
+                          stroke="currentColor"
+                          strokeWidth="8"
+                          fill="none"
+                          className="text-muted"
+                        />
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="56"
+                          stroke="currentColor"
+                          strokeWidth="8"
+                          fill="none"
+                          strokeDasharray={2 * Math.PI * 56}
+                          strokeDashoffset={2 * Math.PI * 56 * (1 - countdown.youtube / 3600)}
+                          className="text-primary transition-all duration-1000"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <Timer className="w-5 h-5 text-primary mb-1" />
+                        <span className="text-2xl font-bold font-mono">{formatCountdown(countdown.youtube)}</span>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-foreground">Next video available in</p>
+                      <p className="text-xs text-muted-foreground">You can watch once per hour</p>
+                    </div>
+                  </div>
                 ) : (
                   <Button 
                     onClick={handleYoutubeWatch}
