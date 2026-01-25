@@ -1,1 +1,10 @@
 project_id = "vdvijwzkultowrambvhe"
+
+[functions.ai-twin-webhook]
+verify_jwt = false
+
+[functions.ai-twin-conversation]
+verify_jwt = false
+
+[functions.ai-twin-manage]
+verify_jwt = false
