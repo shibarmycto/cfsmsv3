@@ -928,6 +928,51 @@ export type Database = {
           },
         ]
       }
+      game_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          message_type: string
+          receiver_id: string | null
+          sender_id: string
+          sender_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          message_type?: string
+          receiver_id?: string | null
+          sender_id: string
+          sender_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          message_type?: string
+          receiver_id?: string | null
+          sender_id?: string
+          sender_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_messages_receiver_id_fkey"
+            columns: ["receiver_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_org_members: {
         Row: {
           character_id: string
