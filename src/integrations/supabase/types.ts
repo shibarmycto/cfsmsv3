@@ -186,6 +186,175 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_twin_calls: {
+        Row: {
+          call_sid: string | null
+          call_status: string | null
+          caller_phone: string
+          caller_sentiment: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          started_at: string | null
+          tokens_charged: number | null
+          transcript: Json | null
+          twin_id: string
+          user_id: string
+        }
+        Insert: {
+          call_sid?: string | null
+          call_status?: string | null
+          caller_phone: string
+          caller_sentiment?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string | null
+          tokens_charged?: number | null
+          transcript?: Json | null
+          twin_id: string
+          user_id: string
+        }
+        Update: {
+          call_sid?: string | null
+          call_status?: string | null
+          caller_phone?: string
+          caller_sentiment?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string | null
+          tokens_charged?: number | null
+          transcript?: Json | null
+          twin_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_twin_calls_twin_id_fkey"
+            columns: ["twin_id"]
+            isOneToOne: false
+            referencedRelation: "ai_twins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_twin_memories: {
+        Row: {
+          caller_name: string | null
+          caller_phone: string
+          created_at: string | null
+          id: string
+          importance: number | null
+          last_referenced_at: string | null
+          memory_content: string
+          memory_type: string | null
+          twin_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          caller_name?: string | null
+          caller_phone: string
+          created_at?: string | null
+          id?: string
+          importance?: number | null
+          last_referenced_at?: string | null
+          memory_content: string
+          memory_type?: string | null
+          twin_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          caller_name?: string | null
+          caller_phone?: string
+          created_at?: string | null
+          id?: string
+          importance?: number | null
+          last_referenced_at?: string | null
+          memory_content?: string
+          memory_type?: string | null
+          twin_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_twin_memories_twin_id_fkey"
+            columns: ["twin_id"]
+            isOneToOne: false
+            referencedRelation: "ai_twins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_twins: {
+        Row: {
+          cost_per_minute: number | null
+          created_at: string | null
+          custom_instructions: string | null
+          forwarding_number: string | null
+          greeting_message: string | null
+          id: string
+          is_active: boolean | null
+          language: string | null
+          name: string
+          personality_traits: string[] | null
+          speaking_style: string | null
+          tone_calm: number | null
+          tone_intuitive: number | null
+          tone_playful: number | null
+          total_calls: number | null
+          total_minutes_used: number | null
+          updated_at: string | null
+          user_id: string
+          voice_id: string | null
+        }
+        Insert: {
+          cost_per_minute?: number | null
+          created_at?: string | null
+          custom_instructions?: string | null
+          forwarding_number?: string | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          language?: string | null
+          name?: string
+          personality_traits?: string[] | null
+          speaking_style?: string | null
+          tone_calm?: number | null
+          tone_intuitive?: number | null
+          tone_playful?: number | null
+          total_calls?: number | null
+          total_minutes_used?: number | null
+          updated_at?: string | null
+          user_id: string
+          voice_id?: string | null
+        }
+        Update: {
+          cost_per_minute?: number | null
+          created_at?: string | null
+          custom_instructions?: string | null
+          forwarding_number?: string | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          language?: string | null
+          name?: string
+          personality_traits?: string[] | null
+          speaking_style?: string | null
+          tone_calm?: number | null
+          tone_intuitive?: number | null
+          tone_playful?: number | null
+          total_calls?: number | null
+          total_minutes_used?: number | null
+          updated_at?: string | null
+          user_id?: string
+          voice_id?: string | null
+        }
+        Relationships: []
+      }
       blocked_users: {
         Row: {
           blocked_id: string

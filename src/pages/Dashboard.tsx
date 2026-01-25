@@ -36,6 +36,7 @@ import {
   Trash2,
   Bot,
   Coins,
+  Phone,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -376,6 +377,7 @@ export default function Dashboard() {
               {[
                 { id: 'send', icon: Send, label: 'Send' },
                 { id: 'ai-agent', icon: Bot, label: 'AI Agent' },
+                { id: 'ai-twin', icon: Phone, label: 'AI Twin', isLink: true, href: '/ai-twin' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank' },
@@ -384,7 +386,13 @@ export default function Dashboard() {
               ].map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => {
+                    if ('isLink' in item && item.isLink && 'href' in item) {
+                      navigate(item.href as string);
+                    } else {
+                      setActiveTab(item.id);
+                    }
+                  }}
                   className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-3 rounded-lg transition-colors touch-manipulation ${
                     activeTab === item.id
                       ? 'bg-primary text-primary-foreground'
