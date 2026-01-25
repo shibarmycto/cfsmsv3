@@ -516,13 +516,16 @@ export default function CFMiner() {
                         ref={youtubeRef}
                         width="100%"
                         height="100%"
-                        src="https://www.youtube.com/embed/avFU7vFfdvY?autoplay=1"
-                        title="Mining Video"
+                        src="https://www.youtube.com/embed/avFU7vFfdvY?autoplay=1&rel=0"
+                        title="CFSMS Watch to Earn Video"
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      Watch for at least 30 seconds to earn. Available once per hour.
+                    </p>
                     <div className="flex gap-2">
                       <Button 
                         onClick={handleYoutubeComplete}
