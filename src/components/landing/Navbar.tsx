@@ -13,6 +13,7 @@ export default function Navbar() {
     { label: 'About', path: '/about' },
     { label: 'FAQs', path: '/faqs' },
     { label: 'Forum', path: '/forum' },
+    { label: 'Exchange', path: '/exchange' },
     { label: 'Mining', path: '/miner' },
     { label: 'Promo', path: '/promo' },
   ];

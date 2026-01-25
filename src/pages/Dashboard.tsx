@@ -38,6 +38,7 @@ import {
   Coins,
   Phone,
   Pickaxe,
+  TrendingUp,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -380,6 +381,7 @@ export default function Dashboard() {
                 { id: 'ai-agent', icon: Bot, label: 'AI' },
                 { id: 'ai-twin', icon: Phone, label: 'Twin', isLink: true, href: '/ai-twin' },
                 { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
+                { id: 'exchange', icon: TrendingUp, label: 'Exchange', isLink: true, href: '/exchange' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
