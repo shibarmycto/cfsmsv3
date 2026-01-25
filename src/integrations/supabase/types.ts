@@ -1417,6 +1417,7 @@ export type Database = {
       get_forum_leaderboard: {
         Args: { limit_count?: number }
         Returns: {
+          is_verified: boolean
           posts_count: number
           rank: number
           reactions_received: number
