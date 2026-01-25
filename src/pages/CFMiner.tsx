@@ -49,7 +49,15 @@ interface TaskStatus {
   youtube: { completed: boolean; lastCompleted: string | null; canDoAt: string | null };
 }
 
+interface PromoVideo {
+  id: string;
+  youtube_url: string;
+  video_title: string | null;
+  user_id: string;
+}
+
 const TASKS_PER_TOKEN = 1000;
+const DEFAULT_VIDEO_ID = 'avFU7vFfdvY';
 
 export default function CFMiner() {
   const { user, loading } = useAuth();
@@ -77,6 +85,8 @@ export default function CFMiner() {
   const [signupOpen, setSignupOpen] = useState(false);
   const [countdown, setCountdown] = useState<{ freebitcoin: number; youtube: number }>({ freebitcoin: 0, youtube: 0 });
   const [elapsedTime, setElapsedTime] = useState<{ youtube: number; freebitcoin: number; signup: number }>({ youtube: 0, freebitcoin: 0, signup: 0 });
+  const [currentPromoVideo, setCurrentPromoVideo] = useState<PromoVideo | null>(null);
+  const [promoVideoLoading, setPromoVideoLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -89,8 +99,37 @@ export default function CFMiner() {
       checkMinerStatus();
       fetchLeaderboard();
       fetchTaskStatus();
+      fetchActivePromoVideo();
     }
   }, [user]);
+
+  // Fetch a random active promo video
+  const fetchActivePromoVideo = async () => {
+    setPromoVideoLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('promo_orders')
+        .select('id, youtube_url, video_title, user_id')
+        .eq('status', 'active')
+        .lte('starts_at', now)
+        .gte('ends_at', now);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // Pick a random promo video
+        const randomIndex = Math.floor(Math.random() * data.length);
+        setCurrentPromoVideo(data[randomIndex] as PromoVideo);
+      } else {
+        setCurrentPromoVideo(null);
+      }
+    } catch (error) {
+      console.error('Error fetching promo video:', error);
+      setCurrentPromoVideo(null);
+    }
+    setPromoVideoLoading(false);
+  };
 
   // Countdown timer for cooldowns and elapsed time tracker
   useEffect(() => {
@@ -287,6 +326,26 @@ export default function CFMiner() {
     videoStartTimeRef.current = Date.now();
   };
 
+  // Extract YouTube video ID from various URL formats
+  const getYoutubeVideoId = (url: string): string => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+      /^([a-zA-Z0-9_-]{11})$/ // Direct video ID
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return DEFAULT_VIDEO_ID;
+  };
+
+  const getCurrentVideoId = (): string => {
+    if (currentPromoVideo?.youtube_url) {
+      return getYoutubeVideoId(currentPromoVideo.youtube_url);
+    }
+    return DEFAULT_VIDEO_ID;
+  };
+
   const handleYoutubeComplete = () => {
     if (!videoStartTimeRef.current) {
       toast({
@@ -307,9 +366,18 @@ export default function CFMiner() {
       return;
     }
     
-    completeTask('youtube', { videoId: 'avFU7vFfdvY', watchTime: Math.floor(watchTime) }, videoStartTimeRef.current);
+    const videoId = getCurrentVideoId();
+    completeTask('youtube', { 
+      videoId, 
+      watchTime: Math.floor(watchTime),
+      isPromo: !!currentPromoVideo,
+      promoOrderId: currentPromoVideo?.id || null
+    }, videoStartTimeRef.current);
     setYoutubeWatching(false);
     videoStartTimeRef.current = null;
+    
+    // Fetch a new promo video for the next task
+    fetchActivePromoVideo();
   };
 
   const formatCountdown = (seconds: number) => {
@@ -628,6 +696,11 @@ export default function CFMiner() {
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2">
                         Watch YouTube Video
+                        {currentPromoVideo && (
+                          <Badge variant="secondary" className="bg-primary/20 text-primary">
+                            📺 Promo
+                          </Badge>
+                        )}
                         {countdown.youtube > 0 && (
                           <Badge variant="secondary" className="bg-muted">
                             <Timer className="w-3 h-3 mr-1" />
@@ -635,7 +708,11 @@ export default function CFMiner() {
                           </Badge>
                         )}
                       </CardTitle>
-                      <CardDescription>Watch videos to earn (once per hour)</CardDescription>
+                      <CardDescription>
+                        {currentPromoVideo 
+                          ? `Featured: ${currentPromoVideo.video_title || 'Promoted Video'}` 
+                          : 'Watch videos to earn (once per hour)'}
+                      </CardDescription>
                     </div>
                   </div>
                   <div className="text-right">
@@ -664,13 +741,23 @@ export default function CFMiner() {
                         ref={youtubeRef}
                         width="100%"
                         height="100%"
-                        src="https://www.youtube.com/embed/avFU7vFfdvY?autoplay=1&rel=0"
-                        title="CFSMS Watch to Earn Video"
+                        src={`https://www.youtube.com/embed/${getCurrentVideoId()}?autoplay=1&rel=0`}
+                        title={currentPromoVideo?.video_title || "CFSMS Watch to Earn Video"}
                         frameBorder="0"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       />
                     </div>
+                    {currentPromoVideo && (
+                      <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg">
+                        <Badge variant="outline" className="text-primary border-primary/30">
+                          📺 Promoted Video
+                        </Badge>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {currentPromoVideo.video_title || 'Featured Content'}
+                        </span>
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground text-center">
                       {elapsedTime.youtube < 30 
                         ? `⏱️ Keep watching! ${30 - elapsedTime.youtube} seconds remaining...`
