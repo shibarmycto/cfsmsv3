@@ -31,6 +31,8 @@ interface CaptchaJob {
   jobId: string;
   hint: string;
   isReal?: boolean;
+  source?: string;
+  apiStatus?: string;
 }
 
 interface MiningSession {
@@ -67,6 +69,7 @@ export default function CFMiner() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'mine' | 'leaderboard'>('mine');
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -117,6 +120,7 @@ export default function CFMiner() {
     setIsLoading(true);
     setAnswer('');
     setLastResult(null);
+    setDebugInfo(null);
 
     try {
       const { data, error } = await supabase.functions.invoke('cfminer-get-job');
@@ -126,6 +130,18 @@ export default function CFMiner() {
       if (data.success) {
         setCurrentJob(data.captcha);
         setSession(data.session);
+        
+        // Show debug info if available
+        if (data.debug) {
+          setDebugInfo(data.debug.message || data.debug.apiError);
+        }
+        
+        // Show status indicator based on real vs practice
+        if (data.captcha?.isReal) {
+          console.log('Got REAL 2Captcha job:', data.captcha.jobId, 'Source:', data.captcha.source);
+        } else {
+          console.log('Practice mode - API status:', data.captcha?.apiStatus || data.debug?.apiError);
+        }
       } else {
         toast({ title: 'Error', description: data.error, variant: 'destructive' });
       }
@@ -349,6 +365,15 @@ export default function CFMiner() {
                     <CardTitle className="flex items-center gap-2">
                       <Clock className="w-5 h-5" />
                       Current Task
+                      {currentJob && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          currentJob.isReal 
+                            ? 'bg-green-500/20 text-green-500 border border-green-500/30' 
+                            : 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
+                        }`}>
+                          {currentJob.isReal ? '🔴 LIVE' : '🟡 Practice'}
+                        </span>
+                      )}
                     </CardTitle>
                     <CardDescription>
                       Complete the task below to earn progress
@@ -363,6 +388,11 @@ export default function CFMiner() {
                     <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                   </Button>
                 </div>
+                {debugInfo && !currentJob?.isReal && (
+                  <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded text-xs text-yellow-600 dark:text-yellow-400">
+                    ⚠️ {debugInfo}
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 {isLoading ? (

@@ -9,9 +9,6 @@ const corsHeaders = {
 const CAPTCHAS_PER_TOKEN = 1000;
 const TWOCAPTCHA_API_KEY = Deno.env.get('TWOCAPTCHA_API_KEY');
 
-// 2Captcha Worker API endpoint for submitting answers
-const TWOCAPTCHA_REPORT_URL = 'https://2captcha.com/api/v1/reportResult';
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -84,12 +81,16 @@ serve(async (req) => {
     }
 
     let isCorrect = false;
+    let reportResult = null;
     
     // Handle real 2Captcha tasks vs practice tasks
     if (isReal && !jobId.startsWith('practice_')) {
-      // Submit answer to 2Captcha Worker API
+      console.log('Submitting real 2Captcha answer for job:', jobId);
+      
+      // Submit answer to 2Captcha
       try {
-        const reportResponse = await fetch(TWOCAPTCHA_REPORT_URL, {
+        // Method 1: New API format
+        const reportResponse = await fetch('https://api.2captcha.com/reportResult', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -101,49 +102,38 @@ serve(async (req) => {
           })
         });
 
-        const reportResult = await reportResponse.json();
+        reportResult = await reportResponse.json();
         console.log('2Captcha report response:', JSON.stringify(reportResult));
 
-        // 2Captcha returns errorId: 0 for success
         if (reportResult.errorId === 0) {
           isCorrect = true;
         } else if (reportResult.errorDescription === 'ERROR_CAPTCHA_UNSOLVABLE') {
-          // Captcha was too hard, count as attempt but not correct
           isCorrect = false;
         } else {
-          // Other errors - still might be correct, 2Captcha will validate later
-          isCorrect = true;
+          // Try legacy format
+          const legacyUrl = `https://2captcha.com/res.php?key=${TWOCAPTCHA_API_KEY}&action=reportgood&id=${jobId}&code=${encodeURIComponent(answer)}&json=1`;
+          const legacyResponse = await fetch(legacyUrl);
+          const legacyText = await legacyResponse.text();
+          console.log('2Captcha legacy report response:', legacyText);
+          
+          if (legacyText.includes('OK') || legacyText.includes('REPORT_RECORDED')) {
+            isCorrect = true;
+          }
         }
       } catch (apiError) {
         console.error('2Captcha report error:', apiError);
         // If API fails, assume correct to not penalize user
         isCorrect = true;
       }
-
-      // Alternative: Try legacy API format
-      if (!isCorrect) {
-        try {
-          const legacyReportUrl = `https://2captcha.com/res.php?key=${TWOCAPTCHA_API_KEY}&action=done&id=${jobId}&code=${encodeURIComponent(answer)}&json=1`;
-          const legacyResponse = await fetch(legacyReportUrl);
-          const legacyResult = await legacyResponse.json();
-          console.log('2Captcha legacy report response:', JSON.stringify(legacyResult));
-
-          if (legacyResult.status === 1 || legacyResult.request === 'OK_REPORT_RECORDED') {
-            isCorrect = true;
-          }
-        } catch (legacyError) {
-          console.error('2Captcha legacy report error:', legacyError);
-          isCorrect = true; // Assume correct on API failure
-        }
-      }
     } else {
       // Practice task validation
+      console.log('Validating practice task:', captchaType, 'Expected:', expectedAnswer, 'Got:', answer);
+      
       if (captchaType === 'text') {
-        isCorrect = answer.toUpperCase() === expectedAnswer?.toUpperCase();
+        isCorrect = answer.toUpperCase().trim() === expectedAnswer?.toUpperCase().trim();
       } else if (captchaType === 'math' || captchaType === 'pattern') {
         isCorrect = answer.toString().trim() === expectedAnswer?.toString().trim();
       } else if (captchaType === 'image') {
-        // For image captchas without expected answer, accept non-empty responses
         isCorrect = answer.length >= 2;
       } else {
         isCorrect = answer.length > 0;
@@ -210,7 +200,8 @@ serve(async (req) => {
         newBalance: wallet.balance + tokensToAward,
         message: tokensToAward > 0 
           ? `🎉 You earned ${tokensToAward} CFSMS token${tokensToAward > 1 ? 's' : ''}!` 
-          : `Correct! ${CAPTCHAS_PER_TOKEN - progressToNextToken} more to earn a token.`
+          : `Correct! ${CAPTCHAS_PER_TOKEN - progressToNextToken} more to earn a token.`,
+        debug: isReal ? { reportResult } : undefined
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
