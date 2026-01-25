@@ -793,6 +793,7 @@ export default function Admin() {
     }
   };
 
+  const handleSenderRequest = async (requestId: string, approved: boolean, userId: string, senderId: string) => {
     const { error } = await supabase
       .from('sender_id_requests')
       .update({
