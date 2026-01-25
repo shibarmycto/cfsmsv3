@@ -29,9 +29,11 @@ import {
   Send,
   Coins,
   Hash,
+  BadgeCheck,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
+import AdminVerifyUsersTab from '@/components/AdminVerifyUsersTab';
 
 interface UserProfile {
   id: string;
@@ -985,6 +987,7 @@ export default function Admin() {
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
                 { id: 'bank', icon: Coins, label: 'CFSMS Bank', count: 0 },
                 { id: 'forum', icon: Hash, label: 'Forum', count: 0 },
+                { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2018,6 +2021,11 @@ export default function Admin() {
             {/* Forum Tab */}
             {activeTab === 'forum' && user && (
               <AdminForumTab userId={user.id} />
+            )}
+
+            {/* Verify Users Tab */}
+            {activeTab === 'verify-users' && (
+              <AdminVerifyUsersTab />
             )}
           </div>
         </div>
