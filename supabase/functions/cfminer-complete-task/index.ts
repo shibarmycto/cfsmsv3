@@ -8,6 +8,13 @@ const corsHeaders = {
 
 const TASKS_PER_TOKEN = 1000;
 
+// Minimum time required to complete each task (in seconds)
+const MIN_TASK_TIME: Record<string, number> = {
+  signup: 5,       // 5 seconds minimum for signup tasks
+  freebitcoin: 15, // 15 seconds minimum for FreeBitcoin (need to load page, solve captcha, roll)
+  youtube: 30,     // 30 seconds minimum for YouTube watch
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -41,13 +48,68 @@ serve(async (req) => {
       );
     }
 
-    const { taskType, details } = await req.json();
+    const { taskType, details, startedAt } = await req.json();
 
     if (!taskType || !['signup', 'freebitcoin', 'youtube'].includes(taskType)) {
       return new Response(
         JSON.stringify({ error: 'Invalid task type' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
+    }
+
+    // Validate timing - check if enough time has passed
+    const minTime = MIN_TASK_TIME[taskType] || 5;
+    const taskStartTime = startedAt ? new Date(startedAt).getTime() : 0;
+    const now = Date.now();
+    const elapsedSeconds = taskStartTime ? Math.floor((now - taskStartTime) / 1000) : 0;
+
+    // If no start time provided or elapsed time is too short, reject
+    if (!startedAt || elapsedSeconds < minTime) {
+      const taskNames: Record<string, string> = {
+        signup: 'Website Sign-up',
+        freebitcoin: 'FreeBitcoin Roll',
+        youtube: 'YouTube Watch'
+      };
+      
+      const timeNeeded = minTime - elapsedSeconds;
+      const message = !startedAt 
+        ? `Please start the ${taskNames[taskType]} task properly before completing it.`
+        : `Task completed too quickly! ${taskNames[taskType]} requires at least ${minTime} seconds. You only spent ${elapsedSeconds} seconds. Please try again and spend more time on the task.`;
+      
+      console.log(`Task rejected: ${taskType} by user ${user.id}. Elapsed: ${elapsedSeconds}s, Required: ${minTime}s`);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: message,
+          rejected: true,
+          reason: 'too_fast',
+          elapsedSeconds,
+          requiredSeconds: minTime,
+          timeNeeded
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Additional validation for YouTube - check watchTime from details
+    if (taskType === 'youtube' && details?.watchTime) {
+      const reportedWatchTime = details.watchTime;
+      // Cross-check: reported watch time should roughly match elapsed time
+      const tolerance = 5; // 5 second tolerance for network delays
+      
+      if (reportedWatchTime < minTime || Math.abs(reportedWatchTime - elapsedSeconds) > tolerance + elapsedSeconds * 0.2) {
+        console.log(`YouTube watch time mismatch: reported ${reportedWatchTime}s, elapsed ${elapsedSeconds}s`);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Watch time verification failed. Please watch the video for at least ${minTime} seconds without pausing.`,
+            rejected: true,
+            reason: 'time_mismatch'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Get user's wallet
@@ -94,8 +156,8 @@ serve(async (req) => {
     }
 
     // Check task eligibility
-    const now = new Date();
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const nowDate = new Date();
+    const oneHourAgo = new Date(nowDate.getTime() - 60 * 60 * 1000);
 
     if (taskType === 'signup') {
       // Check if already completed signup
@@ -134,14 +196,20 @@ serve(async (req) => {
       }
     }
 
-    // Log the task completion
+    // Log the task completion with timing data
     await adminClient
       .from('mining_task_logs')
       .insert({
         user_id: user.id,
         wallet_id: wallet.id,
         task_type: taskType,
-        task_details: details || {},
+        task_details: { 
+          ...details, 
+          elapsedSeconds,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          verified: true
+        },
         session_id: session.id,
         tokens_awarded: 0
       });
@@ -190,7 +258,7 @@ serve(async (req) => {
         .limit(1);
     }
 
-    console.log(`Task completed: ${taskType} by user ${user.id}. Total: ${newTasksCompleted}, Tokens: ${newTokensEarned}`);
+    console.log(`Task completed: ${taskType} by user ${user.id}. Elapsed: ${elapsedSeconds}s, Total: ${newTasksCompleted}, Tokens: ${newTokensEarned}`);
 
     const taskNames: Record<string, string> = {
       signup: 'Website Sign-up',
@@ -206,6 +274,7 @@ serve(async (req) => {
         tokensEarned: newTokensEarned,
         tokensAwarded: tokensToAward,
         newBalance: wallet.balance + tokensToAward,
+        verifiedTime: elapsedSeconds,
         session: {
           id: session.id,
           captchasCompleted: newTasksCompleted,
