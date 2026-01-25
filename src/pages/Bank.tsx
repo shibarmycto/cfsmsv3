@@ -100,6 +100,7 @@ export default function Bank() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [minerRequest, setMinerRequest] = useState<MinerRequest | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   
   const [sendAmount, setSendAmount] = useState('');
   const [sendRecipient, setSendRecipient] = useState('');
@@ -117,6 +118,10 @@ export default function Bank() {
   const [withdrawType, setWithdrawType] = useState<'usdc' | 'bitcoin' | 'solana'>('usdc');
   const [withdrawAddress, setWithdrawAddress] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  
+  const [exchangeAmount, setExchangeAmount] = useState('');
+  const [isExchanging, setIsExchanging] = useState(false);
+  const [smsCredits, setSmsCredits] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -136,8 +141,31 @@ export default function Bank() {
       fetchFriends();
       fetchFriendRequests();
       fetchMinerRequest();
+      fetchUnreadCount();
+      fetchSmsCredits();
     }
   }, [wallet]);
+
+  // Real-time listener for chat notifications
+  useEffect(() => {
+    if (!user) return;
+    
+    const channel = supabase
+      .channel(`chat-notifications-${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `receiver_id=eq.${user.id}`
+      }, () => {
+        fetchUnreadCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (selectedFriend && user) {
@@ -443,6 +471,66 @@ export default function Bank() {
     }
   };
 
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+    
+    const { count } = await supabase
+      .from('chat_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_id', user.id)
+      .eq('is_read', false);
+    
+    setUnreadCount(count || 0);
+  };
+
+  const fetchSmsCredits = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('profiles')
+      .select('sms_credits')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (data) setSmsCredits(data.sms_credits || 0);
+  };
+
+  const exchangeTokensForCredits = async () => {
+    if (!wallet || !exchangeAmount) return;
+    
+    const tokens = parseInt(exchangeAmount);
+    if (isNaN(tokens) || tokens < 10) {
+      toast({ title: 'Error', description: 'Minimum 10 tokens required', variant: 'destructive' });
+      return;
+    }
+    
+    if (tokens > wallet.balance) {
+      toast({ title: 'Error', description: 'Insufficient token balance', variant: 'destructive' });
+      return;
+    }
+    
+    setIsExchanging(true);
+    
+    const { data, error } = await supabase.functions.invoke('exchange-tokens', {
+      body: { tokensToExchange: tokens }
+    });
+    
+    if (error || data?.error) {
+      toast({ title: 'Error', description: data?.error || 'Exchange failed', variant: 'destructive' });
+    } else {
+      toast({ 
+        title: 'Exchange Successful!', 
+        description: `Exchanged ${data.tokensUsed} tokens for ${data.creditsAdded} SMS credits` 
+      });
+      setExchangeAmount('');
+      checkWallet();
+      fetchSmsCredits();
+      fetchTransactions();
+    }
+    
+    setIsExchanging(false);
+  };
+
   const requestMinerStatus = async () => {
     if (!user) return;
     
@@ -616,9 +704,14 @@ export default function Bank() {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="chat" className="flex gap-2">
+            <TabsTrigger value="chat" className="flex gap-2 relative">
               <MessageCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Chat</span>
+              {unreadCount > 0 && (
+                <Badge variant="destructive" className="absolute -top-1 -right-1 w-5 h-5 p-0 flex items-center justify-center text-xs">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="mining" className="flex gap-2">
               <Pickaxe className="w-4 h-4" />
@@ -767,6 +860,55 @@ export default function Bank() {
                 >
                   {isWithdrawing ? 'Submitting...' : 'Request Withdrawal'}
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Token Exchange Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Coins className="w-5 h-5" />
+                  Exchange Tokens for SMS Credits
+                </CardTitle>
+                <CardDescription>
+                  Convert your CFSMS tokens to SMS credits. Rate: 10 tokens = 1 SMS credit
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-lg bg-muted/50 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Your SMS Credits</p>
+                    <p className="text-2xl font-bold">{smsCredits}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Token Balance</p>
+                    <p className="text-2xl font-bold">{wallet?.balance.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Tokens to Exchange</label>
+                    <Input
+                      type="number"
+                      value={exchangeAmount}
+                      onChange={(e) => setExchangeAmount(e.target.value)}
+                      placeholder="10"
+                      min="10"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      = {Math.floor(parseInt(exchangeAmount || '0') / 10)} SMS credits
+                    </p>
+                  </div>
+                  <div className="flex items-end">
+                    <Button 
+                      onClick={exchangeTokensForCredits} 
+                      disabled={isExchanging || !exchangeAmount || parseInt(exchangeAmount) < 10}
+                      className="w-full"
+                    >
+                      {isExchanging ? 'Exchanging...' : 'Exchange Now'}
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

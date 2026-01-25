@@ -190,10 +190,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user profile with approved sender ID and check credits
+    // Get user profile with approved sender ID, credits, and daily limits
     const { data: profile } = await supabase
       .from('profiles')
-      .select('sms_credits, default_sender_id')
+      .select('sms_credits, default_sender_id, daily_sms_limit, daily_sms_used, daily_sms_reset_at')
       .eq('user_id', user.id)
       .single();
 
@@ -202,6 +202,29 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'Insufficient credits' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Check and reset daily usage if needed (reset at midnight)
+    const now = new Date();
+    const resetAt = profile.daily_sms_reset_at ? new Date(profile.daily_sms_reset_at) : new Date(0);
+    const shouldReset = now.toDateString() !== resetAt.toDateString();
+    
+    let currentDailyUsed = shouldReset ? 0 : (profile.daily_sms_used || 0);
+
+    // Check daily limit if set
+    if (profile.daily_sms_limit !== null && profile.daily_sms_limit > 0) {
+      if (currentDailyUsed + recipients.length > profile.daily_sms_limit) {
+        const remaining = Math.max(0, profile.daily_sms_limit - currentDailyUsed);
+        return new Response(
+          JSON.stringify({ 
+            error: `Daily limit reached. You can send ${remaining} more SMS today. Limit resets at midnight.`,
+            dailyLimit: profile.daily_sms_limit,
+            dailyUsed: currentDailyUsed,
+            remaining
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Determine if user has an approved custom sender ID
@@ -281,11 +304,21 @@ Deno.serve(async (req) => {
       await supabase.from('sms_logs').insert(logs);
     }
 
-    // Deduct credits for sent messages
+    // Deduct credits and update daily usage for sent messages
     if (result.sentCount > 0) {
+      const updateData: Record<string, any> = { 
+        sms_credits: profile.sms_credits - result.sentCount,
+        daily_sms_used: currentDailyUsed + result.sentCount
+      };
+      
+      // Reset daily counter if it's a new day
+      if (shouldReset) {
+        updateData.daily_sms_reset_at = now.toISOString();
+      }
+
       await supabase
         .from('profiles')
-        .update({ sms_credits: profile.sms_credits - result.sentCount })
+        .update(updateData)
         .eq('user_id', user.id);
     }
 
