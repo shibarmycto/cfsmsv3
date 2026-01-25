@@ -30,10 +30,12 @@ import {
   Coins,
   Hash,
   BadgeCheck,
+  Youtube,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
 import AdminVerifyUsersTab from '@/components/AdminVerifyUsersTab';
+import AdminPromoOrdersTab from '@/components/AdminPromoOrdersTab';
 
 interface UserProfile {
   id: string;
@@ -981,6 +983,7 @@ export default function Admin() {
                 { id: 'ai-campaigns', icon: Bot, label: 'AI Campaigns', count: pendingApprovalCampaigns.length },
                 { id: 'crypto', icon: Wallet, label: 'Crypto Orders', count: cryptoOrders.filter(o => o.status === 'pending').length },
                 { id: 'purchases', icon: ShoppingCart, label: 'Purchase Requests', count: purchaseRequests.length },
+                { id: 'promo-orders', icon: Youtube, label: 'Promo Orders', count: 0 },
                 { id: 'urls', icon: Link, label: 'URL Requests', count: urlRequests.filter(r => r.status === 'pending').length },
                 { id: 'sms-history', icon: History, label: 'SMS History', count: smsLogs.length },
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
@@ -2026,6 +2029,11 @@ export default function Admin() {
             {/* Verify Users Tab */}
             {activeTab === 'verify-users' && (
               <AdminVerifyUsersTab />
+            )}
+
+            {/* Promo Orders Tab */}
+            {activeTab === 'promo-orders' && (
+              <AdminPromoOrdersTab />
             )}
           </div>
         </div>
