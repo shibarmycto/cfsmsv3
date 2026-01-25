@@ -378,6 +378,7 @@ export default function Dashboard() {
                 { id: 'send', icon: Send, label: 'Send' },
                 { id: 'ai-agent', icon: Bot, label: 'AI Agent' },
                 { id: 'ai-twin', icon: Phone, label: 'AI Twin', isLink: true, href: '/ai-twin' },
+                { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank' },
