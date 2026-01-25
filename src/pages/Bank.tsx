@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { 
   Wallet, 
   Send, 
@@ -36,6 +37,7 @@ interface WalletData {
   username: string;
   balance: number;
   is_miner_approved: boolean;
+  is_verified: boolean;
   total_mined: number;
   total_sent: number;
   total_received: number;
@@ -51,16 +53,16 @@ interface Transaction {
   status: string;
   description: string | null;
   created_at: string;
-  from_wallet?: { username: string } | null;
-  to_wallet?: { username: string } | null;
+  from_wallet?: { username: string; is_verified?: boolean } | null;
+  to_wallet?: { username: string; is_verified?: boolean } | null;
 }
 
 interface Friend {
   id: string;
   friend_id: string;
   user_id: string;
-  friend_wallet?: { username: string; user_id: string };
-  user_wallet?: { username: string; user_id: string };
+  friend_wallet?: { username: string; user_id: string; is_verified?: boolean };
+  user_wallet?: { username: string; user_id: string; is_verified?: boolean };
 }
 
 interface FriendRequest {
@@ -69,7 +71,7 @@ interface FriendRequest {
   to_user_id: string;
   status: string;
   created_at: string;
-  from_wallet?: { username: string };
+  from_wallet?: { username: string; is_verified?: boolean };
 }
 
 interface ChatMessage {
@@ -110,9 +112,9 @@ export default function Bank() {
   const [isSending, setIsSending] = useState(false);
   
   const [searchUsername, setSearchUsername] = useState('');
-  const [searchResults, setSearchResults] = useState<{ id: string; username: string; user_id: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: string; username: string; user_id: string; is_verified?: boolean }[]>([]);
   
-  const [selectedFriend, setSelectedFriend] = useState<{ id: string; username: string; user_id: string } | null>(null);
+  const [selectedFriend, setSelectedFriend] = useState<{ id: string; username: string; user_id: string; is_verified?: boolean } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -138,6 +140,7 @@ export default function Bank() {
     id: string;
     username: string;
     user_id: string;
+    is_verified?: boolean;
     isFriend: boolean;
     isPending: boolean;
     isBlocked: boolean;
@@ -280,15 +283,15 @@ export default function Bank() {
       const walletIds = [...new Set([...data.map(t => t.from_wallet_id), ...data.map(t => t.to_wallet_id)].filter(Boolean))];
       const { data: wallets } = await supabase
         .from('wallets')
-        .select('id, username')
+        .select('id, username, is_verified')
         .in('id', walletIds as string[]);
       
-      const walletMap = new Map(wallets?.map(w => [w.id, w.username]) || []);
+      const walletMap = new Map(wallets?.map(w => [w.id, { username: w.username, is_verified: w.is_verified }]) || []);
       
       const transactionsWithWallets = data.map(tx => ({
         ...tx,
-        from_wallet: tx.from_wallet_id ? { username: walletMap.get(tx.from_wallet_id) || 'Unknown' } : null,
-        to_wallet: tx.to_wallet_id ? { username: walletMap.get(tx.to_wallet_id) || 'Unknown' } : null
+        from_wallet: tx.from_wallet_id ? walletMap.get(tx.from_wallet_id) || { username: 'Unknown' } : null,
+        to_wallet: tx.to_wallet_id ? walletMap.get(tx.to_wallet_id) || { username: 'Unknown' } : null
       }));
       
       setTransactions(transactionsWithWallets);
@@ -308,10 +311,10 @@ export default function Bank() {
       const userIds = [...new Set([...data.map(f => f.friend_id), ...data.map(f => f.user_id)])];
       const { data: wallets } = await supabase
         .from('wallets')
-        .select('id, username, user_id')
+        .select('id, username, user_id, is_verified')
         .in('user_id', userIds);
       
-      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username, user_id: w.user_id }]) || []);
+      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username, user_id: w.user_id, is_verified: w.is_verified }]) || []);
       
       const friendsWithWallets = data.map(f => ({
         ...f,
@@ -337,10 +340,10 @@ export default function Bank() {
       const userIds = data.map(r => r.from_user_id);
       const { data: wallets } = await supabase
         .from('wallets')
-        .select('username, user_id')
+        .select('username, user_id, is_verified')
         .in('user_id', userIds);
       
-      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username }]) || []);
+      const walletMap = new Map(wallets?.map(w => [w.user_id, { username: w.username, is_verified: w.is_verified }]) || []);
       
       const requestsWithWallets = data.map(r => ({
         ...r,
@@ -398,7 +401,7 @@ export default function Bank() {
     
     const { data } = await supabase
       .from('wallets')
-      .select('id, username, user_id')
+      .select('id, username, user_id, is_verified')
       .ilike('username', `%${searchUsername}%`)
       .neq('user_id', user.id)
       .limit(20);
@@ -795,8 +798,11 @@ export default function Bank() {
               <Coins className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">CFSMS Bank</h1>
-              <p className="text-xs text-muted-foreground">{wallet?.username}</p>
+              <h1 className="font-bold text-lg flex items-center gap-1">
+                CFSMS Bank
+                {wallet?.is_verified && <VerifiedBadge size="sm" />}
+              </h1>
+              <p className="text-xs text-muted-foreground">@{wallet?.username}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -925,10 +931,14 @@ export default function Bank() {
                                 )}
                               </div>
                               <div>
-                                <p className="font-medium">
+                                <p className="font-medium flex items-center gap-1">
                                   {tx.transaction_type === 'mining' ? 'Mining Reward' :
                                    tx.transaction_type === 'sms_credit_exchange' ? 'SMS Credit Exchange' :
-                                   isOutgoing ? `To ${tx.to_wallet?.username || 'Unknown'}` : `From ${tx.from_wallet?.username || 'System'}`}
+                                   isOutgoing ? (
+                                     <>To @{tx.to_wallet?.username || 'Unknown'}{tx.to_wallet?.is_verified && <VerifiedBadge size="sm" />}</>
+                                   ) : (
+                                     <>From @{tx.from_wallet?.username || 'System'}{tx.from_wallet?.is_verified && <VerifiedBadge size="sm" />}</>
+                                   )}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {new Date(tx.created_at).toLocaleString()}
@@ -1159,7 +1169,10 @@ export default function Bank() {
                     {friendRequests.map((req) => (
                       <div key={req.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                         <div>
-                          <p className="font-medium">{req.from_wallet?.username}</p>
+                          <p className="font-medium flex items-center gap-1">
+                            @{req.from_wallet?.username}
+                            {req.from_wallet?.is_verified && <VerifiedBadge size="sm" />}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {new Date(req.created_at).toLocaleDateString()}
                           </p>
@@ -1201,7 +1214,10 @@ export default function Bank() {
                     {searchResultsWithStatus.map((result) => (
                       <div key={result.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                         <div>
-                          <p className="font-medium">{result.username}</p>
+                          <p className="font-medium flex items-center gap-1">
+                            @{result.username}
+                            {result.is_verified && <VerifiedBadge size="sm" />}
+                          </p>
                           {result.isFriend && (
                             <Badge variant="secondary" className="text-xs">Friend</Badge>
                           )}
@@ -1301,12 +1317,15 @@ export default function Bank() {
                       const friendData = getFriendData(friend);
                       return (
                         <div key={friend.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                          <p className="font-medium">{friendData?.username}</p>
+                          <p className="font-medium flex items-center gap-1">
+                            @{friendData?.username}
+                            {friendData?.is_verified && <VerifiedBadge size="sm" />}
+                          </p>
                           <div className="flex gap-2">
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => setSelectedFriend(friendData ? { id: friend.id, username: friendData.username, user_id: friendData.user_id } : null)}
+                              onClick={() => setSelectedFriend(friendData ? { id: friend.id, username: friendData.username, user_id: friendData.user_id, is_verified: friendData.is_verified } : null)}
                             >
                               <MessageCircle className="w-4 h-4" />
                             </Button>
@@ -1349,10 +1368,13 @@ export default function Bank() {
                       return (
                         <button
                           key={friend.id}
-                          onClick={() => setSelectedFriend(friendData ? { id: friend.id, username: friendData.username, user_id: friendData.user_id } : null)}
+                          onClick={() => setSelectedFriend(friendData ? { id: friend.id, username: friendData.username, user_id: friendData.user_id, is_verified: friendData.is_verified } : null)}
                           className={`w-full p-4 text-left hover:bg-muted/50 border-b ${selectedFriend?.user_id === friendData?.user_id ? 'bg-muted' : ''}`}
                         >
-                          <p className="font-medium">{friendData?.username}</p>
+                          <p className="font-medium flex items-center gap-1">
+                            @{friendData?.username}
+                            {friendData?.is_verified && <VerifiedBadge size="sm" />}
+                          </p>
                         </button>
                       );
                     })}
@@ -1368,7 +1390,10 @@ export default function Bank() {
                 {selectedFriend ? (
                   <>
                     <CardHeader className="border-b">
-                      <CardTitle className="text-base">{selectedFriend.username}</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-1">
+                        @{selectedFriend.username}
+                        {selectedFriend.is_verified && <VerifiedBadge size="sm" />}
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0 flex flex-col h-[500px]">
                       <ScrollArea className="flex-1 p-4">

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 interface MiningSession {
   id: string;
@@ -39,6 +40,7 @@ interface LeaderboardEntry {
   tokens_earned: number;
   captchas_completed: number;
   is_current_user: boolean;
+  is_verified: boolean;
 }
 
 interface TaskStatus {
@@ -611,10 +613,11 @@ export default function CFMiner() {
                           )}
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium">
+                          <p className="font-medium flex items-center gap-1">
                             @{entry.username}
+                            {entry.is_verified && <VerifiedBadge size="sm" />}
                             {entry.is_current_user && (
-                              <span className="text-xs text-primary ml-2">(You)</span>
+                              <span className="text-xs text-primary ml-1">(You)</span>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
