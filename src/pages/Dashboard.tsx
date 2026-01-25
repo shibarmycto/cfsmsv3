@@ -37,6 +37,7 @@ import {
   Bot,
   Coins,
   Phone,
+  Pickaxe,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -382,6 +383,7 @@ export default function Dashboard() {
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
+                { id: 'miner', icon: Pickaxe, label: 'Miner', isLink: true, href: '/miner' },
                 { id: 'urls', icon: Link, label: 'URLs' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
