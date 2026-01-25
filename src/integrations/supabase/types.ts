@@ -817,6 +817,279 @@ export type Database = {
         }
         Relationships: []
       }
+      game_characters: {
+        Row: {
+          bank_balance: number
+          cash: number
+          created_at: string
+          current_job: Database["public"]["Enums"]["job_type"]
+          energy: number
+          gender: Database["public"]["Enums"]["character_gender"]
+          hair_color: string
+          health: number
+          hunger: number
+          id: string
+          is_online: boolean
+          job_experience: number
+          last_seen_at: string | null
+          name: string
+          pants_color: string
+          position_x: number
+          position_y: number
+          shirt_color: string
+          skin_color: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bank_balance?: number
+          cash?: number
+          created_at?: string
+          current_job?: Database["public"]["Enums"]["job_type"]
+          energy?: number
+          gender?: Database["public"]["Enums"]["character_gender"]
+          hair_color?: string
+          health?: number
+          hunger?: number
+          id?: string
+          is_online?: boolean
+          job_experience?: number
+          last_seen_at?: string | null
+          name: string
+          pants_color?: string
+          position_x?: number
+          position_y?: number
+          shirt_color?: string
+          skin_color?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bank_balance?: number
+          cash?: number
+          created_at?: string
+          current_job?: Database["public"]["Enums"]["job_type"]
+          energy?: number
+          gender?: Database["public"]["Enums"]["character_gender"]
+          hair_color?: string
+          health?: number
+          hunger?: number
+          id?: string
+          is_online?: boolean
+          job_experience?: number
+          last_seen_at?: string | null
+          name?: string
+          pants_color?: string
+          position_x?: number
+          position_y?: number
+          shirt_color?: string
+          skin_color?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      game_friends: {
+        Row: {
+          character_id: string
+          created_at: string
+          friend_character_id: string
+          id: string
+          status: string
+        }
+        Insert: {
+          character_id: string
+          created_at?: string
+          friend_character_id: string
+          id?: string
+          status?: string
+        }
+        Update: {
+          character_id?: string
+          created_at?: string
+          friend_character_id?: string
+          id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_friends_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_friends_friend_character_id_fkey"
+            columns: ["friend_character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_org_members: {
+        Row: {
+          character_id: string
+          id: string
+          joined_at: string
+          organization_id: string
+          role: string
+        }
+        Insert: {
+          character_id: string
+          id?: string
+          joined_at?: string
+          organization_id: string
+          role?: string
+        }
+        Update: {
+          character_id?: string
+          id?: string
+          joined_at?: string
+          organization_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_org_members_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_org_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "game_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_organizations: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          leader_id: string | null
+          name: string
+          org_type: Database["public"]["Enums"]["organization_type"]
+          reputation: number
+          treasury: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          leader_id?: string | null
+          name: string
+          org_type: Database["public"]["Enums"]["organization_type"]
+          reputation?: number
+          treasury?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          leader_id?: string | null
+          name?: string
+          org_type?: Database["public"]["Enums"]["organization_type"]
+          reputation?: number
+          treasury?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_organizations_leader_id_fkey"
+            columns: ["leader_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_properties: {
+        Row: {
+          created_at: string
+          id: string
+          is_for_sale: boolean
+          name: string
+          owner_id: string | null
+          position_x: number
+          position_y: number
+          price: number
+          property_type: Database["public"]["Enums"]["property_type"]
+          rent_income: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_for_sale?: boolean
+          name: string
+          owner_id?: string | null
+          position_x: number
+          position_y: number
+          price: number
+          property_type: Database["public"]["Enums"]["property_type"]
+          rent_income?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_for_sale?: boolean
+          name?: string
+          owner_id?: string | null
+          position_x?: number
+          position_y?: number
+          price?: number
+          property_type?: Database["public"]["Enums"]["property_type"]
+          rent_income?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_properties_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_transactions: {
+        Row: {
+          amount: number
+          character_id: string
+          created_at: string
+          description: string | null
+          id: string
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          character_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_type: string
+        }
+        Update: {
+          amount?: number
+          character_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_transactions_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       large_transaction_approvals: {
         Row: {
           amount: number
@@ -1691,6 +1964,23 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      character_gender: "male" | "female" | "other"
+      job_type:
+        | "unemployed"
+        | "police"
+        | "medic"
+        | "taxi_driver"
+        | "mechanic"
+        | "criminal"
+        | "business_owner"
+        | "gang_member"
+      organization_type: "gang" | "business" | "police_department" | "hospital"
+      property_type:
+        | "small_apartment"
+        | "medium_house"
+        | "large_mansion"
+        | "business"
+        | "gang_hideout"
       sender_id_status: "pending" | "approved" | "rejected"
       sms_destination: "uk" | "usa"
       token_status:
@@ -1827,6 +2117,25 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      character_gender: ["male", "female", "other"],
+      job_type: [
+        "unemployed",
+        "police",
+        "medic",
+        "taxi_driver",
+        "mechanic",
+        "criminal",
+        "business_owner",
+        "gang_member",
+      ],
+      organization_type: ["gang", "business", "police_department", "hospital"],
+      property_type: [
+        "small_apartment",
+        "medium_house",
+        "large_mansion",
+        "business",
+        "gang_hideout",
+      ],
       sender_id_status: ["pending", "approved", "rejected"],
       sms_destination: ["uk", "usa"],
       token_status: [
