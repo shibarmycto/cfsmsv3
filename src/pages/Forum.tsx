@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,7 @@ interface ChannelMessage {
   message: string;
   created_at: string;
   sender_username?: string;
+  sender_is_verified?: boolean;
 }
 
 interface LeaderboardEntry {
@@ -84,6 +86,7 @@ interface LeaderboardEntry {
   replies_count: number;
   reactions_received: number;
   reputation_score: number;
+  is_verified: boolean;
 }
 
 export default function Forum() {
@@ -100,6 +103,7 @@ export default function Forum() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [channelMessages, setChannelMessages] = useState<ChannelMessage[]>([]);
   const [usernames, setUsernames] = useState<Record<string, string>>({});
+  const [verifiedUsers, setVerifiedUsers] = useState<Record<string, boolean>>({});
   const [joinedChannels, setJoinedChannels] = useState<string[]>([]);
   
   // Form states
@@ -146,16 +150,17 @@ export default function Forum() {
           },
           async (payload) => {
             const newMsg = payload.new as ChannelMessage;
-            // Fetch username for new message
+            // Fetch username and verification status for new message
             const { data: wallet } = await supabase
               .from('wallets')
-              .select('username')
+              .select('username, is_verified')
               .eq('user_id', newMsg.sender_id)
               .maybeSingle();
             
             setChannelMessages(prev => [...prev, {
               ...newMsg,
-              sender_username: wallet?.username || 'User'
+              sender_username: wallet?.username || 'User',
+              sender_is_verified: wallet?.is_verified || false
             }]);
           }
         )
@@ -236,17 +241,20 @@ export default function Forum() {
       const senderIds = [...new Set(data.map(m => m.sender_id))];
       const { data: wallets } = await supabase
         .from('wallets')
-        .select('user_id, username')
+        .select('user_id, username, is_verified')
         .in('user_id', senderIds);
       
       const usernameMap: Record<string, string> = {};
+      const verifiedMap: Record<string, boolean> = {};
       wallets?.forEach(w => {
         usernameMap[w.user_id] = w.username;
+        verifiedMap[w.user_id] = w.is_verified || false;
       });
       
       setChannelMessages(data.map(m => ({
         ...m,
-        sender_username: usernameMap[m.sender_id] || 'User'
+        sender_username: usernameMap[m.sender_id] || 'User',
+        sender_is_verified: verifiedMap[m.sender_id] || false
       })));
     }
   };
@@ -261,15 +269,18 @@ export default function Forum() {
     
     const { data } = await supabase
       .from('wallets')
-      .select('user_id, username')
+      .select('user_id, username, is_verified')
       .in('user_id', userIds);
     
     if (data) {
       const newUsernames: Record<string, string> = {};
+      const newVerified: Record<string, boolean> = {};
       data.forEach(w => {
         newUsernames[w.user_id] = w.username;
+        newVerified[w.user_id] = w.is_verified || false;
       });
       setUsernames(prev => ({ ...prev, ...newUsernames }));
+      setVerifiedUsers(prev => ({ ...prev, ...newVerified }));
     }
   };
 
@@ -575,7 +586,10 @@ export default function Forum() {
                         }`}>
                           #{entry.rank}
                         </span>
-                        <span className="font-medium">@{entry.username || 'Anonymous'}</span>
+                        <span className="font-medium flex items-center gap-1">
+                          @{entry.username || 'Anonymous'}
+                          {entry.is_verified && <VerifiedBadge size="sm" />}
+                        </span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span>{entry.posts_count} posts</span>
@@ -607,7 +621,10 @@ export default function Forum() {
                       className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
                     >
                       <div>
-                        <p className="font-medium">@{member.username || 'Anonymous'}</p>
+                        <p className="font-medium flex items-center gap-1">
+                          @{member.username || 'Anonymous'}
+                          {member.is_verified && <VerifiedBadge size="sm" />}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {member.posts_count} posts • {member.reputation_score} rep
                         </p>
@@ -665,8 +682,9 @@ export default function Forum() {
                         key={msg.id}
                         className={`flex flex-col ${msg.sender_id === user?.id ? 'items-end' : 'items-start'}`}
                       >
-                        <span className="text-xs text-muted-foreground mb-1">
+                        <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                           @{msg.sender_username}
+                          {msg.sender_is_verified && <VerifiedBadge size="sm" />}
                         </span>
                         <div
                           className={`max-w-[80%] rounded-lg px-3 py-2 ${
@@ -751,7 +769,10 @@ export default function Forum() {
                         </div>
                       </div>
                       <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-                        <span>@{usernames[post.author_id] || 'User'}</span>
+                        <span className="flex items-center gap-1">
+                          @{usernames[post.author_id] || 'User'}
+                          {verifiedUsers[post.author_id] && <VerifiedBadge size="sm" />}
+                        </span>
                         <span className="flex items-center gap-1">
                           <Eye className="w-3 h-3" />
                           {post.view_count}
@@ -782,7 +803,10 @@ export default function Forum() {
             <div className="bg-card/50 border border-border rounded-lg p-4 mb-4">
               <h2 className="text-xl font-bold mb-2">{selectedPost.title}</h2>
               <div className="flex items-center gap-3 text-sm text-muted-foreground mb-4">
-                <span>@{usernames[selectedPost.author_id] || 'User'}</span>
+                <span className="flex items-center gap-1">
+                  @{usernames[selectedPost.author_id] || 'User'}
+                  {verifiedUsers[selectedPost.author_id] && <VerifiedBadge size="sm" />}
+                </span>
                 <span>{formatTime(selectedPost.created_at)}</span>
               </div>
               <p className="whitespace-pre-wrap">{selectedPost.content}</p>
@@ -811,7 +835,10 @@ export default function Forum() {
               {replies.map((reply) => (
                 <div key={reply.id} className="bg-secondary/30 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">@{usernames[reply.author_id] || 'User'}</span>
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      @{usernames[reply.author_id] || 'User'}
+                      {verifiedUsers[reply.author_id] && <VerifiedBadge size="sm" />}
+                    </span>
                     <span className="text-xs text-muted-foreground">{formatTime(reply.created_at)}</span>
                   </div>
                   <p className="text-sm">{reply.content}</p>
