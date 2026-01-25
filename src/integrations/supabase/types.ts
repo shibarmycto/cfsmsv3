@@ -1432,6 +1432,7 @@ export type Database = {
         Returns: {
           captchas_completed: number
           is_current_user: boolean
+          is_verified: boolean
           rank: number
           tokens_earned: number
           username: string

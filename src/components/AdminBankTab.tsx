@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import {
   Coins,
   Search,
@@ -27,6 +28,7 @@ interface Wallet {
   username: string;
   balance: number;
   is_miner_approved: boolean;
+  is_verified: boolean;
   total_mined: number;
   total_sent: number;
   total_received: number;
@@ -390,7 +392,10 @@ export default function AdminBankTab() {
                       <Coins className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">{wallet.username}</p>
+                      <p className="font-medium flex items-center gap-1">
+                        @{wallet.username}
+                        {wallet.is_verified && <VerifiedBadge size="sm" />}
+                      </p>
                       <div className="flex gap-4 text-xs text-muted-foreground">
                         <span>Sent: {wallet.total_sent.toLocaleString()}</span>
                         <span>Received: {wallet.total_received.toLocaleString()}</span>
