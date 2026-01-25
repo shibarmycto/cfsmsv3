@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -62,7 +62,9 @@ const EMOJI_OPTIONS = ['🪙', '💎', '🚀', '🌙', '⭐', '🔥', '💰', '�
 export default function Exchange() {
   const { user, profile, loading, refreshProfile } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('market');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'market';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [tokens, setTokens] = useState<Token[]>([]);
   const [holdings, setHoldings] = useState<TokenHolding[]>([]);
   const [news, setNews] = useState<TokenNews[]>([]);

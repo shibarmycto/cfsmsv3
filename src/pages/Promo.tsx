@@ -45,6 +45,7 @@ interface PromoOrder {
   created_at: string;
   starts_at: string | null;
   ends_at: string | null;
+  view_count: number;
 }
 
 const PROMO_PACKAGES: PromoPackage[] = [
@@ -583,10 +584,19 @@ export default function Promo() {
                         <Badge className={getStatusBadge(order.status)}>
                           {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                         </Badge>
-                        {order.status === 'active' && order.ends_at && (
-                          <span className="text-xs text-muted-foreground">
-                            Ends {new Date(order.ends_at).toLocaleDateString()}
-                          </span>
+                        {order.status === 'active' && (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 text-primary">
+                              <Eye className="w-4 h-4" />
+                              <span className="font-medium">{order.view_count.toLocaleString()}</span>
+                              <span className="text-xs text-muted-foreground">views</span>
+                            </div>
+                            {order.ends_at && (
+                              <span className="text-xs text-muted-foreground">
+                                • Ends {new Date(order.ends_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
