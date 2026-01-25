@@ -1041,6 +1041,66 @@ export type Database = {
         }
         Relationships: []
       }
+      promo_orders: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          crypto_type: string | null
+          ends_at: string | null
+          id: string
+          package_type: string
+          payment_method: string
+          price_gbp: number
+          reviewed_at: string | null
+          reviewed_by: string | null
+          starts_at: string | null
+          status: string
+          tx_hash: string | null
+          updated_at: string
+          user_id: string
+          video_title: string | null
+          youtube_url: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          crypto_type?: string | null
+          ends_at?: string | null
+          id?: string
+          package_type: string
+          payment_method: string
+          price_gbp: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          starts_at?: string | null
+          status?: string
+          tx_hash?: string | null
+          updated_at?: string
+          user_id: string
+          video_title?: string | null
+          youtube_url: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          crypto_type?: string | null
+          ends_at?: string | null
+          id?: string
+          package_type?: string
+          payment_method?: string
+          price_gbp?: number
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          starts_at?: string | null
+          status?: string
+          tx_hash?: string | null
+          updated_at?: string
+          user_id?: string
+          video_title?: string | null
+          youtube_url?: string
+        }
+        Relationships: []
+      }
       purchase_requests: {
         Row: {
           admin_notes: string | null

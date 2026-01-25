@@ -16,6 +16,7 @@ import Bank from "./pages/Bank";
 import CFMiner from "./pages/CFMiner";
 import AITwin from "./pages/AITwin";
 import Forum from "./pages/Forum";
+import Promo from "./pages/Promo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/miner" element={<CFMiner />} />
             <Route path="/ai-twin" element={<AITwin />} />
             <Route path="/forum" element={<Forum />} />
+            <Route path="/promo" element={<Promo />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -14,6 +14,7 @@ export default function Navbar() {
     { label: 'FAQs', path: '/faqs' },
     { label: 'Forum', path: '/forum' },
     { label: 'Mining', path: '/miner' },
+    { label: 'Promo', path: '/promo' },
   ];
 
   return (
