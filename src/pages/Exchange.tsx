@@ -16,6 +16,7 @@ import {
   Star, Shield, Award, Crown, RefreshCw
 } from 'lucide-react';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import TokenPriceChart from '@/components/TokenPriceChart';
 
 interface Token {
   id: string;
@@ -642,6 +643,13 @@ export default function Exchange() {
                         {selectedToken.price_per_token} Credits
                       </p>
                     </div>
+
+                    {/* Price Chart */}
+                    <TokenPriceChart 
+                      tokenId={selectedToken.id} 
+                      tokenSymbol={selectedToken.symbol}
+                      currentPrice={selectedToken.price_per_token}
+                    />
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="p-2 rounded bg-muted/30">
