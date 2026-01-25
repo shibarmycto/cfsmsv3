@@ -23,6 +23,7 @@ import {
   Wallet,
   Send,
   CalendarClock,
+  Coins,
   Calendar,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
@@ -264,10 +265,38 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
     }
   };
 
-  const handlePayment = async (campaign: Campaign, method: 'manual' | 'crypto') => {
+  const handlePayment = async (campaign: Campaign, method: 'manual' | 'crypto' | 'credits') => {
     if (method === 'crypto') {
       // Navigate to crypto payment page with campaign info
       navigate(`/buy-crypto?type=campaign&campaignId=${campaign.id}&amount=${campaign.total_cost}`);
+    } else if (method === 'credits') {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('pay-with-credits', {
+          body: {
+            campaignId: campaign.id,
+            paymentType: 'credits',
+          },
+        });
+
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        toast({
+          title: 'Paid with CFSMS Credits!',
+          description: `Used ${data.tokensUsed} tokens. Campaign submitted for approval.`,
+        });
+
+        fetchCampaigns();
+      } catch (err: any) {
+        toast({
+          title: 'Payment Failed',
+          description: err.message || 'Failed to process credit payment.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
     } else {
       setIsLoading(true);
       try {
@@ -698,25 +727,37 @@ export default function AIAgentTab({ user, toast }: AIAgentTabProps) {
                     )}
 
                     {campaign.status === 'pending_payment' && (
-                      <div className="flex gap-2 pt-2">
+                      <div className="flex flex-col gap-2 pt-2">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePayment(campaign, 'manual')}
+                            disabled={isLoading}
+                            className="flex-1"
+                          >
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Manual Payment
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handlePayment(campaign, 'crypto')}
+                            className="flex-1"
+                          >
+                            <Wallet className="w-4 h-4 mr-2" />
+                            Pay with Crypto
+                          </Button>
+                        </div>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
-                          onClick={() => handlePayment(campaign, 'manual')}
+                          onClick={() => handlePayment(campaign, 'credits')}
                           disabled={isLoading}
-                          className="flex-1"
+                          className="w-full"
                         >
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Manual Payment
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handlePayment(campaign, 'crypto')}
-                          className="flex-1"
-                        >
-                          <Wallet className="w-4 h-4 mr-2" />
-                          Pay with Crypto
+                          <Coins className="w-4 h-4 mr-2" />
+                          Pay with CFSMS Credits ({campaign.total_cost * 10} tokens)
                         </Button>
                       </div>
                     )}
