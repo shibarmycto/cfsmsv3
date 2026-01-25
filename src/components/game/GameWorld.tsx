@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield } from 'lucide-react';
 import GameHUD from './GameHUD';
-import GameChat from './GameChat';
+import GameChatSystem from './GameChatSystem';
 import GameMenu from './GameMenu';
 import OrganizationMenu from './OrganizationMenu';
 import PlayerSprite from './PlayerSprite';
@@ -366,11 +366,12 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
         </div>
       </div>
 
-      {/* Chat */}
+      {/* Chat System */}
       {showChat && (
-        <GameChat 
+        <GameChatSystem 
           characterId={character.id} 
           characterName={character.name}
+          otherPlayers={otherPlayers.map(p => ({ id: p.id, name: p.name, is_online: p.is_online }))}
           onClose={() => setShowChat(false)} 
         />
       )}
