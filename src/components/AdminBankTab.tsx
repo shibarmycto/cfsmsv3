@@ -15,6 +15,10 @@ import {
   Pickaxe,
   DollarSign,
   Users,
+  ClipboardList,
+  Globe,
+  Bitcoin,
+  Youtube,
 } from 'lucide-react';
 
 interface Wallet {
@@ -69,11 +73,21 @@ interface LargeTransactionApproval {
   created_at: string;
 }
 
+interface MiningTaskLog {
+  id: string;
+  user_id: string;
+  wallet_id: string;
+  task_type: string;
+  task_details: Record<string, unknown>;
+  completed_at: string;
+  tokens_awarded: number;
+}
+
 const COIN_RATE = 0.10;
 
 export default function AdminBankTab() {
   const { toast } = useToast();
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'wallets' | 'withdrawals' | 'miners' | 'transactions' | 'large-approvals'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'wallets' | 'withdrawals' | 'miners' | 'transactions' | 'large-approvals' | 'task-logs'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -82,6 +96,7 @@ export default function AdminBankTab() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [largeApprovals, setLargeApprovals] = useState<LargeTransactionApproval[]>([]);
   const [walletMap, setWalletMap] = useState<Map<string, string>>(new Map());
+  const [miningTaskLogs, setMiningTaskLogs] = useState<MiningTaskLog[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -128,6 +143,14 @@ export default function AdminBankTab() {
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
     if (approvalsData) setLargeApprovals(approvalsData);
+
+    // Fetch mining task logs
+    const { data: taskLogsData } = await supabase
+      .from('mining_task_logs')
+      .select('*')
+      .order('completed_at', { ascending: false })
+      .limit(200);
+    if (taskLogsData) setMiningTaskLogs(taskLogsData as MiningTaskLog[]);
   };
 
   const handleMinerRequest = async (requestId: string, userId: string, approved: boolean) => {
@@ -233,6 +256,7 @@ export default function AdminBankTab() {
           { id: 'miners', label: 'Miners', icon: Pickaxe, count: pendingMiners },
           { id: 'transactions', label: 'Transactions', icon: ArrowUpRight },
           { id: 'large-approvals', label: '2FA Approvals', icon: Check, count: largeApprovals.length },
+          { id: 'task-logs', label: 'Task Logs', icon: ClipboardList, count: miningTaskLogs.filter(l => new Date(l.completed_at) > new Date(Date.now() - 3600000)).length },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -558,6 +582,64 @@ export default function AdminBankTab() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Mining Task Logs Tab */}
+      {activeSubTab === 'task-logs' && (
+        <div className="glass-card p-6">
+          <h3 className="font-semibold mb-4">Mining Task Logs</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Real-time log of all completed mining tasks (signup, FreeBitcoin rolls, YouTube watches).
+          </p>
+          <ScrollArea className="h-[500px]">
+            {miningTaskLogs.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No task logs yet</p>
+            ) : (
+              <div className="space-y-2">
+                {miningTaskLogs.map((log) => {
+                  const wallet = wallets.find(w => w.id === log.wallet_id);
+                  const taskIcon = {
+                    signup: <Globe className="w-4 h-4 text-primary" />,
+                    freebitcoin: <Bitcoin className="w-4 h-4 text-orange-500" />,
+                    youtube: <Youtube className="w-4 h-4 text-red-500" />,
+                  }[log.task_type] || <Pickaxe className="w-4 h-4" />;
+                  
+                  const taskName = {
+                    signup: 'Website Sign-up',
+                    freebitcoin: 'FreeBitcoin Roll',
+                    youtube: 'YouTube Watch',
+                  }[log.task_type] || log.task_type;
+
+                  return (
+                    <div key={log.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                          {taskIcon}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{taskName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            @{wallet?.username || 'Unknown'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(log.completed_at).toLocaleString()}
+                        </p>
+                        {log.tokens_awarded > 0 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">
+                            +{log.tokens_awarded} token
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </ScrollArea>

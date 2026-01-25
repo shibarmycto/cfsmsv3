@@ -446,6 +446,54 @@ export type Database = {
           },
         ]
       }
+      mining_task_logs: {
+        Row: {
+          completed_at: string
+          id: string
+          session_id: string | null
+          task_details: Json | null
+          task_type: string
+          tokens_awarded: number
+          user_id: string
+          wallet_id: string
+        }
+        Insert: {
+          completed_at?: string
+          id?: string
+          session_id?: string | null
+          task_details?: Json | null
+          task_type: string
+          tokens_awarded?: number
+          user_id: string
+          wallet_id: string
+        }
+        Update: {
+          completed_at?: string
+          id?: string
+          session_id?: string | null
+          task_details?: Json | null
+          task_type?: string
+          tokens_awarded?: number
+          user_id?: string
+          wallet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mining_task_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "mining_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mining_task_logs_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
