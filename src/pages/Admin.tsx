@@ -31,11 +31,13 @@ import {
   Hash,
   BadgeCheck,
   Youtube,
+  TrendingUp,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
 import AdminVerifyUsersTab from '@/components/AdminVerifyUsersTab';
 import AdminPromoOrdersTab from '@/components/AdminPromoOrdersTab';
+import AdminExchangeTab from '@/components/AdminExchangeTab';
 
 interface UserProfile {
   id: string;
@@ -989,6 +991,7 @@ export default function Admin() {
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
                 { id: 'bank', icon: Coins, label: 'CFSMS Bank', count: 0 },
+                { id: 'exchange', icon: TrendingUp, label: 'CF Exchange', count: 0 },
                 { id: 'forum', icon: Hash, label: 'Forum', count: 0 },
                 { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
@@ -2034,6 +2037,11 @@ export default function Admin() {
             {/* Promo Orders Tab */}
             {activeTab === 'promo-orders' && (
               <AdminPromoOrdersTab />
+            )}
+
+            {/* Exchange Tab */}
+            {activeTab === 'exchange' && (
+              <AdminExchangeTab />
             )}
           </div>
         </div>

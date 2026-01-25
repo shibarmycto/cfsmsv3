@@ -1215,6 +1215,129 @@ export type Database = {
         }
         Relationships: []
       }
+      token_holdings: {
+        Row: {
+          amount: number
+          avg_buy_price: number
+          created_at: string
+          id: string
+          token_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          avg_buy_price?: number
+          created_at?: string
+          id?: string
+          token_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          avg_buy_price?: number
+          created_at?: string
+          id?: string
+          token_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_holdings_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "user_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_news: {
+        Row: {
+          created_at: string
+          description: string | null
+          event_type: string
+          id: string
+          impact: string | null
+          metadata: Json | null
+          title: string
+          token_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          event_type: string
+          id?: string
+          impact?: string | null
+          metadata?: Json | null
+          title: string
+          token_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          id?: string
+          impact?: string | null
+          metadata?: Json | null
+          title?: string
+          token_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_news_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "user_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_transactions: {
+        Row: {
+          amount: number
+          buyer_id: string | null
+          created_at: string
+          id: string
+          price_per_token: number
+          seller_id: string | null
+          token_id: string
+          total_credits: number
+          transaction_type: string
+        }
+        Insert: {
+          amount: number
+          buyer_id?: string | null
+          created_at?: string
+          id?: string
+          price_per_token?: number
+          seller_id?: string | null
+          token_id: string
+          total_credits: number
+          transaction_type: string
+        }
+        Update: {
+          amount?: number
+          buyer_id?: string | null
+          created_at?: string
+          id?: string
+          price_per_token?: number
+          seller_id?: string | null
+          token_id?: string
+          total_credits?: number
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_transactions_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "user_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -1302,6 +1425,63 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_tokens: {
+        Row: {
+          circulating_supply: number
+          created_at: string
+          creator_id: string
+          description: string | null
+          id: string
+          is_featured: boolean | null
+          logo_emoji: string | null
+          market_cap: number
+          name: string
+          price_per_token: number
+          status: Database["public"]["Enums"]["token_status"]
+          symbol: string
+          total_sales_value: number
+          total_supply: number
+          total_volume: number
+          updated_at: string
+        }
+        Insert: {
+          circulating_supply?: number
+          created_at?: string
+          creator_id: string
+          description?: string | null
+          id?: string
+          is_featured?: boolean | null
+          logo_emoji?: string | null
+          market_cap?: number
+          name: string
+          price_per_token?: number
+          status?: Database["public"]["Enums"]["token_status"]
+          symbol: string
+          total_sales_value?: number
+          total_supply?: number
+          total_volume?: number
+          updated_at?: string
+        }
+        Update: {
+          circulating_supply?: number
+          created_at?: string
+          creator_id?: string
+          description?: string | null
+          id?: string
+          is_featured?: boolean | null
+          logo_emoji?: string | null
+          market_cap?: number
+          name?: string
+          price_per_token?: number
+          status?: Database["public"]["Enums"]["token_status"]
+          symbol?: string
+          total_sales_value?: number
+          total_supply?: number
+          total_volume?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1510,6 +1690,12 @@ export type Database = {
       app_role: "admin" | "user"
       sender_id_status: "pending" | "approved" | "rejected"
       sms_destination: "uk" | "usa"
+      token_status:
+        | "active"
+        | "established"
+        | "verified"
+        | "graduated"
+        | "suspended"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1640,6 +1826,13 @@ export const Constants = {
       app_role: ["admin", "user"],
       sender_id_status: ["pending", "approved", "rejected"],
       sms_destination: ["uk", "usa"],
+      token_status: [
+        "active",
+        "established",
+        "verified",
+        "graduated",
+        "suspended",
+      ],
     },
   },
 } as const
