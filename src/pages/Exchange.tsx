@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { 
   ArrowLeft, Coins, TrendingUp, TrendingDown, Search, 
   Plus, Zap, BarChart3, ArrowUpRight, ArrowDownRight,
-  Star, Shield, Award, Crown, RefreshCw
+  Star, Shield, Award, Crown, RefreshCw, Radio
 } from 'lucide-react';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import TokenPriceChart from '@/components/TokenPriceChart';
@@ -68,6 +68,7 @@ export default function Exchange() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isTrading, setIsTrading] = useState(false);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
 
   // Create token form
   const [tokenName, setTokenName] = useState('');
@@ -80,6 +81,48 @@ export default function Exchange() {
   const [tradeAmount, setTradeAmount] = useState('');
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
 
+  // Memoized fetch function for realtime updates
+  const fetchTokens = useCallback(async () => {
+    const { data: tokensData } = await supabase
+      .from('user_tokens')
+      .select('*')
+      .neq('status', 'suspended')
+      .order('total_volume', { ascending: false });
+
+    if (tokensData) {
+      setTokens(tokensData as Token[]);
+      // Update selected token if it exists
+      if (selectedToken) {
+        const updated = tokensData.find(t => t.id === selectedToken.id);
+        if (updated) setSelectedToken(updated as Token);
+      }
+    }
+  }, [selectedToken]);
+
+  const fetchHoldings = useCallback(async () => {
+    if (!user) return;
+    const { data: holdingsData } = await supabase
+      .from('token_holdings')
+      .select('*, token:user_tokens(*)')
+      .eq('user_id', user.id);
+
+    if (holdingsData) {
+      setHoldings(holdingsData as any);
+    }
+  }, [user]);
+
+  const fetchNews = useCallback(async () => {
+    const { data: newsData } = await supabase
+      .from('token_news')
+      .select('*, token:user_tokens(name, symbol, logo_emoji)')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (newsData) {
+      setNews(newsData as any);
+    }
+  }, []);
+
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
@@ -89,43 +132,83 @@ export default function Exchange() {
   useEffect(() => {
     if (user) {
       fetchData();
+      
+      // Set up realtime subscriptions
+      const tokensChannel = supabase
+        .channel('exchange-tokens')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_tokens',
+          },
+          (payload) => {
+            console.log('Token update:', payload);
+            fetchTokens();
+          }
+        )
+        .subscribe((status) => {
+          setIsRealtimeConnected(status === 'SUBSCRIBED');
+        });
+
+      const transactionsChannel = supabase
+        .channel('exchange-transactions')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'token_transactions',
+          },
+          (payload) => {
+            console.log('New transaction:', payload);
+            // Show toast for new trades
+            const tx = payload.new as any;
+            if (tx.transaction_type === 'buy' || tx.transaction_type === 'sell') {
+              toast.info(`New ${tx.transaction_type}: ${tx.amount.toLocaleString()} tokens traded`, {
+                duration: 3000,
+              });
+            }
+            fetchTokens();
+            fetchHoldings();
+          }
+        )
+        .subscribe();
+
+      const newsChannel = supabase
+        .channel('exchange-news')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'token_news',
+          },
+          (payload) => {
+            console.log('New market event:', payload);
+            const newsItem = payload.new as any;
+            toast.info(`📰 ${newsItem.title}`, {
+              duration: 5000,
+            });
+            fetchNews();
+          }
+        )
+        .subscribe();
+
+      // Cleanup subscriptions on unmount
+      return () => {
+        supabase.removeChannel(tokensChannel);
+        supabase.removeChannel(transactionsChannel);
+        supabase.removeChannel(newsChannel);
+      };
     }
-  }, [user]);
+  }, [user, fetchTokens, fetchHoldings, fetchNews]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch all tokens
-      const { data: tokensData } = await supabase
-        .from('user_tokens')
-        .select('*')
-        .neq('status', 'suspended')
-        .order('total_volume', { ascending: false });
-
-      if (tokensData) {
-        setTokens(tokensData as Token[]);
-      }
-
-      // Fetch user holdings
-      const { data: holdingsData } = await supabase
-        .from('token_holdings')
-        .select('*, token:user_tokens(*)')
-        .eq('user_id', user!.id);
-
-      if (holdingsData) {
-        setHoldings(holdingsData as any);
-      }
-
-      // Fetch news
-      const { data: newsData } = await supabase
-        .from('token_news')
-        .select('*, token:user_tokens(name, symbol, logo_emoji)')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (newsData) {
-        setNews(newsData as any);
-      }
+      await Promise.all([fetchTokens(), fetchHoldings(), fetchNews()]);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -274,7 +357,15 @@ export default function Exchange() {
                   <BarChart3 className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold">CF Exchange</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-bold">CF Exchange</h1>
+                    {isRealtimeConnected && (
+                      <span className="flex items-center gap-1 text-xs text-green-400">
+                        <Radio className="w-3 h-3 animate-pulse" />
+                        Live
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">Token Market</p>
                 </div>
               </div>
