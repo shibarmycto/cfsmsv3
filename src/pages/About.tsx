@@ -1,67 +1,33 @@
-import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
 import { 
-  MessageSquare, 
   Mail, 
-  Users, 
   Target, 
   Zap,
-  ArrowRight,
   Send,
   Building,
-  Handshake
+  Handshake,
+  Link2,
+  Pickaxe
 } from 'lucide-react';
+import Navbar from '@/components/landing/Navbar';
+import Footer from '@/components/landing/Footer';
 
 export default function About() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-
   return (
     <div className="min-h-screen hero-gradient">
-      {/* Navigation */}
-      <nav className="container mx-auto px-6 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-            <span className="text-2xl font-black text-gradient">CF</span>
-            <span className="text-xl font-bold text-muted-foreground">SMS</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate('/')}>
-              Home
-            </Button>
-            <a 
-              href="https://t.me/cfsmsbulkofficialchat" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <Send className="w-4 h-4 text-[#0088cc]" />
-              <span className="text-[#0088cc] font-medium text-sm hidden sm:inline">Telegram</span>
-            </a>
-            {user ? (
-              <Button variant="hero" onClick={() => navigate('/dashboard')}>
-                Dashboard
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            ) : (
-              <Button variant="hero" onClick={() => navigate('/auth')}>
-                Get Started
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero Section */}
       <section className="container mx-auto px-6 py-16 text-center">
         <div className="max-w-3xl mx-auto animate-fade-in">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-6">
+            <Link2 className="w-4 h-4" />
+            About CFSMS Network
+          </div>
           <h1 className="text-4xl md:text-5xl font-bold mb-6">
-            About <span className="text-gradient">CFSMS</span>
+            About <span className="text-gradient">CRYPTO FUND SMS</span>
           </h1>
           <p className="text-xl text-muted-foreground">
-            Your trusted partner for reliable bulk SMS solutions worldwide.
+            Your trusted partner for blockchain innovation, social finance, and AI-powered growth.
           </p>
         </div>
       </section>
@@ -73,17 +39,17 @@ export default function About() {
             {
               icon: Target,
               title: 'Our Mission',
-              description: 'To provide businesses with the most reliable and cost-effective bulk SMS platform, enabling seamless communication with their audience worldwide.',
+              description: 'To make blockchain technology accessible to everyone, combining mining, social interaction, and real crypto rewards into one seamless platform.',
             },
             {
               icon: Zap,
               title: 'What We Do',
-              description: 'We offer a powerful CloudFlare-powered SMS platform that handles thousands of messages instantly with high delivery rates and custom sender IDs.',
+              description: 'We offer a powerful blockchain network with built-in mining (active until 2028), instant transfers, AI automation, and community features.',
             },
             {
-              icon: Users,
+              icon: Pickaxe,
               title: 'Who We Serve',
-              description: 'From startups to enterprises, we help businesses of all sizes reach their customers through reliable SMS messaging across the UK and USA.',
+              description: 'From crypto newcomers to experienced traders, we help everyone participate in decentralized finance without technical barriers.',
             },
           ].map((item, index) => (
             <div 
@@ -158,7 +124,7 @@ export default function About() {
                 <div>
                   <h3 className="font-semibold text-lg mb-1">Enterprise Solutions</h3>
                   <p className="text-muted-foreground text-sm mb-2">
-                    Need custom solutions or high-volume pricing?
+                    Need custom solutions or high-volume access?
                   </p>
                   <a 
                     href="mailto:customercare@cfsmsbulk.com" 
@@ -196,43 +162,7 @@ export default function About() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="container mx-auto px-6 py-16">
-        <div className="glass-card glow-border p-8 text-center max-w-2xl mx-auto">
-          <h2 className="text-2xl font-bold mb-4">Ready to Get Started?</h2>
-          <p className="text-muted-foreground mb-6">
-            Join thousands of businesses using CFSMS for their messaging needs.
-          </p>
-          <Button variant="hero" size="lg" onClick={() => navigate('/auth')}>
-            Start Sending Now
-            <ArrowRight className="w-5 h-5" />
-          </Button>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="container mx-auto px-6 py-12 border-t border-border">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4 text-primary" />
-            </div>
-            <span className="font-semibold">CFSMS</span>
-          </div>
-          <a 
-            href="https://t.me/cfsmsbulkofficialchat" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
-            <Send className="w-5 h-5 text-[#0088cc]" />
-            <span className="text-[#0088cc] font-medium">@cfsmsbulkofficialchat</span>
-          </a>
-          <p className="text-muted-foreground text-sm">
-            © 2024 CFSMS. CloudFlare-Powered Bulk SMS Platform.
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

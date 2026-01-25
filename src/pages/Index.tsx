@@ -1,25 +1,17 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import CountrySelector from '@/components/CountrySelector';
-import { COUNTRIES, SMS_PACKAGES, formatPrice, type Country } from '@/lib/countries';
-import { 
-  MessageSquare, 
-  Zap, 
-  Shield, 
-  Globe, 
-  Upload, 
-  CreditCard,
-  ArrowRight,
-  Check,
-  Send
-} from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import Navbar from '@/components/landing/Navbar';
+import HeroSection from '@/components/landing/HeroSection';
+import BlockchainSection from '@/components/landing/BlockchainSection';
+import FeaturesGrid from '@/components/landing/FeaturesGrid';
+import AISection from '@/components/landing/AISection';
+import WhySection from '@/components/landing/WhySection';
+import CTASection from '@/components/landing/CTASection';
+import Footer from '@/components/landing/Footer';
 
 export default function Index() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [selectedCountry, setSelectedCountry] = useState<Country>(COUNTRIES[0]);
 
   const handleGetStarted = () => {
     if (user) {
@@ -29,225 +21,20 @@ export default function Index() {
     }
   };
 
+  const handleViewFeatures = () => {
+    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen hero-gradient">
-      {/* Navigation */}
-      <nav className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <span className="text-xl sm:text-2xl font-black text-gradient">CF</span>
-            <span className="text-lg sm:text-xl font-bold text-muted-foreground">SMS</span>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Button variant="ghost" onClick={() => navigate('/about')}>
-              About
-            </Button>
-            <a 
-              href="https://t.me/cfsmsbulkofficialchat" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <Send className="w-4 h-4 text-[#0088cc]" />
-              <span className="text-[#0088cc] font-medium text-sm hidden sm:inline">Telegram</span>
-            </a>
-            {user ? (
-              <Button variant="hero" onClick={() => navigate('/dashboard')}>
-                Dashboard
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            ) : (
-              <>
-                <Button variant="ghost" onClick={() => navigate('/auth')}>
-                  Login
-                </Button>
-                <Button variant="hero" onClick={() => navigate('/auth')}>
-                  Get Started
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="container mx-auto px-6 py-20 text-center">
-        <div className="max-w-4xl mx-auto animate-fade-in">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-8">
-            <Zap className="w-4 h-4" />
-            CloudFlare-Powered SMS Platform
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-            Bulk SMS Made
-            <span className="text-gradient"> Simple</span>
-          </h1>
-          
-          <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Send thousands of messages instantly with our powerful bulk SMS platform. 
-            Easy uploads, custom sender IDs, and competitive pricing.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button variant="hero" size="xl" onClick={handleGetStarted}>
-              Start Sending Now
-              <ArrowRight className="w-5 h-5" />
-            </Button>
-            <Button variant="outline" size="xl" onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}>
-              View Pricing
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="container mx-auto px-6 py-20">
-        <div className="grid md:grid-cols-3 gap-8">
-          {[
-            {
-              icon: Upload,
-              title: 'Easy Upload',
-              description: 'Upload CSV or Excel files with your contacts. Our system handles the rest.',
-            },
-            {
-              icon: Shield,
-              title: 'Custom Sender ID',
-              description: 'Request your own sender ID for brand recognition. Approval within 24 hours.',
-            },
-            {
-              icon: Globe,
-              title: 'Global Reach',
-              description: 'Send to UK and USA numbers with dedicated routes and best delivery rates.',
-            },
-          ].map((feature, index) => (
-            <div 
-              key={feature.title} 
-              className="stat-card animate-fade-in"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-                <feature.icon className="w-6 h-6 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-              <p className="text-muted-foreground">{feature.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="container mx-auto px-6 py-20">
-        <div className="text-center mb-8">
-          <h2 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h2>
-          <p className="text-muted-foreground mb-6">Same great rates worldwide. Select your country to see prices in your currency.</p>
-          
-          <div className="flex justify-center">
-            <CountrySelector 
-              selectedCountry={selectedCountry} 
-              onSelect={setSelectedCountry} 
-            />
-          </div>
-        </div>
-
-        <div className="max-w-3xl mx-auto">
-          <div className="glass-card glow-border p-8 relative overflow-hidden animate-fade-in">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-            <div className="relative">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-2xl">
-                  {selectedCountry.flag}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold">{selectedCountry.name} SMS</h3>
-                  <p className="text-sm text-muted-foreground">Prices in {selectedCountry.currency}</p>
-                </div>
-              </div>
-              
-              <div className="mb-6">
-                <span className="text-5xl font-bold">{formatPrice(15, selectedCountry)}</span>
-                <span className="text-muted-foreground"> / 100 SMS</span>
-              </div>
-              
-              <div className="space-y-2 mb-6 text-sm">
-                {SMS_PACKAGES.map((pkg, index) => (
-                  <div 
-                    key={pkg.credits}
-                    className={`flex justify-between py-2 ${
-                      pkg.popular 
-                        ? 'bg-primary/10 rounded px-2 -mx-2' 
-                        : index < SMS_PACKAGES.length - 1 ? 'border-b border-border' : ''
-                    }`}
-                  >
-                    <span className={pkg.popular ? 'font-medium' : 'text-muted-foreground'}>
-                      {pkg.credits.toLocaleString()} SMS
-                      {pkg.popular && <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">Popular</span>}
-                    </span>
-                    <span className={pkg.popular ? 'font-bold text-primary' : 'font-semibold'}>
-                      {formatPrice(pkg.basePrice, selectedCountry)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              
-              <ul className="space-y-2 mb-6">
-                {['High delivery rates worldwide', 'Custom sender ID', 'Bulk upload support', 'Real-time delivery reports'].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-muted-foreground text-sm">
-                    <Check className="w-4 h-4 text-primary" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              
-              <Button variant="hero" className="w-full" onClick={handleGetStarted}>
-                Get Started
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Payment Methods */}
-      <section className="container mx-auto px-6 py-20">
-        <div className="glass-card p-8 text-center">
-          <CreditCard className="w-12 h-12 text-primary mx-auto mb-4" />
-          <h3 className="text-2xl font-bold mb-4">Flexible Payment Options</h3>
-          <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-            Pay with cryptocurrency (Bitcoin, Ethereum, USDT) or PayPal. 
-            Credits are added instantly after payment confirmation.
-          </p>
-          <div className="flex items-center justify-center gap-6 text-muted-foreground">
-            <span className="px-4 py-2 rounded-lg bg-secondary">₿ Bitcoin</span>
-            <span className="px-4 py-2 rounded-lg bg-secondary">Ξ Ethereum</span>
-            <span className="px-4 py-2 rounded-lg bg-secondary">💲 USDT</span>
-            <span className="px-4 py-2 rounded-lg bg-secondary">PayPal</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="container mx-auto px-6 py-12 border-t border-border">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4 text-primary" />
-            </div>
-            <span className="font-semibold">CFSMS</span>
-          </div>
-          <a 
-            href="https://t.me/cfsmsbulkofficialchat" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
-            <Send className="w-5 h-5 text-[#0088cc]" />
-            <span className="text-[#0088cc] font-medium">@cfsmsbulkofficialchat</span>
-          </a>
-          <p className="text-muted-foreground text-sm">
-            © 2024 CFSMS. CloudFlare-Powered Bulk SMS Platform.
-          </p>
-        </div>
-      </footer>
+      <Navbar />
+      <HeroSection onGetStarted={handleGetStarted} onViewPricing={handleViewFeatures} />
+      <BlockchainSection />
+      <FeaturesGrid />
+      <AISection />
+      <WhySection />
+      <CTASection onGetStarted={handleGetStarted} />
+      <Footer />
     </div>
   );
 }
