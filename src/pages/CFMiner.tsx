@@ -57,6 +57,8 @@ export default function CFMiner() {
   const { toast } = useToast();
   const youtubeRef = useRef<HTMLIFrameElement>(null);
   const videoStartTimeRef = useRef<number | null>(null);
+  const freeBitcoinStartTimeRef = useRef<number | null>(null);
+  const signupStartTimeRef = useRef<number | null>(null);
 
   const [isApproved, setIsApproved] = useState<boolean | null>(null);
   const [session, setSession] = useState<MiningSession | null>(null);
@@ -72,7 +74,9 @@ export default function CFMiner() {
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [youtubeWatching, setYoutubeWatching] = useState(false);
   const [freeBitcoinOpen, setFreeBitcoinOpen] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
   const [countdown, setCountdown] = useState<{ freebitcoin: number; youtube: number }>({ freebitcoin: 0, youtube: 0 });
+  const [elapsedTime, setElapsedTime] = useState<{ youtube: number; freebitcoin: number; signup: number }>({ youtube: 0, freebitcoin: 0, signup: 0 });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -88,7 +92,7 @@ export default function CFMiner() {
     }
   }, [user]);
 
-  // Countdown timer for cooldowns
+  // Countdown timer for cooldowns and elapsed time tracker
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -99,6 +103,13 @@ export default function CFMiner() {
         youtube: taskStatus.youtube.canDoAt
           ? Math.max(0, Math.floor((new Date(taskStatus.youtube.canDoAt).getTime() - now) / 1000))
           : 0,
+      });
+      
+      // Update elapsed time for active tasks
+      setElapsedTime({
+        youtube: videoStartTimeRef.current ? Math.floor((now - videoStartTimeRef.current) / 1000) : 0,
+        freebitcoin: freeBitcoinStartTimeRef.current ? Math.floor((now - freeBitcoinStartTimeRef.current) / 1000) : 0,
+        signup: signupStartTimeRef.current ? Math.floor((now - signupStartTimeRef.current) / 1000) : 0,
       });
     }, 1000);
     return () => clearInterval(interval);
@@ -149,12 +160,16 @@ export default function CFMiner() {
     }
   };
 
-  const completeTask = async (taskType: 'signup' | 'freebitcoin' | 'youtube', details?: object) => {
+  const completeTask = async (taskType: 'signup' | 'freebitcoin' | 'youtube', details?: object, startedAt?: number) => {
     setIsSubmitting(taskType);
     
     try {
       const { data, error } = await supabase.functions.invoke('cfminer-complete-task', {
-        body: { taskType, details }
+        body: { 
+          taskType, 
+          details,
+          startedAt: startedAt ? new Date(startedAt).toISOString() : null
+        }
       });
 
       if (error) throw error;
@@ -176,11 +191,20 @@ export default function CFMiner() {
         setSession(data.session);
         await fetchTaskStatus();
       } else {
-        toast({
-          title: 'Error',
-          description: data.error,
-          variant: 'destructive'
-        });
+        // Check if rejected due to timing
+        if (data.rejected && data.reason === 'too_fast') {
+          toast({
+            title: '⏱️ Too Fast!',
+            description: data.error,
+            variant: 'destructive'
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: data.error,
+            variant: 'destructive'
+          });
+        }
       }
     } catch (error) {
       console.error('Error completing task:', error);
@@ -194,19 +218,68 @@ export default function CFMiner() {
     setIsSubmitting(null);
   };
 
+  const handleSignupStart = () => {
+    setSignupOpen(true);
+    signupStartTimeRef.current = Date.now();
+    // Open the signup page
+    window.open('https://cfsmsv3.lovable.app/auth', '_blank', 'width=800,height=600');
+  };
+
   const handleSignupComplete = () => {
-    completeTask('signup', { method: 'website_visit' });
+    if (!signupStartTimeRef.current) {
+      toast({
+        title: 'Start Task First',
+        description: 'Please click the button to start the task before completing it.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    const elapsed = (Date.now() - signupStartTimeRef.current) / 1000;
+    if (elapsed < 5) {
+      toast({
+        title: '⏱️ Too Fast!',
+        description: `Please spend at least 5 seconds on the sign-up page. You only spent ${Math.floor(elapsed)} seconds.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    completeTask('signup', { method: 'website_visit' }, signupStartTimeRef.current);
+    setSignupOpen(false);
+    signupStartTimeRef.current = null;
   };
 
   const handleFreeBitcoinRoll = () => {
     setFreeBitcoinOpen(true);
+    freeBitcoinStartTimeRef.current = Date.now();
     // Open in new window since iframe won't work due to CORS
     window.open('https://freebitco.in/?r=11266035', '_blank', 'width=1000,height=700');
   };
 
   const confirmFreeBitcoinRoll = () => {
-    completeTask('freebitcoin', { referral: '11266035' });
+    if (!freeBitcoinStartTimeRef.current) {
+      toast({
+        title: 'Start Task First',
+        description: 'Please click the button to open FreeBitcoin before completing.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    const elapsed = (Date.now() - freeBitcoinStartTimeRef.current) / 1000;
+    if (elapsed < 15) {
+      toast({
+        title: '⏱️ Too Fast!',
+        description: `FreeBitcoin roll takes at least 15 seconds (loading, captcha, roll). You only spent ${Math.floor(elapsed)} seconds. Please complete the roll properly.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    completeTask('freebitcoin', { referral: '11266035' }, freeBitcoinStartTimeRef.current);
     setFreeBitcoinOpen(false);
+    freeBitcoinStartTimeRef.current = null;
   };
 
   const handleYoutubeWatch = () => {
@@ -215,16 +288,26 @@ export default function CFMiner() {
   };
 
   const handleYoutubeComplete = () => {
-    const watchTime = videoStartTimeRef.current ? (Date.now() - videoStartTimeRef.current) / 1000 : 0;
-    if (watchTime < 30) {
+    if (!videoStartTimeRef.current) {
       toast({
-        title: 'Watch Longer',
-        description: 'Please watch at least 30 seconds of the video',
+        title: 'Start Task First',
+        description: 'Please click the button to start watching before completing.',
         variant: 'destructive'
       });
       return;
     }
-    completeTask('youtube', { videoId: 'avFU7vFfdvY', watchTime: Math.floor(watchTime) });
+    
+    const watchTime = (Date.now() - videoStartTimeRef.current) / 1000;
+    if (watchTime < 30) {
+      toast({
+        title: '⏱️ Watch Longer!',
+        description: `Please watch at least 30 seconds of the video. You only watched ${Math.floor(watchTime)} seconds.`,
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    completeTask('youtube', { videoId: 'avFU7vFfdvY', watchTime: Math.floor(watchTime) }, videoStartTimeRef.current);
     setYoutubeWatching(false);
     videoStartTimeRef.current = null;
   };
@@ -402,13 +485,49 @@ export default function CFMiner() {
                     <CheckCircle className="w-4 h-4 text-green-500" />
                     You've completed this task
                   </p>
+                ) : signupOpen ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-primary animate-pulse" />
+                        <span className="text-sm font-medium">Time elapsed:</span>
+                      </div>
+                      <span className={`font-mono text-lg font-bold ${elapsedTime.signup >= 5 ? 'text-green-500' : 'text-orange-500'}`}>
+                        {elapsedTime.signup}s
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      {elapsedTime.signup < 5 
+                        ? `⏱️ Minimum 5 seconds required (${5 - elapsedTime.signup}s remaining)`
+                        : '✅ Ready to complete!'}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={handleSignupComplete}
+                        disabled={isSubmitting === 'signup' || elapsedTime.signup < 5}
+                        className="flex-1"
+                      >
+                        {isSubmitting === 'signup' ? 'Verifying...' : 'Complete Sign-up Task'}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          setSignupOpen(false);
+                          signupStartTimeRef.current = null;
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <Button 
-                    onClick={handleSignupComplete}
+                    onClick={handleSignupStart}
                     disabled={isSubmitting === 'signup'}
                     className="w-full"
                   >
-                    {isSubmitting === 'signup' ? 'Processing...' : 'Complete Sign-up Task'}
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Start Sign-up Task
                   </Button>
                 )}
               </CardContent>
@@ -444,20 +563,37 @@ export default function CFMiner() {
               <CardContent>
                 {freeBitcoinOpen ? (
                   <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-orange-500 animate-pulse" />
+                        <span className="text-sm font-medium">Time elapsed:</span>
+                      </div>
+                      <span className={`font-mono text-lg font-bold ${elapsedTime.freebitcoin >= 15 ? 'text-green-500' : 'text-orange-500'}`}>
+                        {elapsedTime.freebitcoin}s
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      {elapsedTime.freebitcoin < 15 
+                        ? `⏱️ Minimum 15 seconds required (${15 - elapsedTime.freebitcoin}s remaining)`
+                        : '✅ Ready to complete!'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       Complete your roll in the opened window, then confirm below.
                     </p>
                     <div className="flex gap-2">
                       <Button 
                         onClick={confirmFreeBitcoinRoll}
-                        disabled={isSubmitting === 'freebitcoin'}
+                        disabled={isSubmitting === 'freebitcoin' || elapsedTime.freebitcoin < 15}
                         className="flex-1"
                       >
                         {isSubmitting === 'freebitcoin' ? 'Verifying...' : 'Confirm Roll Completed'}
                       </Button>
                       <Button 
                         variant="outline"
-                        onClick={() => setFreeBitcoinOpen(false)}
+                        onClick={() => {
+                          setFreeBitcoinOpen(false);
+                          freeBitcoinStartTimeRef.current = null;
+                        }}
                       >
                         Cancel
                       </Button>
@@ -511,6 +647,18 @@ export default function CFMiner() {
               <CardContent>
                 {youtubeWatching ? (
                   <div className="space-y-4">
+                    {/* Elapsed time display */}
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-red-500 animate-pulse" />
+                        <span className="text-sm font-medium">Watch time:</span>
+                      </div>
+                      <span className={`font-mono text-lg font-bold ${elapsedTime.youtube >= 30 ? 'text-green-500' : 'text-red-500'}`}>
+                        {elapsedTime.youtube}s / 30s
+                      </span>
+                    </div>
+                    <Progress value={(elapsedTime.youtube / 30) * 100} className="h-2" />
+                    
                     <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
                       <iframe
                         ref={youtubeRef}
@@ -524,15 +672,21 @@ export default function CFMiner() {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground text-center">
-                      Watch for at least 30 seconds to earn. Available once per hour.
+                      {elapsedTime.youtube < 30 
+                        ? `⏱️ Keep watching! ${30 - elapsedTime.youtube} seconds remaining...`
+                        : '✅ You can now complete the task!'}
                     </p>
                     <div className="flex gap-2">
                       <Button 
                         onClick={handleYoutubeComplete}
-                        disabled={isSubmitting === 'youtube'}
+                        disabled={isSubmitting === 'youtube' || elapsedTime.youtube < 30}
                         className="flex-1"
                       >
-                        {isSubmitting === 'youtube' ? 'Verifying...' : 'Complete - I Watched the Video'}
+                        {isSubmitting === 'youtube' 
+                          ? 'Verifying...' 
+                          : elapsedTime.youtube < 30 
+                            ? `Watch ${30 - elapsedTime.youtube}s more` 
+                            : 'Complete - I Watched the Video'}
                       </Button>
                       <Button 
                         variant="outline"
