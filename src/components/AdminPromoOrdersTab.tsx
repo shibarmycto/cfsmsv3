@@ -21,6 +21,7 @@ import {
   Coins,
   Wallet,
   CreditCard,
+  Eye,
 } from 'lucide-react';
 
 interface PromoOrder {
@@ -40,6 +41,7 @@ interface PromoOrder {
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
+  view_count: number;
 }
 
 interface UserProfile {
@@ -402,6 +404,10 @@ export default function AdminPromoOrdersTab() {
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span>{getUserEmail(order.user_id)}</span>
+                    <span className="flex items-center gap-1 text-primary">
+                      <Eye className="w-4 h-4" />
+                      {order.view_count.toLocaleString()} views
+                    </span>
                     {order.ends_at && (
                       <span>Ends: {new Date(order.ends_at).toLocaleDateString()}</span>
                     )}

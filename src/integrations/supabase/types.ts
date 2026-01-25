@@ -1059,6 +1059,7 @@ export type Database = {
           updated_at: string
           user_id: string
           video_title: string | null
+          view_count: number
           youtube_url: string
         }
         Insert: {
@@ -1078,6 +1079,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           video_title?: string | null
+          view_count?: number
           youtube_url: string
         }
         Update: {
@@ -1097,6 +1099,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           video_title?: string | null
+          view_count?: number
           youtube_url?: string
         }
         Relationships: []
