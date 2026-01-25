@@ -20,6 +20,7 @@ import {
   Globe,
   Bitcoin,
   Youtube,
+  BadgeCheck,
 } from 'lucide-react';
 
 interface Wallet {
@@ -238,6 +239,25 @@ export default function AdminBankTab() {
     fetchData();
   };
 
+  const toggleVerification = async (walletId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('wallets')
+      .update({ is_verified: !currentStatus })
+      .eq('id', walletId);
+
+    if (error) {
+      toast({ title: 'Failed to update verification', variant: 'destructive' });
+    } else {
+      toast({ 
+        title: currentStatus ? 'Verification removed' : 'User verified!',
+        description: currentStatus 
+          ? 'Blue tick badge has been removed' 
+          : 'User now has the verified CF badge'
+      });
+      fetchData();
+    }
+  };
+
   const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
   const totalMined = wallets.reduce((sum, w) => sum + w.total_mined, 0);
   const pendingWithdrawals = withdrawalRequests.filter(w => w.status === 'pending').length;
@@ -403,12 +423,35 @@ export default function AdminBankTab() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xl font-bold">{wallet.balance.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">≈ ${(wallet.balance * COIN_RATE).toFixed(2)}</p>
-                    {wallet.is_miner_approved && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">Miner</span>
-                    )}
+                  <div className="flex items-center gap-4">
+                    <Button
+                      size="sm"
+                      variant={wallet.is_verified ? "outline" : "default"}
+                      onClick={() => toggleVerification(wallet.id, wallet.is_verified)}
+                      className={wallet.is_verified 
+                        ? "text-destructive border-destructive hover:bg-destructive/10" 
+                        : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700"
+                      }
+                    >
+                      {wallet.is_verified ? (
+                        <>
+                          <X className="w-4 h-4 mr-1" />
+                          Unverify
+                        </>
+                      ) : (
+                        <>
+                          <BadgeCheck className="w-4 h-4 mr-1" />
+                          Verify
+                        </>
+                      )}
+                    </Button>
+                    <div className="text-right">
+                      <p className="text-xl font-bold">{wallet.balance.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">≈ ${(wallet.balance * COIN_RATE).toFixed(2)}</p>
+                      {wallet.is_miner_approved && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">Miner</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
