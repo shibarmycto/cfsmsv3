@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Conversion: 10 tokens = £1 (so £25 = 250 tokens per day)
-const TOKENS_PER_POUND = 10;
+// Conversion: 1 token = £1 (so £25 = 25 tokens per day)
+const TOKENS_PER_POUND = 1;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

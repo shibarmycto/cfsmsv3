@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Rate: 1 SMS credit = 10 CFSMS tokens (same as reverse)
-const TOKENS_PER_CREDIT = 10;
+// Rate: 1 SMS credit = 1 CFSMS token (same price)
+const TOKENS_PER_CREDIT = 1;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
