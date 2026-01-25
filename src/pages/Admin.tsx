@@ -28,8 +28,10 @@ import {
   Play,
   Send,
   Coins,
+  Hash,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
+import AdminForumTab from '@/components/AdminForumTab';
 
 interface UserProfile {
   id: string;
@@ -982,6 +984,7 @@ export default function Admin() {
                 { id: 'users', icon: Users, label: 'All Users', count: approvedUsers.length },
                 { id: 'sender-ids', icon: MessageSquare, label: 'Sender ID Requests', count: senderRequests.length },
                 { id: 'bank', icon: Coins, label: 'CFSMS Bank', count: 0 },
+                { id: 'forum', icon: Hash, label: 'Forum', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2010,6 +2013,11 @@ export default function Admin() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Forum Tab */}
+            {activeTab === 'forum' && user && (
+              <AdminForumTab userId={user.id} />
             )}
           </div>
         </div>
