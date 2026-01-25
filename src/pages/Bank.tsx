@@ -25,7 +25,10 @@ import {
   Clock,
   Coins,
   LogOut,
-  Shield
+  Shield,
+  Ban,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 
 interface WalletData {
@@ -122,6 +125,23 @@ export default function Bank() {
   const [exchangeAmount, setExchangeAmount] = useState('');
   const [isExchanging, setIsExchanging] = useState(false);
   const [smsCredits, setSmsCredits] = useState(0);
+  
+  // SMS to Bank transfer
+  const [smsToBankAmount, setSmsToBankAmount] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+  
+  // Blocked users
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; blocked_id: string }[]>([]);
+  
+  // Search results with status
+  const [searchResultsWithStatus, setSearchResultsWithStatus] = useState<{
+    id: string;
+    username: string;
+    user_id: string;
+    isFriend: boolean;
+    isPending: boolean;
+    isBlocked: boolean;
+  }[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -143,6 +163,7 @@ export default function Bank() {
       fetchMinerRequest();
       fetchUnreadCount();
       fetchSmsCredits();
+      fetchBlockedUsers();
     }
   }, [wallet]);
 
@@ -361,17 +382,53 @@ export default function Bank() {
       .eq('sender_id', friendUserId);
   };
 
+  const fetchBlockedUsers = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from('blocked_users')
+      .select('id, blocked_id')
+      .eq('blocker_id', user.id);
+    
+    if (data) setBlockedUsers(data);
+  };
+
   const searchUsers = async () => {
-    if (!searchUsername.trim() || !wallet) return;
+    if (!searchUsername.trim() || !wallet || !user) return;
     
     const { data } = await supabase
       .from('wallets')
       .select('id, username, user_id')
       .ilike('username', `%${searchUsername}%`)
-      .neq('user_id', user?.id)
-      .limit(10);
+      .neq('user_id', user.id)
+      .limit(20);
     
-    if (data) setSearchResults(data);
+    if (data) {
+      // Get existing friends list
+      const friendUserIds = friends.map(f => 
+        f.user_id === user.id ? f.friend_id : f.user_id
+      );
+      
+      // Get pending requests we sent
+      const { data: sentRequests } = await supabase
+        .from('friend_requests')
+        .select('to_user_id')
+        .eq('from_user_id', user.id)
+        .eq('status', 'pending');
+      
+      const pendingUserIds = sentRequests?.map(r => r.to_user_id) || [];
+      const blockedUserIds = blockedUsers.map(b => b.blocked_id);
+      
+      const enrichedResults = data.map(result => ({
+        ...result,
+        isFriend: friendUserIds.includes(result.user_id),
+        isPending: pendingUserIds.includes(result.user_id),
+        isBlocked: blockedUserIds.includes(result.user_id),
+      }));
+      
+      setSearchResults(data);
+      setSearchResultsWithStatus(enrichedResults);
+    }
   };
 
   const sendFriendRequest = async (toUserId: string) => {
@@ -385,9 +442,91 @@ export default function Bank() {
       toast({ title: 'Error', description: 'Could not send friend request', variant: 'destructive' });
     } else {
       toast({ title: 'Success', description: 'Friend request sent!' });
-      setSearchResults([]);
-      setSearchUsername('');
+      searchUsers(); // Refresh search results
     }
+  };
+
+  const blockUser = async (userId: string, username: string) => {
+    if (!user) return;
+    
+    const { error } = await supabase
+      .from('blocked_users')
+      .insert({ blocker_id: user.id, blocked_id: userId });
+    
+    if (error) {
+      toast({ title: 'Error', description: 'Could not block user', variant: 'destructive' });
+    } else {
+      toast({ title: 'Blocked', description: `${username} has been blocked` });
+      fetchBlockedUsers();
+      searchUsers();
+    }
+  };
+
+  const unblockUser = async (blockId: string, username: string) => {
+    if (!user) return;
+    
+    const { error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('id', blockId);
+    
+    if (error) {
+      toast({ title: 'Error', description: 'Could not unblock user', variant: 'destructive' });
+    } else {
+      toast({ title: 'Unblocked', description: `${username} has been unblocked` });
+      fetchBlockedUsers();
+      searchUsers();
+    }
+  };
+
+  const removeFriend = async (friendUserId: string, username: string) => {
+    if (!user) return;
+    
+    // Remove both friendship records
+    await supabase
+      .from('friends')
+      .delete()
+      .or(`and(user_id.eq.${user.id},friend_id.eq.${friendUserId}),and(user_id.eq.${friendUserId},friend_id.eq.${user.id})`);
+    
+    toast({ title: 'Removed', description: `${username} removed from friends` });
+    fetchFriends();
+    searchUsers();
+  };
+
+  const transferSmsToBank = async () => {
+    if (!wallet || !smsToBankAmount) return;
+    
+    const credits = parseInt(smsToBankAmount);
+    if (isNaN(credits) || credits <= 0) {
+      toast({ title: 'Error', description: 'Invalid amount', variant: 'destructive' });
+      return;
+    }
+    
+    if (credits > smsCredits) {
+      toast({ title: 'Error', description: 'Insufficient SMS credits', variant: 'destructive' });
+      return;
+    }
+    
+    setIsTransferring(true);
+    
+    const { data, error } = await supabase.functions.invoke('sms-to-bank-transfer', {
+      body: { creditsToTransfer: credits }
+    });
+    
+    if (error || data?.error) {
+      toast({ title: 'Error', description: data?.error || 'Transfer failed', variant: 'destructive' });
+    } else {
+      toast({ 
+        title: 'Transfer Successful!', 
+        description: `Transferred ${data.creditsTransferred} SMS credits to ${data.tokensAdded} CFSMS tokens` 
+      });
+      setSmsToBankAmount('');
+      checkWallet();
+      fetchSmsCredits();
+      fetchTransactions();
+    }
+    
+    setIsTransferring(false);
   };
 
   const handleFriendRequest = async (requestId: string, accept: boolean, fromUserId: string) => {
@@ -863,6 +1002,59 @@ export default function Bank() {
               </CardContent>
             </Card>
 
+            {/* SMS to Bank Transfer Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5" />
+                  Transfer SMS Credits to Bank
+                </CardTitle>
+                <CardDescription>
+                  Convert your SMS credits to CFSMS tokens. Rate: 1 SMS credit = 10 tokens
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-lg bg-muted/50 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Your SMS Credits</p>
+                    <p className="text-2xl font-bold">{smsCredits}</p>
+                  </div>
+                  <div className="text-center">
+                    <RefreshCw className="w-6 h-6 text-primary mx-auto" />
+                    <p className="text-xs text-muted-foreground mt-1">1:10 rate</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Token Balance</p>
+                    <p className="text-2xl font-bold">{wallet?.balance.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">SMS Credits to Transfer</label>
+                    <Input
+                      type="number"
+                      value={smsToBankAmount}
+                      onChange={(e) => setSmsToBankAmount(e.target.value)}
+                      placeholder="1"
+                      min="1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      = {parseInt(smsToBankAmount || '0') * 10} CFSMS tokens
+                    </p>
+                  </div>
+                  <div className="flex items-end">
+                    <Button 
+                      onClick={transferSmsToBank} 
+                      disabled={isTransferring || !smsToBankAmount || parseInt(smsToBankAmount) < 1 || parseInt(smsToBankAmount) > smsCredits}
+                      className="w-full"
+                    >
+                      {isTransferring ? 'Transferring...' : 'Transfer to Bank'}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Token Exchange Section */}
             <Card>
               <CardHeader>
@@ -1004,15 +1196,58 @@ export default function Bank() {
                     <Search className="w-4 h-4" />
                   </Button>
                 </div>
-                {searchResults.length > 0 && (
+                {searchResultsWithStatus.length > 0 && (
                   <div className="space-y-2">
-                    {searchResults.map((result) => (
+                    {searchResultsWithStatus.map((result) => (
                       <div key={result.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <p className="font-medium">{result.username}</p>
-                        <Button size="sm" onClick={() => sendFriendRequest(result.user_id)}>
-                          <UserPlus className="w-4 h-4 mr-2" />
-                          Add
-                        </Button>
+                        <div>
+                          <p className="font-medium">{result.username}</p>
+                          {result.isFriend && (
+                            <Badge variant="secondary" className="text-xs">Friend</Badge>
+                          )}
+                          {result.isPending && (
+                            <Badge variant="outline" className="text-xs">Pending</Badge>
+                          )}
+                          {result.isBlocked && (
+                            <Badge variant="destructive" className="text-xs">Blocked</Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          {result.isBlocked ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                const block = blockedUsers.find(b => b.blocked_id === result.user_id);
+                                if (block) unblockUser(block.id, result.username);
+                              }}
+                            >
+                              Unblock
+                            </Button>
+                          ) : (
+                            <>
+                              {!result.isFriend && !result.isPending && (
+                                <Button size="sm" onClick={() => sendFriendRequest(result.user_id)}>
+                                  <UserPlus className="w-4 h-4" />
+                                </Button>
+                              )}
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => setSendRecipient(result.username)}
+                              >
+                                <Send className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="destructive"
+                                onClick={() => blockUser(result.user_id, result.username)}
+                              >
+                                <Ban className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1020,10 +1255,42 @@ export default function Bank() {
               </CardContent>
             </Card>
 
+            {/* Blocked Users */}
+            {blockedUsers.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Ban className="w-5 h-5" />
+                    Blocked Users
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {blockedUsers.map((block) => {
+                      const blockedWallet = searchResults.find(r => r.user_id === block.blocked_id);
+                      return (
+                        <div key={block.id} className="flex items-center justify-between p-3 rounded-lg bg-destructive/10">
+                          <p className="font-medium">{blockedWallet?.username || 'Unknown user'}</p>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => unblockUser(block.id, blockedWallet?.username || 'user')}
+                          >
+                            Unblock
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Friends List */}
             <Card>
               <CardHeader>
                 <CardTitle>Your Friends</CardTitle>
+                <CardDescription>Friends must approve requests before they can interact</CardDescription>
               </CardHeader>
               <CardContent>
                 {friends.length === 0 ? (
@@ -1049,6 +1316,13 @@ export default function Bank() {
                               onClick={() => setSendRecipient(friendData?.username || '')}
                             >
                               <Send className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => friendData && removeFriend(friendData.user_id, friendData.username)}
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
