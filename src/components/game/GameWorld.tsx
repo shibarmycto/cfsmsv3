@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { X, Users, Home, Briefcase, MessageSquare, DollarSign } from 'lucide-react';
+import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield } from 'lucide-react';
 import GameHUD from './GameHUD';
 import GameChat from './GameChat';
 import GameMenu from './GameMenu';
+import OrganizationMenu from './OrganizationMenu';
 import PlayerSprite from './PlayerSprite';
 
 interface GameCharacter {
@@ -56,6 +57,7 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
   const [showChat, setShowChat] = useState(false);
   const [showMenu, setShowMenu] = useState<string | null>(null);
+  const [showOrgMenu, setShowOrgMenu] = useState(false);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   
   const gameLoopRef = useRef<number>();
@@ -292,12 +294,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
       <GameHUD character={character} />
 
       {/* Action Buttons */}
-      <div className="fixed bottom-4 left-4 flex gap-2">
+      <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap">
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('jobs')}>
           <Briefcase className="w-4 h-4 mr-1" /> Jobs
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('players')}>
           <Users className="w-4 h-4 mr-1" /> Players
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setShowOrgMenu(true)}>
+          <Shield className="w-4 h-4 mr-1" /> Org
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setShowChat(true)}>
           <MessageSquare className="w-4 h-4 mr-1" /> Chat
@@ -378,6 +383,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           properties={properties}
           otherPlayers={otherPlayers}
           onClose={() => setShowMenu(null)}
+          onCharacterUpdate={refreshCharacter}
+        />
+      )}
+
+      {/* Organization Menu */}
+      {showOrgMenu && (
+        <OrganizationMenu
+          character={character}
+          onClose={() => setShowOrgMenu(false)}
           onCharacterUpdate={refreshCharacter}
         />
       )}
