@@ -449,6 +449,9 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          daily_sms_limit: number | null
+          daily_sms_reset_at: string | null
+          daily_sms_used: number
           default_sender_id: string | null
           email: string
           full_name: string | null
@@ -461,6 +464,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          daily_sms_limit?: number | null
+          daily_sms_reset_at?: string | null
+          daily_sms_used?: number
           default_sender_id?: string | null
           email: string
           full_name?: string | null
@@ -473,6 +479,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          daily_sms_limit?: number | null
+          daily_sms_reset_at?: string | null
+          daily_sms_used?: number
           default_sender_id?: string | null
           email?: string
           full_name?: string | null

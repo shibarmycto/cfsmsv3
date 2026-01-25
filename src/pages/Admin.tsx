@@ -41,6 +41,8 @@ interface UserProfile {
   default_sender_id: string;
   is_approved: boolean;
   created_at: string;
+  daily_sms_limit: number | null;
+  daily_sms_used: number;
 }
 
 interface SenderIdRequest {
@@ -149,6 +151,7 @@ export default function Admin() {
   const [aiCampaigns, setAiCampaigns] = useState<AICampaign[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creditAmounts, setCreditAmounts] = useState<{ [key: string]: string }>({});
+  const [dailyLimits, setDailyLimits] = useState<{ [key: string]: string }>({});
   const [startingCampaign, setStartingCampaign] = useState<string | null>(null);
   const [selectedCampaignLogs, setSelectedCampaignLogs] = useState<string | null>(null);
   const [campaignLogs, setCampaignLogs] = useState<AICampaignLog[]>([]);
@@ -767,7 +770,29 @@ export default function Admin() {
     }
   };
 
-  const handleSenderRequest = async (requestId: string, approved: boolean, userId: string, senderId: string) => {
+  const handleSetDailyLimit = async (userId: string) => {
+    const limitStr = dailyLimits[userId];
+    const limit = limitStr === '' || limitStr === undefined ? null : parseInt(limitStr);
+    
+    if (limitStr !== '' && limitStr !== undefined && (isNaN(limit!) || limit! < 0)) {
+      toast({ title: 'Invalid Limit', description: 'Please enter a valid number or leave empty for unlimited.', variant: 'destructive' });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ daily_sms_limit: limit, daily_sms_used: 0 })
+      .eq('user_id', userId);
+
+    if (error) {
+      toast({ title: 'Update Failed', description: 'Could not set daily limit.', variant: 'destructive' });
+    } else {
+      toast({ title: 'Daily Limit Set', description: limit ? `Set to ${limit} SMS/day.` : 'Removed daily limit.' });
+      fetchUsers();
+      setDailyLimits({ ...dailyLimits, [userId]: '' });
+    }
+  };
+
     const { error } = await supabase
       .from('sender_id_requests')
       .update({
@@ -1486,6 +1511,22 @@ export default function Admin() {
                           >
                             Set
                           </Button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-muted-foreground">Daily Limit:</span>
+                          <Input
+                            type="number"
+                            placeholder={u.daily_sms_limit ? String(u.daily_sms_limit) : '∞'}
+                            value={dailyLimits[u.user_id] || ''}
+                            onChange={(e) => setDailyLimits({ ...dailyLimits, [u.user_id]: e.target.value })}
+                            className="w-20 bg-secondary/50 h-8 text-sm"
+                          />
+                          <Button size="sm" variant="outline" onClick={() => handleSetDailyLimit(u.user_id)}>
+                            Set
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            Used: {u.daily_sms_used || 0}
+                          </span>
                           <Button
                             size="sm"
                             variant="destructive"
