@@ -30,7 +30,8 @@ export default function FeaturesGrid() {
       icon: Youtube,
       title: 'Watch-to-Earn',
       description: 'Earn credits by watching YouTube videos. Advertisers pay for promotions — a win-win ecosystem.',
-      badge: 'Coming Soon',
+      badge: 'Live',
+      highlight: true,
     },
     {
       icon: Zap,
