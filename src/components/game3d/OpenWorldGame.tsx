@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { LondonWorld, Building } from './LondonWorld';
 import { PlayerController } from './PlayerController';
-import { EconomySystem } from './EconomySystem';
-import { MultiplayerSystem } from './MultiplayerSystem';
-import ShopUI from './ShopUI';
+import { EconomyManager, Job } from './EconomyManager';
+import JobInteraction from './JobInteraction';
+import ShopInterface from './ShopInterface';
 import { Gamepad2, Navigation, Heart, Zap, DollarSign } from 'lucide-react';
 
 interface OpenWorldGameProps {
@@ -20,13 +20,13 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const playerRef = useRef<PlayerController | null>(null);
   const worldRef = useRef<LondonWorld | null>(null);
-  const economyRef = useRef<EconomySystem | null>(null);
-  const multiplayerRef = useRef<MultiplayerSystem | null>(null);
-  const [stats, setStats] = useState({ health: 100, cash: 5000, level: 1, credits: 0 });
+  const economyRef = useRef<EconomyManager | null>(null);
+  const [stats, setStats] = useState({ health: 100, cash: 5000, credits: 100, bank: 0, level: 1 });
   const [nearestBuilding, setNearestBuilding] = useState<Building | null>(null);
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
-  const [shopOpen, setShopOpen] = useState(false);
-  const [activeBuilding, setActiveBuilding] = useState<Building | null>(null);
+  const [showShop, setShowShop] = useState(false);
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  const [jobActive, setJobActive] = useState(false);
 
   // Joystick state
   const joystickRef = useRef({ active: false, x: 0, y: 0 });
@@ -78,22 +78,14 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
     const player = new PlayerController(scene, { x: 0, y: 0, z: 0 });
     playerRef.current = player;
 
-    // Initialize economy system
-    const economy = new EconomySystem(characterId);
-    economyRef.current = economy;
-    economy.loadInventory().then((inv) => {
-      setStats((prev) => ({
-        ...prev,
-        cash: inv.cash,
-        health: inv.health,
-        credits: inv.cfCredits,
-      }));
+    // Initialize economy
+    const economy = new EconomyManager(characterId, {
+      inGameCash: 5000,
+      cfCredits: 100,
+      bank: 0,
+      level: 1,
     });
-
-    // Initialize multiplayer system
-    const multiplayer = new MultiplayerSystem(scene, characterId, characterName);
-    multiplayerRef.current = multiplayer;
-    multiplayer.initialize();
+    economyRef.current = economy;
 
     // Keyboard input
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -231,11 +223,15 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
         setNearestBuilding(nearest);
 
         // Update stats
-        setStats({
-          health: Math.round(player.health),
-          cash: 5000 + Math.floor((playerPos.x + playerPos.z) / 100),
-          level: 1,
-        });
+        if (economy) {
+          setStats({
+            health: Math.round(player.health),
+            cash: economy.getCash(),
+            credits: economy.getCredits(),
+            bank: economy.getBank(),
+            level: economy.getLevel(),
+          });
+        }
 
         setPosition({
           x: Math.round(playerPos.x),
@@ -274,8 +270,48 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
   }, [onExit, nearestBuilding]);
 
   const handleBuildingInteract = (building: Building) => {
-    console.log(`Interacting with ${building.name}`);
-    // TODO: Open building interface based on type
+    if (!economyRef.current) return;
+
+    // Check if it's a job building
+    const availableJobs = economyRef.current.getAvailableJobs();
+    const job = availableJobs.find((j) => j.buildingId === building.id);
+
+    if (job) {
+      setActiveJob(job);
+      setJobActive(true);
+    } else if (building.type === 'bank') {
+      setShowShop(true);
+    } else if (building.type === 'shop') {
+      setShowShop(true);
+    }
+  };
+
+  const handleJobComplete = (jobId: string, reward: number) => {
+    if (economyRef.current) {
+      economyRef.current.completeJob(jobId);
+      setJobActive(false);
+      setActiveJob(null);
+    }
+  };
+
+  const handleConvertCurrency = (type: 'credits_to_cash' | 'cash_to_credits', amount: number): boolean => {
+    if (!economyRef.current) return false;
+
+    if (type === 'credits_to_cash') {
+      return economyRef.current.convertCreditsToCache(amount);
+    } else {
+      return economyRef.current.convertCashToCredits(amount);
+    }
+  };
+
+  const handleDeposit = (amount: number): boolean => {
+    if (!economyRef.current) return false;
+    return economyRef.current.depositToBank(amount);
+  };
+
+  const handleWithdraw = (amount: number): boolean => {
+    if (!economyRef.current) return false;
+    return economyRef.current.withdrawFromBank(amount);
   };
 
   return (
@@ -285,7 +321,7 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
 
       {/* HUD - Top Left */}
       <div className="fixed top-4 left-4 z-20 space-y-2 pointer-events-none">
-        <div className="bg-black/70 rounded-lg p-3 w-64 text-white text-sm">
+        <div className="bg-black/70 rounded-lg p-3 w-72 text-white text-sm">
           <div className="font-bold text-base mb-2">{characterName}</div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="flex items-center gap-1">
@@ -294,15 +330,15 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
             </div>
             <div className="flex items-center gap-1">
               <DollarSign className="w-4 h-4 text-green-500" />
-              <span>${stats.cash}</span>
+              <span>${stats.cash.toLocaleString()}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Zap className="w-4 h-4 text-yellow-500" />
+              <Zap className="w-4 h-4 text-blue-500" />
+              <span>{stats.credits} Credits</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Navigation className="w-4 h-4 text-yellow-500" />
               <span>Lv {stats.level}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Navigation className="w-4 h-4 text-blue-500" />
-              <span>{position.x},{position.z}</span>
             </div>
           </div>
         </div>
@@ -362,6 +398,35 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
         <div>WebGL • Three.js</div>
         <div>FPS: {Math.round(1 / 0.016)}</div>
       </div>
+
+      {/* Job Interaction Modal */}
+      {jobActive && activeJob && (
+        <JobInteraction
+          jobId={activeJob.id}
+          jobName={activeJob.name}
+          payPerTask={activeJob.payPerTask}
+          taskDuration={activeJob.taskDuration}
+          onComplete={handleJobComplete}
+          onCancel={() => {
+            setJobActive(false);
+            setActiveJob(null);
+          }}
+        />
+      )}
+
+      {/* Shop Interface Modal */}
+      {showShop && (
+        <ShopInterface
+          cash={stats.cash}
+          credits={stats.credits}
+          bank={stats.bank}
+          level={stats.level}
+          onConvert={handleConvertCurrency}
+          onDeposit={handleDeposit}
+          onWithdraw={handleWithdraw}
+          onClose={() => setShowShop(false)}
+        />
+      )}
     </div>
   );
 }
