@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import CharacterCreation from '@/components/game/CharacterCreation';
 import GameWorld from '@/components/game/GameWorld';
+import Game3DScene from '@/components/game3d/Game3DScene';
 import { toast } from 'sonner';
 
 interface GameCharacter {
@@ -124,7 +125,13 @@ export default function Roleplay() {
   }
 
   if (showGame && character) {
-    return <GameWorld character={character} onExit={handleExitGame} />;
+    return (
+      <Game3DScene 
+        characterId={character.id}
+        characterName={character.name}
+        onExit={handleExitGame}
+      />
+    );
   }
 
   return (
