@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car } from 'lucide-react';
+import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car, Coins } from 'lucide-react';
 import GameHUD from './GameHUD';
 import GameChatSystem from './GameChatSystem';
 import GameMenu from './GameMenu';
@@ -10,6 +10,7 @@ import PlayerSprite from './PlayerSprite';
 import VehicleSprite from './VehicleSprite';
 import VehicleMenu from './VehicleMenu';
 import TaxiJobMenu from './TaxiJobMenu';
+import CreditExchangeMenu from './CreditExchangeMenu';
 
 interface GameCharacter {
   id: string;
@@ -87,6 +88,7 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
   const [showOrgMenu, setShowOrgMenu] = useState(false);
   const [showVehicleMenu, setShowVehicleMenu] = useState(false);
   const [showTaxiMenu, setShowTaxiMenu] = useState(false);
+  const [showCreditExchange, setShowCreditExchange] = useState(false);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   
   const gameLoopRef = useRef<number>();
@@ -502,6 +504,9 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('bank')}>
           <DollarSign className="w-4 h-4 mr-1" /> Bank
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setShowCreditExchange(true)} className="bg-gradient-to-r from-yellow-600 to-amber-500 text-white hover:from-yellow-500 hover:to-amber-400">
+          <Coins className="w-4 h-4 mr-1" /> Exchange
+        </Button>
       </div>
 
       {/* Exit Button */}
@@ -605,6 +610,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           character={character}
           currentVehicle={currentVehicle}
           onClose={() => setShowTaxiMenu(false)}
+          onCharacterUpdate={refreshCharacter}
+        />
+      )}
+
+      {/* Credit Exchange Menu */}
+      {showCreditExchange && (
+        <CreditExchangeMenu
+          character={character}
+          onClose={() => setShowCreditExchange(false)}
           onCharacterUpdate={refreshCharacter}
         />
       )}
