@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react';
 import CharacterCreation from '@/components/game/CharacterCreation';
 import GameWorld from '@/components/game/GameWorld';
 import Game3DScene from '@/components/game3d/Game3DScene';
+import MobileGame3D from '@/components/game3d/MobileGame3D';
 import { toast } from 'sonner';
 
 interface GameCharacter {
@@ -126,7 +127,7 @@ export default function Roleplay() {
 
   if (showGame && character) {
     return (
-      <Game3DScene 
+      <MobileGame3D 
         characterId={character.id}
         characterName={character.name}
         onExit={handleExitGame}
