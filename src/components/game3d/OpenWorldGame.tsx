@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { LondonWorld, Building } from './LondonWorld';
 import { PlayerController } from './PlayerController';
+import { EconomySystem } from './EconomySystem';
+import { MultiplayerSystem } from './MultiplayerSystem';
+import ShopUI from './ShopUI';
 import { Gamepad2, Navigation, Heart, Zap, DollarSign } from 'lucide-react';
 
 interface OpenWorldGameProps {
@@ -17,9 +20,13 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const playerRef = useRef<PlayerController | null>(null);
   const worldRef = useRef<LondonWorld | null>(null);
-  const [stats, setStats] = useState({ health: 100, cash: 5000, level: 1 });
+  const economyRef = useRef<EconomySystem | null>(null);
+  const multiplayerRef = useRef<MultiplayerSystem | null>(null);
+  const [stats, setStats] = useState({ health: 100, cash: 5000, level: 1, credits: 0 });
   const [nearestBuilding, setNearestBuilding] = useState<Building | null>(null);
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
+  const [shopOpen, setShopOpen] = useState(false);
+  const [activeBuilding, setActiveBuilding] = useState<Building | null>(null);
 
   // Joystick state
   const joystickRef = useRef({ active: false, x: 0, y: 0 });
@@ -70,6 +77,23 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
     // Create player at spawn point
     const player = new PlayerController(scene, { x: 0, y: 0, z: 0 });
     playerRef.current = player;
+
+    // Initialize economy system
+    const economy = new EconomySystem(characterId);
+    economyRef.current = economy;
+    economy.loadInventory().then((inv) => {
+      setStats((prev) => ({
+        ...prev,
+        cash: inv.cash,
+        health: inv.health,
+        credits: inv.cfCredits,
+      }));
+    });
+
+    // Initialize multiplayer system
+    const multiplayer = new MultiplayerSystem(scene, characterId, characterName);
+    multiplayerRef.current = multiplayer;
+    multiplayer.initialize();
 
     // Keyboard input
     const handleKeyDown = (e: KeyboardEvent) => {
