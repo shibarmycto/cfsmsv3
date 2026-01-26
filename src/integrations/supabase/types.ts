@@ -817,8 +817,56 @@ export type Database = {
         }
         Relationships: []
       }
+      game_bans: {
+        Row: {
+          banned_at: string
+          banned_by: string
+          character_id: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          is_permanent: boolean
+          reason: string
+          rule_violated: string | null
+          user_id: string
+        }
+        Insert: {
+          banned_at?: string
+          banned_by: string
+          character_id?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          is_permanent?: boolean
+          reason: string
+          rule_violated?: string | null
+          user_id: string
+        }
+        Update: {
+          banned_at?: string
+          banned_by?: string
+          character_id?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          is_permanent?: boolean
+          reason?: string
+          rule_violated?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_bans_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_characters: {
         Row: {
+          arrests: number
           bank_balance: number
           cash: number
           created_at: string
@@ -829,8 +877,12 @@ export type Database = {
           health: number
           hunger: number
           id: string
+          is_knocked_out: boolean
           is_online: boolean
           job_experience: number
+          knocked_out_by: string | null
+          knocked_out_until: string | null
+          last_robbery_at: string | null
           last_seen_at: string | null
           name: string
           pants_color: string
@@ -838,10 +890,13 @@ export type Database = {
           position_y: number
           shirt_color: string
           skin_color: string
+          total_crimes: number
           updated_at: string
           user_id: string
+          wanted_level: number
         }
         Insert: {
+          arrests?: number
           bank_balance?: number
           cash?: number
           created_at?: string
@@ -852,8 +907,12 @@ export type Database = {
           health?: number
           hunger?: number
           id?: string
+          is_knocked_out?: boolean
           is_online?: boolean
           job_experience?: number
+          knocked_out_by?: string | null
+          knocked_out_until?: string | null
+          last_robbery_at?: string | null
           last_seen_at?: string | null
           name: string
           pants_color?: string
@@ -861,10 +920,13 @@ export type Database = {
           position_y?: number
           shirt_color?: string
           skin_color?: string
+          total_crimes?: number
           updated_at?: string
           user_id: string
+          wanted_level?: number
         }
         Update: {
+          arrests?: number
           bank_balance?: number
           cash?: number
           created_at?: string
@@ -875,8 +937,12 @@ export type Database = {
           health?: number
           hunger?: number
           id?: string
+          is_knocked_out?: boolean
           is_online?: boolean
           job_experience?: number
+          knocked_out_by?: string | null
+          knocked_out_until?: string | null
+          last_robbery_at?: string | null
           last_seen_at?: string | null
           name?: string
           pants_color?: string
@@ -884,10 +950,71 @@ export type Database = {
           position_y?: number
           shirt_color?: string
           skin_color?: string
+          total_crimes?: number
           updated_at?: string
           user_id?: string
+          wanted_level?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "game_characters_knocked_out_by_fkey"
+            columns: ["knocked_out_by"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_crime_logs: {
+        Row: {
+          amount_stolen: number | null
+          created_at: string
+          crime_type: string
+          criminal_id: string
+          id: string
+          location_x: number | null
+          location_y: number | null
+          victim_id: string | null
+          wanted_level_added: number | null
+        }
+        Insert: {
+          amount_stolen?: number | null
+          created_at?: string
+          crime_type: string
+          criminal_id: string
+          id?: string
+          location_x?: number | null
+          location_y?: number | null
+          victim_id?: string | null
+          wanted_level_added?: number | null
+        }
+        Update: {
+          amount_stolen?: number | null
+          created_at?: string
+          crime_type?: string
+          criminal_id?: string
+          id?: string
+          location_x?: number | null
+          location_y?: number | null
+          victim_id?: string | null
+          wanted_level_added?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_crime_logs_criminal_id_fkey"
+            columns: ["criminal_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_crime_logs_victim_id_fkey"
+            columns: ["victim_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       game_friends: {
         Row: {
@@ -1047,6 +1174,56 @@ export type Database = {
           {
             foreignKeyName: "game_organizations_leader_id_fkey"
             columns: ["leader_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_police_applications: {
+        Row: {
+          admin_notes: string | null
+          character_id: string
+          character_name: string
+          created_at: string
+          experience: string | null
+          id: string
+          reason: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          character_id: string
+          character_name: string
+          created_at?: string
+          experience?: string | null
+          id?: string
+          reason: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          character_id?: string
+          character_name?: string
+          created_at?: string
+          experience?: string | null
+          id?: string
+          reason?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_police_applications_character_id_fkey"
+            columns: ["character_id"]
             isOneToOne: false
             referencedRelation: "game_characters"
             referencedColumns: ["id"]
