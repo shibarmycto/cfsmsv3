@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { LondonWorld, Building } from './LondonWorld';
 import { PlayerController } from './PlayerController';
 import { EconomyManager, Job } from './EconomyManager';
+import { MultiplayerSync } from './MultiplayerSync';
 import JobInteraction from './JobInteraction';
 import ShopInterface from './ShopInterface';
-import { Gamepad2, Navigation, Heart, Zap, DollarSign } from 'lucide-react';
+import GlobalChat from './GlobalChat';
+import { Gamepad2, Navigation, Heart, Zap, DollarSign, Users } from 'lucide-react';
 
 interface OpenWorldGameProps {
   characterId: string;
@@ -21,12 +23,14 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
   const playerRef = useRef<PlayerController | null>(null);
   const worldRef = useRef<LondonWorld | null>(null);
   const economyRef = useRef<EconomyManager | null>(null);
+  const multiplayerRef = useRef<MultiplayerSync | null>(null);
   const [stats, setStats] = useState({ health: 100, cash: 5000, credits: 100, bank: 0, level: 1 });
   const [nearestBuilding, setNearestBuilding] = useState<Building | null>(null);
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
   const [showShop, setShowShop] = useState(false);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [jobActive, setJobActive] = useState(false);
+  const [onlinePlayersCount, setOnlinePlayersCount] = useState(1);
 
   // Joystick state
   const joystickRef = useRef({ active: false, x: 0, y: 0 });
@@ -86,6 +90,12 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
       level: 1,
     });
     economyRef.current = economy;
+
+    // Initialize multiplayer sync
+    const multiplayer = new MultiplayerSync(characterId, scene);
+    multiplayerRef.current = multiplayer;
+    multiplayer.initialize();
+    setOnlinePlayersCount(1); // Start with self
 
     // Keyboard input
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -184,6 +194,14 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
         // Update player
         player.update(inputRef.current, deltaTime);
 
+        // Update multiplayer sync
+        if (multiplayer) {
+          multiplayer.update();
+          multiplayer.publishPosition(player.position, player.rotation, characterName);
+          const remoteCount = multiplayer.getRemotePlayers().length;
+          setOnlinePlayersCount(remoteCount + 1);
+        }
+
         // Collision detection with buildings
         const collisionBoxes = world.getCollisionBoxes();
         const playerBox = player.getCollisionBox();
@@ -265,6 +283,9 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationId);
+      if (multiplayerRef.current) {
+        multiplayerRef.current.dispose();
+      }
       renderer.dispose();
     };
   }, [onExit, nearestBuilding]);
@@ -339,6 +360,10 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
             <div className="flex items-center gap-1">
               <Navigation className="w-4 h-4 text-yellow-500" />
               <span>Lv {stats.level}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Users className="w-4 h-4 text-purple-500" />
+              <span>{onlinePlayersCount} Players</span>
             </div>
           </div>
         </div>
@@ -427,6 +452,9 @@ export default function OpenWorldGame({ characterId, characterName, onExit }: Op
           onClose={() => setShowShop(false)}
         />
       )}
+
+      {/* Global Chat */}
+      <GlobalChat playerName={characterName} playerId={characterId} isMinimized={false} />
     </div>
   );
 }
