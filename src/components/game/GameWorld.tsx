@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car, Coins } from 'lucide-react';
+import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car, Coins, BookOpen, Gamepad2, Skull } from 'lucide-react';
 import GameHUD from './GameHUD';
 import GameChatSystem from './GameChatSystem';
 import GameMenu from './GameMenu';
@@ -11,6 +11,10 @@ import VehicleSprite from './VehicleSprite';
 import VehicleMenu from './VehicleMenu';
 import TaxiJobMenu from './TaxiJobMenu';
 import CreditExchangeMenu from './CreditExchangeMenu';
+import CrimeSystem from './CrimeSystem';
+import PoliceApplicationMenu from './PoliceApplicationMenu';
+import RulesMenu from './RulesMenu';
+import HowToPlayMenu from './HowToPlayMenu';
 
 interface GameCharacter {
   id: string;
@@ -31,6 +35,9 @@ interface GameCharacter {
   current_job: string;
   job_experience: number;
   is_online: boolean;
+  wanted_level?: number;
+  is_knocked_out?: boolean;
+  knocked_out_until?: string;
 }
 
 interface Property {
@@ -89,6 +96,10 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
   const [showVehicleMenu, setShowVehicleMenu] = useState(false);
   const [showTaxiMenu, setShowTaxiMenu] = useState(false);
   const [showCreditExchange, setShowCreditExchange] = useState(false);
+  const [showCrimeMenu, setShowCrimeMenu] = useState<any>(null);
+  const [showPoliceApp, setShowPoliceApp] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   
   const gameLoopRef = useRef<number>();
@@ -507,6 +518,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
         <Button size="sm" variant="secondary" onClick={() => setShowCreditExchange(true)} className="bg-gradient-to-r from-yellow-600 to-amber-500 text-white hover:from-yellow-500 hover:to-amber-400">
           <Coins className="w-4 h-4 mr-1" /> Exchange
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setShowPoliceApp(true)}>
+          <Shield className="w-4 h-4 mr-1" /> Police
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowRules(true)}>
+          <BookOpen className="w-4 h-4 mr-1" /> Rules
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowHowToPlay(true)}>
+          <Gamepad2 className="w-4 h-4 mr-1" /> Help
+        </Button>
       </div>
 
       {/* Exit Button */}
@@ -622,6 +642,30 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           onCharacterUpdate={refreshCharacter}
         />
       )}
+
+      {/* Crime System */}
+      {showCrimeMenu && (
+        <CrimeSystem
+          character={character}
+          targetPlayer={showCrimeMenu}
+          onClose={() => setShowCrimeMenu(null)}
+          onCharacterUpdate={refreshCharacter}
+        />
+      )}
+
+      {/* Police Application */}
+      {showPoliceApp && (
+        <PoliceApplicationMenu
+          character={character}
+          onClose={() => setShowPoliceApp(false)}
+        />
+      )}
+
+      {/* Rules Menu */}
+      {showRules && <RulesMenu onClose={() => setShowRules(false)} />}
+
+      {/* How to Play */}
+      {showHowToPlay && <HowToPlayMenu onClose={() => setShowHowToPlay(false)} />}
 
       {/* Controls hint */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 text-white/50 text-xs hidden md:block">

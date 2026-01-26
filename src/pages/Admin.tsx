@@ -32,12 +32,14 @@ import {
   BadgeCheck,
   Youtube,
   TrendingUp,
+  Gamepad2,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
 import AdminVerifyUsersTab from '@/components/AdminVerifyUsersTab';
 import AdminPromoOrdersTab from '@/components/AdminPromoOrdersTab';
 import AdminExchangeTab from '@/components/AdminExchangeTab';
+import AdminGameTab from '@/components/AdminGameTab';
 
 interface UserProfile {
   id: string;
@@ -994,6 +996,7 @@ export default function Admin() {
                 { id: 'exchange', icon: TrendingUp, label: 'CF Exchange', count: 0 },
                 { id: 'forum', icon: Hash, label: 'Forum', count: 0 },
                 { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
+                { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2042,6 +2045,17 @@ export default function Admin() {
             {/* Exchange Tab */}
             {activeTab === 'exchange' && (
               <AdminExchangeTab />
+            )}
+
+            {/* Game Tab */}
+            {activeTab === 'game' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold">CF Roleplay Management</h2>
+                  <p className="text-muted-foreground">Manage police applications, bans, transactions, and players</p>
+                </div>
+                <AdminGameTab />
+              </div>
             )}
           </div>
         </div>
