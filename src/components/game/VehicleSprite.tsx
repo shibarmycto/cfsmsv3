@@ -141,14 +141,31 @@ export default function VehicleSprite({ vehicle, isPlayerDriving }: VehicleSprit
 
   return (
     <div
-      className="absolute transition-all duration-75"
+      className="absolute"
       style={{
         left: vehicle.position_x - size.width / 2,
         top: vehicle.position_y - size.height / 2,
         zIndex: Math.floor(vehicle.position_y) - 1,
         transform: `rotate(${vehicle.rotation}deg)`,
+        filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.5))',
+        transition: vehicle.driver_id ? 'none' : 'all 100ms ease-out',
       }}
     >
+      {/* Vehicle shadow */}
+      <div
+        className="absolute"
+        style={{
+          left: '50%',
+          top: '100%',
+          transform: 'translateX(-50%) scaleX(0.9)',
+          width: size.width * 0.9,
+          height: size.height * 0.15,
+          background: 'radial-gradient(ellipse, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 70%)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Vehicle name tag */}
       {vehicle.is_for_sale && (
         <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap text-[10px] px-2 py-0.5 rounded bg-green-500 text-white font-bold">
@@ -158,7 +175,7 @@ export default function VehicleSprite({ vehicle, isPlayerDriving }: VehicleSprit
       
       {isPlayerDriving && (
         <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-          <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
         </div>
       )}
       

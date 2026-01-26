@@ -15,6 +15,8 @@ import CrimeSystem from './CrimeSystem';
 import PoliceApplicationMenu from './PoliceApplicationMenu';
 import RulesMenu from './RulesMenu';
 import HowToPlayMenu from './HowToPlayMenu';
+import EmoteSystem from './EmoteSystem';
+import ProximityInteraction from './ProximityInteraction';
 
 interface GameCharacter {
   id: string;
@@ -77,15 +79,16 @@ interface GameWorldProps {
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 1500;
-const MOVE_SPEED = 5;
-const VEHICLE_ACCELERATION = 0.5;
-const VEHICLE_DECELERATION = 0.3;
-const VEHICLE_TURN_SPEED = 3;
+const MOVE_SPEED = 8; // Increased from 5 for better responsiveness
+const VEHICLE_ACCELERATION = 0.7; // Increased from 0.5
+const VEHICLE_DECELERATION = 0.4; // Increased from 0.3
+const VEHICLE_TURN_SPEED = 4; // Increased from 3
 const UPDATE_INTERVAL = 100;
 
 export default function GameWorld({ character: initialCharacter, onExit }: GameWorldProps) {
   const [character, setCharacter] = useState(initialCharacter);
   const [otherPlayers, setOtherPlayers] = useState<GameCharacter[]>([]);
+  const [nearbyPlayers, setNearbyPlayers] = useState<{ id: string; name: string; distance: number }[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [currentVehicle, setCurrentVehicle] = useState<Vehicle | null>(null);
@@ -101,11 +104,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
   const [showRules, setShowRules] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
+  const [playerAnimationState, setPlayerAnimationState] = useState<'idle' | 'walking' | 'running' | 'emote'>('idle');
+  const [playerEmote, setPlayerEmote] = useState<string>('');
+  const [emoteTimeout, setEmoteTimeout] = useState<NodeJS.Timeout | null>(null);
   
   const gameLoopRef = useRef<number>();
   const lastUpdateRef = useRef<number>(0);
   const positionRef = useRef({ x: character.position_x, y: character.position_y });
   const vehicleRef = useRef<{ speed: number; rotation: number }>({ speed: 0, rotation: 0 });
+  const lastMovementRef = useRef<{ x: number; y: number }>({ x: character.position_x, y: character.position_y });
 
   // Fetch properties and vehicles
   useEffect(() => {
@@ -181,6 +188,23 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
       supabase.removeChannel(channel);
     };
   }, [character.id]);
+
+  // Calculate nearby players (within 300px)
+  useEffect(() => {
+    const PROXIMITY_RANGE = 300;
+    const nearby = otherPlayers
+      .map(player => {
+        const distance = Math.sqrt(
+          (player.position_x - character.position_x) ** 2 +
+          (player.position_y - character.position_y) ** 2
+        );
+        return { id: player.id, name: player.name, distance };
+      })
+      .filter(p => p.distance < PROXIMITY_RANGE)
+      .sort((a, b) => a.distance - b.distance);
+    
+    setNearbyPlayers(nearby);
+  }, [otherPlayers, character.position_x, character.position_y]);
 
   // Handle keyboard input
   useEffect(() => {
@@ -316,6 +340,15 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           positionRef.current = { x: newX, y: newY };
           setCharacter(prev => ({ ...prev, position_x: newX, position_y: newY }));
 
+          // Update animation state
+          const distance = Math.sqrt((newX - lastMovementRef.current.x) ** 2 + (newY - lastMovementRef.current.y) ** 2);
+          if (distance > 15) {
+            setPlayerAnimationState('running');
+          } else {
+            setPlayerAnimationState('walking');
+          }
+          lastMovementRef.current = { x: newX, y: newY };
+
           const viewportWidth = window.innerWidth;
           const viewportHeight = window.innerHeight;
           setCameraOffset({
@@ -326,6 +359,11 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           if (timestamp - lastUpdateRef.current > UPDATE_INTERVAL) {
             lastUpdateRef.current = timestamp;
             supabase.from('game_characters').update({ position_x: newX, position_y: newY }).eq('id', character.id);
+          }
+        } else {
+          // Not moving - go back to idle if not emoting
+          if (playerAnimationState !== 'emote') {
+            setPlayerAnimationState('idle');
           }
         }
       }
@@ -375,8 +413,32 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
     }
   }, [character.id]);
 
+  const handleEmote = (emoteType: string) => {
+    setPlayerEmote(emoteType);
+    setPlayerAnimationState('emote');
+    
+    // Clear existing timeout
+    if (emoteTimeout) clearTimeout(emoteTimeout);
+    
+    // Reset animation after 2 seconds
+    const timeout = setTimeout(() => {
+      setPlayerEmote('');
+      setPlayerAnimationState('idle');
+    }, 2000);
+    
+    setEmoteTimeout(timeout);
+  };
+
   return (
     <div className="fixed inset-0 bg-[#2d5a27] overflow-hidden">
+      {/* Proximity Interaction UI */}
+      <ProximityInteraction 
+        nearbyPlayers={nearbyPlayers}
+        onChat={(playerId) => {
+          setShowChat(true);
+        }}
+      />
+
       {/* Game Canvas */}
       <div 
         className="absolute"
@@ -392,19 +454,35 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
             Array.from({ length: Math.ceil(WORLD_HEIGHT / 100) }).map((_, y) => (
               <div
                 key={`${x}-${y}`}
-                className="absolute w-[100px] h-[100px] border border-[#3d6a37]/30"
+                className="absolute w-[100px] h-[100px] border border-[#3d6a37]/30 bg-gradient-to-br from-[#3a6b3a] to-[#2a5a2a]"
                 style={{ left: x * 100, top: y * 100 }}
               />
             ))
           )}
         </div>
 
-        {/* Roads */}
-        <div className="absolute left-0 right-0 top-[300px] h-[60px] bg-[#3a3a3a]">
-          <div className="absolute top-1/2 left-0 right-0 h-1 bg-yellow-400 opacity-50" style={{ transform: 'translateY(-50%)' }} />
+        {/* Grass details */}
+        <div className="absolute inset-0 opacity-10">
+          {Array.from({ length: 50 }).map((_, i) => (
+            <div
+              key={`grass-${i}`}
+              className="absolute w-2 h-2 bg-green-300 rounded-full"
+              style={{
+                left: Math.random() * WORLD_WIDTH,
+                top: Math.random() * WORLD_HEIGHT,
+              }}
+            />
+          ))}
         </div>
-        <div className="absolute top-0 bottom-0 left-[500px] w-[60px] bg-[#3a3a3a]">
+
+        {/* Roads */}
+        <div className="absolute left-0 right-0 top-[300px] h-[60px] bg-[#3a3a3a] shadow-lg">
+          <div className="absolute top-1/2 left-0 right-0 h-1 bg-yellow-400 opacity-50" style={{ transform: 'translateY(-50%)' }} />
+          <div className="absolute top-1/2 left-0 right-0 h-1 bg-yellow-300 opacity-30 blur-sm" style={{ transform: 'translateY(-50%)' }} />
+        </div>
+        <div className="absolute top-0 bottom-0 left-[500px] w-[60px] bg-[#3a3a3a] shadow-lg">
           <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-yellow-400 opacity-50" style={{ transform: 'translateX(-50%)' }} />
+          <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-yellow-300 opacity-30" style={{ transform: 'translateX(-50%)' }} />
         </div>
 
         {/* Properties */}
@@ -468,6 +546,8 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           <PlayerSprite
             player={character}
             isCurrentPlayer={true}
+            animationState={playerAnimationState}
+            emoteType={playerEmote}
           />
         )}
       </div>
@@ -494,6 +574,7 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
 
       {/* Action Buttons */}
       <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap max-w-[50vw]">
+        <EmoteSystem onEmote={handleEmote} isEmoting={playerAnimationState === 'emote'} />
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('jobs')}>
           <Briefcase className="w-4 h-4 mr-1" /> Jobs
         </Button>
