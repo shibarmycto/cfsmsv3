@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield } from 'lucide-react';
+import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car } from 'lucide-react';
 import GameHUD from './GameHUD';
 import GameChatSystem from './GameChatSystem';
 import GameMenu from './GameMenu';
 import OrganizationMenu from './OrganizationMenu';
 import PlayerSprite from './PlayerSprite';
+import VehicleSprite from './VehicleSprite';
+import VehicleMenu from './VehicleMenu';
+import TaxiJobMenu from './TaxiJobMenu';
 
 interface GameCharacter {
   id: string;
@@ -40,6 +43,25 @@ interface Property {
   is_for_sale: boolean;
 }
 
+interface Vehicle {
+  id: string;
+  owner_id: string | null;
+  vehicle_type: string;
+  name: string;
+  color: string;
+  position_x: number;
+  position_y: number;
+  rotation: number;
+  speed: number;
+  max_speed: number;
+  price: number;
+  is_for_sale: boolean;
+  fuel: number;
+  health: number;
+  is_locked: boolean;
+  driver_id: string | null;
+}
+
 interface GameWorldProps {
   character: GameCharacter;
   onExit: () => void;
@@ -48,30 +70,60 @@ interface GameWorldProps {
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 1500;
 const MOVE_SPEED = 5;
-const UPDATE_INTERVAL = 100; // ms between position updates
+const VEHICLE_ACCELERATION = 0.5;
+const VEHICLE_DECELERATION = 0.3;
+const VEHICLE_TURN_SPEED = 3;
+const UPDATE_INTERVAL = 100;
 
 export default function GameWorld({ character: initialCharacter, onExit }: GameWorldProps) {
   const [character, setCharacter] = useState(initialCharacter);
   const [otherPlayers, setOtherPlayers] = useState<GameCharacter[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [currentVehicle, setCurrentVehicle] = useState<Vehicle | null>(null);
   const [keysPressed, setKeysPressed] = useState<Set<string>>(new Set());
   const [showChat, setShowChat] = useState(false);
   const [showMenu, setShowMenu] = useState<string | null>(null);
   const [showOrgMenu, setShowOrgMenu] = useState(false);
+  const [showVehicleMenu, setShowVehicleMenu] = useState(false);
+  const [showTaxiMenu, setShowTaxiMenu] = useState(false);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   
   const gameLoopRef = useRef<number>();
   const lastUpdateRef = useRef<number>(0);
   const positionRef = useRef({ x: character.position_x, y: character.position_y });
+  const vehicleRef = useRef<{ speed: number; rotation: number }>({ speed: 0, rotation: 0 });
 
-  // Fetch properties
+  // Fetch properties and vehicles
   useEffect(() => {
-    const fetchProperties = async () => {
-      const { data } = await supabase.from('game_properties').select('*');
-      if (data) setProperties(data as Property[]);
+    const fetchData = async () => {
+      const [propsRes, vehiclesRes] = await Promise.all([
+        supabase.from('game_properties').select('*'),
+        supabase.from('game_vehicles').select('*')
+      ]);
+      if (propsRes.data) setProperties(propsRes.data as Property[]);
+      if (vehiclesRes.data) setVehicles(vehiclesRes.data as Vehicle[]);
     };
-    fetchProperties();
-  }, []);
+    fetchData();
+
+    // Subscribe to vehicle changes
+    const vehicleChannel = supabase
+      .channel('game-vehicles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_vehicles' }, (payload) => {
+        if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Vehicle;
+          setVehicles(prev => prev.map(v => v.id === updated.id ? updated : v));
+          if (currentVehicle?.id === updated.id) {
+            setCurrentVehicle(updated);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(vehicleChannel);
+    };
+  }, [currentVehicle?.id]);
 
   // Subscribe to other players
   useEffect(() => {
@@ -129,12 +181,19 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
       if (key === 'escape') {
         setShowMenu(null);
         setShowChat(false);
+        setShowVehicleMenu(false);
+        setShowTaxiMenu(false);
       }
       if (key === 'enter' || key === 't') {
         if (!showChat) {
           e.preventDefault();
           setShowChat(true);
         }
+      }
+      // Exit vehicle with F key
+      if (key === 'f' && currentVehicle) {
+        e.preventDefault();
+        exitVehicle();
       }
     };
 
@@ -154,25 +213,57 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [showChat]);
+  }, [showChat, currentVehicle]);
 
-  // Game loop
+  // Game loop - handles both walking and driving
   useEffect(() => {
     const gameLoop = (timestamp: number) => {
-      let dx = 0;
-      let dy = 0;
+      if (currentVehicle) {
+        // Vehicle driving mode
+        let accelerating = false;
+        let braking = false;
+        let turningLeft = false;
+        let turningRight = false;
 
-      if (keysPressed.has('w') || keysPressed.has('arrowup')) dy -= MOVE_SPEED;
-      if (keysPressed.has('s') || keysPressed.has('arrowdown')) dy += MOVE_SPEED;
-      if (keysPressed.has('a') || keysPressed.has('arrowleft')) dx -= MOVE_SPEED;
-      if (keysPressed.has('d') || keysPressed.has('arrowright')) dx += MOVE_SPEED;
+        if (keysPressed.has('w') || keysPressed.has('arrowup')) accelerating = true;
+        if (keysPressed.has('s') || keysPressed.has('arrowdown')) braking = true;
+        if (keysPressed.has('a') || keysPressed.has('arrowleft')) turningLeft = true;
+        if (keysPressed.has('d') || keysPressed.has('arrowright')) turningRight = true;
 
-      if (dx !== 0 || dy !== 0) {
+        // Update speed
+        if (accelerating) {
+          vehicleRef.current.speed = Math.min(
+            vehicleRef.current.speed + VEHICLE_ACCELERATION,
+            currentVehicle.max_speed / 10
+          );
+        } else if (braking) {
+          vehicleRef.current.speed = Math.max(vehicleRef.current.speed - VEHICLE_DECELERATION * 2, -3);
+        } else {
+          // Natural deceleration
+          if (vehicleRef.current.speed > 0) {
+            vehicleRef.current.speed = Math.max(0, vehicleRef.current.speed - VEHICLE_DECELERATION);
+          } else if (vehicleRef.current.speed < 0) {
+            vehicleRef.current.speed = Math.min(0, vehicleRef.current.speed + VEHICLE_DECELERATION);
+          }
+        }
+
+        // Update rotation only when moving
+        if (Math.abs(vehicleRef.current.speed) > 0.5) {
+          if (turningLeft) vehicleRef.current.rotation -= VEHICLE_TURN_SPEED * (vehicleRef.current.speed > 0 ? 1 : -1);
+          if (turningRight) vehicleRef.current.rotation += VEHICLE_TURN_SPEED * (vehicleRef.current.speed > 0 ? 1 : -1);
+        }
+
+        // Calculate movement based on rotation
+        const radians = (vehicleRef.current.rotation - 90) * (Math.PI / 180);
+        const dx = Math.cos(radians) * vehicleRef.current.speed;
+        const dy = Math.sin(radians) * vehicleRef.current.speed;
+
         const newX = Math.max(0, Math.min(WORLD_WIDTH - 40, positionRef.current.x + dx));
         const newY = Math.max(0, Math.min(WORLD_HEIGHT - 60, positionRef.current.y + dy));
-        
+
         positionRef.current = { x: newX, y: newY };
         setCharacter(prev => ({ ...prev, position_x: newX, position_y: newY }));
+        setCurrentVehicle(prev => prev ? { ...prev, position_x: newX, position_y: newY, rotation: vehicleRef.current.rotation } : null);
 
         // Update camera
         const viewportWidth = window.innerWidth;
@@ -182,14 +273,47 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           y: Math.max(0, Math.min(WORLD_HEIGHT - viewportHeight, newY - viewportHeight / 2)),
         });
 
-        // Send position update to server periodically
+        // Sync to server
         if (timestamp - lastUpdateRef.current > UPDATE_INTERVAL) {
           lastUpdateRef.current = timestamp;
-          supabase
-            .from('game_characters')
-            .update({ position_x: newX, position_y: newY })
-            .eq('id', character.id)
-            .then();
+          Promise.all([
+            supabase.from('game_characters').update({ position_x: newX, position_y: newY }).eq('id', character.id),
+            supabase.from('game_vehicles').update({ 
+              position_x: newX, 
+              position_y: newY, 
+              rotation: vehicleRef.current.rotation,
+              speed: vehicleRef.current.speed 
+            }).eq('id', currentVehicle.id)
+          ]);
+        }
+      } else {
+        // Walking mode
+        let dx = 0;
+        let dy = 0;
+
+        if (keysPressed.has('w') || keysPressed.has('arrowup')) dy -= MOVE_SPEED;
+        if (keysPressed.has('s') || keysPressed.has('arrowdown')) dy += MOVE_SPEED;
+        if (keysPressed.has('a') || keysPressed.has('arrowleft')) dx -= MOVE_SPEED;
+        if (keysPressed.has('d') || keysPressed.has('arrowright')) dx += MOVE_SPEED;
+
+        if (dx !== 0 || dy !== 0) {
+          const newX = Math.max(0, Math.min(WORLD_WIDTH - 40, positionRef.current.x + dx));
+          const newY = Math.max(0, Math.min(WORLD_HEIGHT - 60, positionRef.current.y + dy));
+          
+          positionRef.current = { x: newX, y: newY };
+          setCharacter(prev => ({ ...prev, position_x: newX, position_y: newY }));
+
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          setCameraOffset({
+            x: Math.max(0, Math.min(WORLD_WIDTH - viewportWidth, newX - viewportWidth / 2)),
+            y: Math.max(0, Math.min(WORLD_HEIGHT - viewportHeight, newY - viewportHeight / 2)),
+          });
+
+          if (timestamp - lastUpdateRef.current > UPDATE_INTERVAL) {
+            lastUpdateRef.current = timestamp;
+            supabase.from('game_characters').update({ position_x: newX, position_y: newY }).eq('id', character.id);
+          }
         }
       }
 
@@ -200,7 +324,32 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
     return () => {
       if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
     };
-  }, [keysPressed, character.id]);
+  }, [keysPressed, character.id, currentVehicle]);
+
+  const enterVehicle = async (vehicle: Vehicle) => {
+    if (vehicle.is_locked && vehicle.owner_id !== character.id) {
+      return;
+    }
+
+    await supabase.from('game_vehicles').update({ driver_id: character.id }).eq('id', vehicle.id);
+    
+    setCurrentVehicle(vehicle);
+    vehicleRef.current = { speed: 0, rotation: vehicle.rotation };
+    positionRef.current = { x: vehicle.position_x, y: vehicle.position_y };
+    setCharacter(prev => ({ ...prev, position_x: vehicle.position_x, position_y: vehicle.position_y }));
+  };
+
+  const exitVehicle = async () => {
+    if (!currentVehicle) return;
+
+    await supabase.from('game_vehicles').update({ 
+      driver_id: null, 
+      speed: 0 
+    }).eq('id', currentVehicle.id);
+
+    setCurrentVehicle(null);
+    vehicleRef.current = { speed: 0, rotation: 0 };
+  };
 
   const refreshCharacter = useCallback(async () => {
     const { data } = await supabase
@@ -274,6 +423,24 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           </div>
         ))}
 
+        {/* Vehicles */}
+        {vehicles.map(vehicle => (
+          <div
+            key={vehicle.id}
+            onClick={() => {
+              if (!currentVehicle && !vehicle.driver_id) {
+                enterVehicle(vehicle);
+              }
+            }}
+            className="cursor-pointer"
+          >
+            <VehicleSprite
+              vehicle={vehicle}
+              isPlayerDriving={currentVehicle?.id === vehicle.id}
+            />
+          </div>
+        ))}
+
         {/* Other Players */}
         {otherPlayers.map(player => (
           <PlayerSprite
@@ -283,20 +450,45 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
           />
         ))}
 
-        {/* Current Player */}
-        <PlayerSprite
-          player={character}
-          isCurrentPlayer={true}
-        />
+        {/* Current Player (hide if in vehicle) */}
+        {!currentVehicle && (
+          <PlayerSprite
+            player={character}
+            isCurrentPlayer={true}
+          />
+        )}
       </div>
+
+      {/* Vehicle HUD */}
+      {currentVehicle && (
+        <div className="fixed top-20 left-4 bg-black/70 text-white p-3 rounded-lg text-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Car className="w-4 h-4" />
+            <span className="font-bold">{currentVehicle.name}</span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div>Speed: {Math.abs(Math.round(vehicleRef.current.speed * 10))} mph</div>
+            <div>Fuel: {currentVehicle.fuel}%</div>
+          </div>
+          <Button size="sm" variant="destructive" className="mt-2 w-full" onClick={exitVehicle}>
+            Exit Vehicle (F)
+          </Button>
+        </div>
+      )}
 
       {/* HUD */}
       <GameHUD character={character} />
 
       {/* Action Buttons */}
-      <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap">
+      <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap max-w-[50vw]">
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('jobs')}>
           <Briefcase className="w-4 h-4 mr-1" /> Jobs
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setShowVehicleMenu(true)}>
+          <Car className="w-4 h-4 mr-1" /> Vehicles
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setShowTaxiMenu(true)}>
+          🚕 Taxi
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setShowMenu('players')}>
           <Users className="w-4 h-4 mr-1" /> Players
@@ -397,9 +589,32 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
         />
       )}
 
+      {/* Vehicle Menu */}
+      {showVehicleMenu && (
+        <VehicleMenu
+          character={character}
+          onClose={() => setShowVehicleMenu(false)}
+          onCharacterUpdate={refreshCharacter}
+          onEnterVehicle={enterVehicle}
+        />
+      )}
+
+      {/* Taxi Job Menu */}
+      {showTaxiMenu && (
+        <TaxiJobMenu
+          character={character}
+          currentVehicle={currentVehicle}
+          onClose={() => setShowTaxiMenu(false)}
+          onCharacterUpdate={refreshCharacter}
+        />
+      )}
+
       {/* Controls hint */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 text-white/50 text-xs hidden md:block">
-        WASD or Arrow Keys to move • T to chat • ESC to close menus
+        {currentVehicle 
+          ? 'W/S to accelerate/brake • A/D to steer • F to exit vehicle'
+          : 'WASD or Arrow Keys to move • T to chat • Click vehicle to enter'
+        }
       </div>
     </div>
   );

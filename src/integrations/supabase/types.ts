@@ -1100,6 +1100,73 @@ export type Database = {
           },
         ]
       }
+      game_taxi_fares: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          driver_id: string
+          dropoff_x: number | null
+          dropoff_y: number | null
+          fare_amount: number
+          id: string
+          passenger_id: string
+          pickup_x: number
+          pickup_y: number
+          status: string
+          vehicle_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          driver_id: string
+          dropoff_x?: number | null
+          dropoff_y?: number | null
+          fare_amount?: number
+          id?: string
+          passenger_id: string
+          pickup_x: number
+          pickup_y: number
+          status?: string
+          vehicle_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          driver_id?: string
+          dropoff_x?: number | null
+          dropoff_y?: number | null
+          fare_amount?: number
+          id?: string
+          passenger_id?: string
+          pickup_x?: number
+          pickup_y?: number
+          status?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_taxi_fares_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_taxi_fares_passenger_id_fkey"
+            columns: ["passenger_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_taxi_fares_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "game_vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_transactions: {
         Row: {
           amount: number
@@ -1129,6 +1196,81 @@ export type Database = {
           {
             foreignKeyName: "game_transactions_character_id_fkey"
             columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_vehicles: {
+        Row: {
+          color: string
+          created_at: string
+          driver_id: string | null
+          fuel: number
+          health: number
+          id: string
+          is_for_sale: boolean
+          is_locked: boolean
+          max_speed: number
+          name: string
+          owner_id: string | null
+          position_x: number
+          position_y: number
+          price: number
+          rotation: number
+          speed: number
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          driver_id?: string | null
+          fuel?: number
+          health?: number
+          id?: string
+          is_for_sale?: boolean
+          is_locked?: boolean
+          max_speed?: number
+          name: string
+          owner_id?: string | null
+          position_x?: number
+          position_y?: number
+          price?: number
+          rotation?: number
+          speed?: number
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          driver_id?: string | null
+          fuel?: number
+          health?: number
+          id?: string
+          is_for_sale?: boolean
+          is_locked?: boolean
+          max_speed?: number
+          name?: string
+          owner_id?: string | null
+          position_x?: number
+          position_y?: number
+          price?: number
+          rotation?: number
+          speed?: number
+          vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_vehicles_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_vehicles_owner_id_fkey"
+            columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "game_characters"
             referencedColumns: ["id"]
@@ -2034,6 +2176,16 @@ export type Database = {
         | "verified"
         | "graduated"
         | "suspended"
+      vehicle_type:
+        | "bicycle"
+        | "motorcycle"
+        | "sedan"
+        | "sports_car"
+        | "suv"
+        | "truck"
+        | "taxi"
+        | "police_car"
+        | "ambulance"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2189,6 +2341,17 @@ export const Constants = {
         "verified",
         "graduated",
         "suspended",
+      ],
+      vehicle_type: [
+        "bicycle",
+        "motorcycle",
+        "sedan",
+        "sports_car",
+        "suv",
+        "truck",
+        "taxi",
+        "police_car",
+        "ambulance",
       ],
     },
   },
