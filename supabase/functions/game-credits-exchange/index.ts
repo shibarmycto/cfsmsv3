@@ -5,8 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Exchange rate: 1 CF Credit = $100 in-game money
-const GAME_MONEY_PER_CREDIT = 100;
+// Exchange rate: 10 CF Credits = $100 in-game money (1 credit = $10)
+const GAME_MONEY_PER_CREDIT = 10;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {

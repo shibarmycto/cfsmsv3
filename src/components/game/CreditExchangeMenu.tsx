@@ -11,7 +11,7 @@ interface CreditExchangeMenuProps {
   onCharacterUpdate: () => void;
 }
 
-const GAME_MONEY_PER_CREDIT = 100;
+const GAME_MONEY_PER_CREDIT = 10; // 10 credits = $100
 
 export default function CreditExchangeMenu({ character, onClose, onCharacterUpdate }: CreditExchangeMenuProps) {
   const [cfCredits, setCfCredits] = useState(0);
@@ -114,9 +114,9 @@ export default function CreditExchangeMenu({ character, onClose, onCharacterUpda
         <div className="bg-secondary/50 rounded-lg p-3 mb-6 text-center">
           <p className="text-sm text-muted-foreground">Exchange Rate</p>
           <p className="text-lg font-bold flex items-center justify-center gap-2">
-            <span className="text-primary">1 Credit</span>
+            <span className="text-primary">10 Credits</span>
             <ArrowRight className="w-4 h-4" />
-            <span className="text-green-500">${GAME_MONEY_PER_CREDIT}</span>
+            <span className="text-success">$100</span>
           </p>
         </div>
 
