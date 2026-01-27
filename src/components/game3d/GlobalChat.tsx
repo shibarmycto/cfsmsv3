@@ -23,7 +23,7 @@ export default function GlobalChat({ playerName, playerId, isMinimized = false }
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    // Subscribe to global chat
+    // Subscribe to global chat using game_messages table
     const channel = supabase
       .channel('global_chat')
       .on(
@@ -31,15 +31,16 @@ export default function GlobalChat({ playerName, playerId, isMinimized = false }
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'chat_messages',
+          table: 'game_messages',
+          filter: 'message_type=eq.global',
         },
         (payload) => {
           if (payload.new) {
             const newMessage: ChatMessage = {
-              id: payload.new.id,
-              playerName: payload.new.player_name,
-              message: payload.new.message,
-              timestamp: new Date(payload.new.created_at),
+              id: payload.new.id as string,
+              playerName: payload.new.sender_name as string,
+              message: payload.new.message as string,
+              timestamp: new Date(payload.new.created_at as string),
               type: 'global',
             };
             setMessages((prev) => [...prev, newMessage]);
@@ -62,11 +63,12 @@ export default function GlobalChat({ playerName, playerId, isMinimized = false }
     if (!inputMessage.trim()) return;
 
     try {
-      const { error } = await supabase.from('chat_messages').insert({
-        player_name: playerName,
-        player_id: playerId,
+      // Use game_messages table which has the correct schema
+      const { error } = await supabase.from('game_messages').insert({
+        sender_id: playerId,
+        sender_name: playerName,
         message: inputMessage,
-        type: 'global',
+        message_type: 'global',
       });
 
       if (!error) {

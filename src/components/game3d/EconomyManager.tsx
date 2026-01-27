@@ -87,7 +87,7 @@ export class EconomyManager {
     try {
       const { data, error } = await supabase
         .from('game_characters')
-        .select('cash, bank_balance, level, job_experience')
+        .select('cash, bank_balance, job_experience')
         .eq('user_id', this.userId)
         .single();
 
@@ -95,8 +95,8 @@ export class EconomyManager {
       if (data) {
         this.playerData.inGameCash = data.cash || 5000;
         this.playerData.bank = data.bank_balance || 0;
-        this.playerData.level = data.level || 1;
-        this.playerData.experience = data.job_experience || 0;
+        this.playerData.level = Math.floor((data.job_experience || 0) / 500) + 1;
+        this.playerData.experience = (data.job_experience || 0) % 500;
       }
     } catch (error) {
       console.error('Failed to load economy data:', error);
@@ -105,13 +105,15 @@ export class EconomyManager {
 
   async saveToSupabase(characterId: string): Promise<void> {
     try {
+      // Calculate total experience from level + current experience
+      const totalExperience = (this.playerData.level - 1) * 500 + this.playerData.experience;
+      
       const { error } = await supabase
         .from('game_characters')
         .update({
           cash: this.playerData.inGameCash,
           bank_balance: this.playerData.bank,
-          level: this.playerData.level,
-          job_experience: this.playerData.experience,
+          job_experience: totalExperience,
           updated_at: new Date().toISOString(),
         })
         .eq('id', characterId);
