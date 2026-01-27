@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { X, Users, Home, Briefcase, MessageSquare, DollarSign, Shield, Car, Coins, BookOpen, Gamepad2, Skull } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import GameHUD from './GameHUD';
 import GameChatSystem from './GameChatSystem';
 import GameMenu from './GameMenu';
@@ -17,6 +18,7 @@ import RulesMenu from './RulesMenu';
 import HowToPlayMenu from './HowToPlayMenu';
 import EmoteSystem from './EmoteSystem';
 import ProximityInteraction from './ProximityInteraction';
+import MobileGameMenu from './MobileGameMenu';
 
 interface GameCharacter {
   id: string;
@@ -86,6 +88,7 @@ const VEHICLE_TURN_SPEED = 4; // Increased from 3
 const UPDATE_INTERVAL = 100;
 
 export default function GameWorld({ character: initialCharacter, onExit }: GameWorldProps) {
+  const isMobile = useIsMobile();
   const [character, setCharacter] = useState(initialCharacter);
   const [otherPlayers, setOtherPlayers] = useState<GameCharacter[]>([]);
   const [nearbyPlayers, setNearbyPlayers] = useState<{ id: string; name: string; distance: number }[]>([]);
@@ -572,43 +575,62 @@ export default function GameWorld({ character: initialCharacter, onExit }: GameW
       {/* HUD */}
       <GameHUD character={character} />
 
-      {/* Action Buttons */}
-      <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap max-w-[50vw]">
-        <EmoteSystem onEmote={handleEmote} isEmoting={playerAnimationState === 'emote'} />
-        <Button size="sm" variant="secondary" onClick={() => setShowMenu('jobs')}>
-          <Briefcase className="w-4 h-4 mr-1" /> Jobs
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowVehicleMenu(true)}>
-          <Car className="w-4 h-4 mr-1" /> Vehicles
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowTaxiMenu(true)}>
-          🚕 Taxi
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowMenu('players')}>
-          <Users className="w-4 h-4 mr-1" /> Players
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowOrgMenu(true)}>
-          <Shield className="w-4 h-4 mr-1" /> Org
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowChat(true)}>
-          <MessageSquare className="w-4 h-4 mr-1" /> Chat
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowMenu('bank')}>
-          <DollarSign className="w-4 h-4 mr-1" /> Bank
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowCreditExchange(true)} className="bg-gradient-to-r from-yellow-600 to-amber-500 text-white hover:from-yellow-500 hover:to-amber-400">
-          <Coins className="w-4 h-4 mr-1" /> Exchange
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowPoliceApp(true)}>
-          <Shield className="w-4 h-4 mr-1" /> Police
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setShowRules(true)}>
-          <BookOpen className="w-4 h-4 mr-1" /> Rules
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setShowHowToPlay(true)}>
-          <Gamepad2 className="w-4 h-4 mr-1" /> Help
-        </Button>
-      </div>
+      {/* Action Buttons - Desktop */}
+      {!isMobile && (
+        <div className="fixed bottom-4 left-4 flex gap-2 flex-wrap max-w-[50vw]">
+          <EmoteSystem onEmote={handleEmote} isEmoting={playerAnimationState === 'emote'} />
+          <Button size="sm" variant="secondary" onClick={() => setShowMenu('jobs')}>
+            <Briefcase className="w-4 h-4 mr-1" /> Jobs
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowVehicleMenu(true)}>
+            <Car className="w-4 h-4 mr-1" /> Vehicles
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowTaxiMenu(true)}>
+            🚕 Taxi
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowMenu('players')}>
+            <Users className="w-4 h-4 mr-1" /> Players
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowOrgMenu(true)}>
+            <Shield className="w-4 h-4 mr-1" /> Org
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowChat(true)}>
+            <MessageSquare className="w-4 h-4 mr-1" /> Chat
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowMenu('bank')}>
+            <DollarSign className="w-4 h-4 mr-1" /> Bank
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowCreditExchange(true)} className="bg-gradient-to-r from-yellow-600 to-amber-500 text-white hover:from-yellow-500 hover:to-amber-400">
+            <Coins className="w-4 h-4 mr-1" /> Exchange
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowPoliceApp(true)}>
+            <Shield className="w-4 h-4 mr-1" /> Police
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowRules(true)}>
+            <BookOpen className="w-4 h-4 mr-1" /> Rules
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowHowToPlay(true)}>
+            <Gamepad2 className="w-4 h-4 mr-1" /> Help
+          </Button>
+        </div>
+      )}
+
+      {/* Mobile Menu */}
+      {isMobile && (
+        <MobileGameMenu
+          onShowJobs={() => setShowMenu('jobs')}
+          onShowVehicles={() => setShowVehicleMenu(true)}
+          onShowTaxi={() => setShowTaxiMenu(true)}
+          onShowPlayers={() => setShowMenu('players')}
+          onShowOrg={() => setShowOrgMenu(true)}
+          onShowChat={() => setShowChat(true)}
+          onShowBank={() => setShowMenu('bank')}
+          onShowExchange={() => setShowCreditExchange(true)}
+          onShowPolice={() => setShowPoliceApp(true)}
+          onShowRules={() => setShowRules(true)}
+          onShowHelp={() => setShowHowToPlay(true)}
+        />
+      )}
 
       {/* Exit Button */}
       <Button
