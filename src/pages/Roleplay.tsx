@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Gamepad2 } from 'lucide-react';
 import CharacterCreation from '@/components/game/CharacterCreation';
-import OpenWorldGame from '@/components/game3d/OpenWorldGame';
+import { MobileGame3D } from '@/components/game3d';
 import { toast } from 'sonner';
 
 interface GameCharacter {
@@ -149,7 +149,7 @@ export default function Roleplay() {
 
   if (showGame && character) {
     return (
-      <OpenWorldGame 
+      <MobileGame3D 
         characterId={character.id}
         characterName={character.name}
         onExit={handleExitGame}

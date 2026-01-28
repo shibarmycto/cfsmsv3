@@ -1,5 +1,11 @@
 // Game 3D exports
 export { default as OpenWorldGame } from './OpenWorldGame';
+export { default as MobileGame3D } from './MobileGame3D';
+export { default as SplashScreen } from './SplashScreen';
+export { default as MobileControls } from './MobileControls';
+export { default as GameHUD } from './GameHUD';
+export { createRealisticCharacter, animateCharacter } from './RealisticCharacter';
+export { createUKWorld } from './UKWorld';
 export { default as Game3DScene } from './Game3DScene';
 export { default as Game3DPlayer } from './Game3DPlayer';
 export { default as Game3DWorld } from './Game3DWorld';
