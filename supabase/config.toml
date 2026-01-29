@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.ai-twin-manage]
 verify_jwt = false
+
+[functions.elevenlabs-conversation-token]
+verify_jwt = false

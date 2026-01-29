@@ -14,10 +14,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { VoiceChat } from "@/components/VoiceChat";
 import { 
   Bot, Phone, Brain, Settings, PhoneCall, Clock, 
   Wallet, Trash2, ArrowLeft, Save, Plus, MessageSquare,
-  User, Heart, Sparkles, Volume2
+  User, Heart, Sparkles, Volume2, Headphones
 } from "lucide-react";
 
 interface AITwin {
@@ -61,15 +62,16 @@ interface Memory {
   created_at: string;
 }
 
-const TWILIO_VOICES = [
-  { id: 'alice', name: 'Alice (American)' },
-  { id: 'man', name: 'Man (American)' },
-  { id: 'woman', name: 'Woman (American)' },
-  { id: 'Polly.Amy', name: 'Amy (British)' },
-  { id: 'Polly.Brian', name: 'Brian (British)' },
-  { id: 'Polly.Emma', name: 'Emma (British)' },
-  { id: 'Polly.Joanna', name: 'Joanna (American)' },
-  { id: 'Polly.Matthew', name: 'Matthew (American)' },
+// ElevenLabs voices - high quality AI voices
+const ELEVENLABS_VOICES = [
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (American Female)' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George (British Male)' },
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (American Female)' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie (Australian Male)' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda (American Female)' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel (British Male)' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily (British Female)' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian (American Male)' },
 ];
 
 const PERSONALITY_TRAITS = [
@@ -93,7 +95,7 @@ export default function AITwin() {
     costPerMinute: 1,
     walletBalance: 0,
   });
-  const [activeTab, setActiveTab] = useState("setup");
+  const [activeTab, setActiveTab] = useState("voice");
 
   // Form state
   const [formData, setFormData] = useState({
@@ -105,11 +107,12 @@ export default function AITwin() {
     tone_intuitive: 0.5,
     greeting_message: "Hey there! How are you feeling today?",
     custom_instructions: "",
-    voice_id: "alice",
-    language: "en-US",
+    voice_id: "JBFqnCBsd6RMkjVDRZzb",
+    language: "en-GB",
     is_active: true,
     forwarding_number: "",
     cost_per_minute: 1,
+    elevenlabs_agent_id: "",
   });
 
   useEffect(() => {
@@ -139,11 +142,12 @@ export default function AITwin() {
           tone_intuitive: twinData.twin.tone_intuitive ?? 0.5,
           greeting_message: twinData.twin.greeting_message || "Hey there! How are you feeling today?",
           custom_instructions: twinData.twin.custom_instructions || "",
-          voice_id: twinData.twin.voice_id || "alice",
-          language: twinData.twin.language || "en-US",
+          voice_id: twinData.twin.voice_id || "JBFqnCBsd6RMkjVDRZzb",
+          language: twinData.twin.language || "en-GB",
           is_active: twinData.twin.is_active ?? true,
           forwarding_number: twinData.twin.forwarding_number || "",
           cost_per_minute: twinData.twin.cost_per_minute || 1,
+          elevenlabs_agent_id: (twinData.twin as any).elevenlabs_agent_id || "",
         });
       }
 
@@ -315,7 +319,11 @@ export default function AITwin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 mb-6">
+          <TabsList className="grid grid-cols-5 mb-6">
+            <TabsTrigger value="voice" className="flex items-center gap-2">
+              <Headphones className="h-4 w-4" />
+              <span className="hidden sm:inline">Voice</span>
+            </TabsTrigger>
             <TabsTrigger value="setup" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Setup</span>
@@ -326,13 +334,83 @@ export default function AITwin() {
             </TabsTrigger>
             <TabsTrigger value="calls" className="flex items-center gap-2">
               <Phone className="h-4 w-4" />
-              <span className="hidden sm:inline">Calls</span>
+              <span className="hidden sm:inline">History</span>
             </TabsTrigger>
             <TabsTrigger value="memories" className="flex items-center gap-2">
               <Brain className="h-4 w-4" />
               <span className="hidden sm:inline">Memories</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* Voice Chat Tab - NEW PRIMARY TAB */}
+          <TabsContent value="voice">
+            <div className="grid md:grid-cols-2 gap-6">
+              <VoiceChat
+                twinName={formData.name}
+                greeting={formData.greeting_message}
+                agentId={formData.elevenlabs_agent_id}
+                onCallStart={() => {
+                  console.log("Voice call started");
+                }}
+                onCallEnd={(duration) => {
+                  console.log("Voice call ended, duration:", duration);
+                  // Optionally charge tokens here
+                }}
+              />
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    ElevenLabs Agent Setup
+                  </CardTitle>
+                  <CardDescription>
+                    Connect your custom ElevenLabs agent for voice conversations
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="elevenlabs_agent_id">ElevenLabs Agent ID</Label>
+                    <Input
+                      id="elevenlabs_agent_id"
+                      value={formData.elevenlabs_agent_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, elevenlabs_agent_id: e.target.value }))}
+                      placeholder="Your ElevenLabs Agent ID"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Create a free agent at{" "}
+                      <a 
+                        href="https://elevenlabs.io/agents" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        elevenlabs.io/agents
+                      </a>
+                    </p>
+                  </div>
+
+                  <div className="bg-muted p-4 rounded-lg space-y-3">
+                    <h4 className="font-medium text-sm">Quick Setup Guide</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                      <li>Go to <strong>elevenlabs.io/agents</strong></li>
+                      <li>Click "Create Agent" and choose a template or start blank</li>
+                      <li>Configure the agent's voice and personality</li>
+                      <li>Copy the Agent ID from the settings</li>
+                      <li>Paste it above and save</li>
+                    </ol>
+                    <p className="text-xs text-muted-foreground pt-2 border-t">
+                      ✨ ElevenLabs offers realistic AI voices with UK accents and works directly in your browser—no phone number needed!
+                    </p>
+                  </div>
+
+                  <Button onClick={handleSave} disabled={saving} className="w-full">
+                    {saving ? "Saving..." : "Save Agent ID"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
           {/* Setup Tab */}
           <TabsContent value="setup">
@@ -422,7 +500,7 @@ export default function AITwin() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {TWILIO_VOICES.map((voice) => (
+                        {ELEVENLABS_VOICES.map((voice) => (
                           <SelectItem key={voice.id} value={voice.id}>
                             {voice.name}
                           </SelectItem>
