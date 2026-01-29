@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import splashImage from '@/assets/cf-roleplay-splash.png';
+import splashImage from '@/assets/cf-roleplay-gta-splash.png';
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -69,7 +69,7 @@ export default function SplashScreen({ onComplete, characterName }: SplashScreen
       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/50" />
 
       {/* Content */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-end pb-20 px-8">
+      <div className="relative z-10 h-full flex flex-col items-center justify-end pb-20 px-6 sm:px-8">
         {/* Welcome text */}
         <div className="text-center mb-8">
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
