@@ -39,8 +39,8 @@ serve(async (req) => {
       const action = url.searchParams.get('action');
       
       if (action === 'setWebhook') {
-        // Set webhook to this endpoint
-        const webhookUrl = `${url.origin}/telegram-ai-worker-bot`;
+        // Set webhook to this endpoint using proper Supabase functions URL
+        const webhookUrl = `https://vdvijwzkultowrambvhe.supabase.co/functions/v1/telegram-ai-worker-bot`;
         const response = await fetch(
           `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${encodeURIComponent(webhookUrl)}`
         );
