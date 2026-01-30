@@ -15,10 +15,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { VoiceChat } from "@/components/VoiceChat";
+import { TelnyxPhoneSetup } from "@/components/TelnyxPhoneSetup";
 import { 
   Bot, Phone, Brain, Settings, PhoneCall, Clock, 
   Wallet, Trash2, ArrowLeft, Save, Plus, MessageSquare,
-  User, Heart, Sparkles, Volume2, Headphones
+  User, Heart, Sparkles, Volume2, Headphones, Smartphone
 } from "lucide-react";
 
 interface AITwin {
@@ -319,10 +320,14 @@ export default function AITwin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-5 mb-6">
+          <TabsList className="grid grid-cols-6 mb-6">
             <TabsTrigger value="voice" className="flex items-center gap-2">
               <Headphones className="h-4 w-4" />
               <span className="hidden sm:inline">Voice</span>
+            </TabsTrigger>
+            <TabsTrigger value="phone" className="flex items-center gap-2">
+              <Smartphone className="h-4 w-4" />
+              <span className="hidden sm:inline">Phone</span>
             </TabsTrigger>
             <TabsTrigger value="setup" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -342,7 +347,7 @@ export default function AITwin() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Voice Chat Tab - NEW PRIMARY TAB */}
+          {/* Voice Chat Tab - Browser-based voice */}
           <TabsContent value="voice">
             <div className="grid md:grid-cols-2 gap-6">
               <VoiceChat
@@ -354,7 +359,6 @@ export default function AITwin() {
                 }}
                 onCallEnd={(duration) => {
                   console.log("Voice call ended, duration:", duration);
-                  // Optionally charge tokens here
                 }}
               />
 
@@ -407,6 +411,63 @@ export default function AITwin() {
                   <Button onClick={handleSave} disabled={saving} className="w-full">
                     {saving ? "Saving..." : "Save Agent ID"}
                   </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Phone Tab - Telnyx phone numbers for mobile calls */}
+          <TabsContent value="phone">
+            <div className="grid md:grid-cols-2 gap-6">
+              <TelnyxPhoneSetup />
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Phone className="h-5 w-5" />
+                    How Phone Calls Work
+                  </CardTitle>
+                  <CardDescription>
+                    Get a UK phone number that answers calls with your AI agent
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-muted p-4 rounded-lg">
+                    <h4 className="font-medium text-sm mb-3">Call Flow</h4>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="px-2 py-1 bg-background rounded">📱 Caller</span>
+                      <span>→</span>
+                      <span className="px-2 py-1 bg-background rounded">📞 Telnyx</span>
+                      <span>→</span>
+                      <span className="px-2 py-1 bg-primary/20 text-primary rounded">🤖 AI Agent</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-start gap-2">
+                      <span className="text-primary">✓</span>
+                      <span>UK phone numbers starting from ~$1/month</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-primary">✓</span>
+                      <span>Calls routed to ElevenLabs AI agent</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-primary">✓</span>
+                      <span>Works as a receptionist, assistant, or companion</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-primary">✓</span>
+                      <span>Train your agent's personality in ElevenLabs</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Costs:</strong> Telnyx charges for phone numbers and call minutes. 
+                      ElevenLabs charges separately for AI conversation minutes.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>
