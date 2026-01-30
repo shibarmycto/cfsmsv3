@@ -40,6 +40,7 @@ import AdminVerifyUsersTab from '@/components/AdminVerifyUsersTab';
 import AdminPromoOrdersTab from '@/components/AdminPromoOrdersTab';
 import AdminExchangeTab from '@/components/AdminExchangeTab';
 import AdminGameTab from '@/components/AdminGameTab';
+import AdminPhoneRequestsTab from '@/components/AdminPhoneRequestsTab';
 
 interface UserProfile {
   id: string;
@@ -996,6 +997,7 @@ export default function Admin() {
                 { id: 'exchange', icon: TrendingUp, label: 'CF Exchange', count: 0 },
                 { id: 'forum', icon: Hash, label: 'Forum', count: 0 },
                 { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
+                { id: 'phone-requests', icon: Phone, label: 'Phone Numbers', count: 0 },
                 { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
@@ -2045,6 +2047,11 @@ export default function Admin() {
             {/* Exchange Tab */}
             {activeTab === 'exchange' && (
               <AdminExchangeTab />
+            )}
+
+            {/* Phone Requests Tab */}
+            {activeTab === 'phone-requests' && (
+              <AdminPhoneRequestsTab />
             )}
 
             {/* Game Tab */}

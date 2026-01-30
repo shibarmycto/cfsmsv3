@@ -1855,6 +1855,62 @@ export type Database = {
         }
         Relationships: []
       }
+      telnyx_phone_requests: {
+        Row: {
+          admin_notes: string | null
+          agent_id: string | null
+          agent_name: string | null
+          created_at: string
+          credits_charged: number
+          id: string
+          phone_number: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          telnyx_number_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          agent_id?: string | null
+          agent_name?: string | null
+          created_at?: string
+          credits_charged?: number
+          id?: string
+          phone_number: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          telnyx_number_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          agent_id?: string | null
+          agent_name?: string | null
+          created_at?: string
+          credits_charged?: number
+          id?: string
+          phone_number?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          telnyx_number_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telnyx_phone_requests_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_twins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       token_holdings: {
         Row: {
           amount: number
