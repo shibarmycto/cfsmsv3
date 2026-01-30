@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.elevenlabs-conversation-token]
 verify_jwt = false
+
+[functions.telnyx-phone-numbers]
+verify_jwt = false
+
+[functions.telnyx-elevenlabs-setup]
+verify_jwt = false
