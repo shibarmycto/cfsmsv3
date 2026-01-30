@@ -156,18 +156,26 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
     const gameLoop = () => {
       frameId = requestAnimationFrame(gameLoop);
 
-      // Update input from keyboard
-      inputRef.current.forward = 0;
-      inputRef.current.right = 0;
-      inputRef.current.jump = false;
-      inputRef.current.sprint = false;
+      // Only reset when using keyboard; mobile handlers write to inputRef directly
+      const hasKeyboard = keysRef.current['w'] || keysRef.current['s'] ||
+                          keysRef.current['a'] || keysRef.current['d'] ||
+                          keysRef.current['arrowup'] || keysRef.current['arrowdown'] ||
+                          keysRef.current['arrowleft'] || keysRef.current['arrowright'] ||
+                          keysRef.current[' '] || keysRef.current['shift'];
 
-      if (keysRef.current['w'] || keysRef.current['arrowup']) inputRef.current.forward = 1;
-      if (keysRef.current['s'] || keysRef.current['arrowdown']) inputRef.current.forward = -1;
-      if (keysRef.current['a'] || keysRef.current['arrowleft']) inputRef.current.right = -1;
-      if (keysRef.current['d'] || keysRef.current['arrowright']) inputRef.current.right = 1;
-      if (keysRef.current[' ']) inputRef.current.jump = true;
-      if (keysRef.current['shift']) inputRef.current.sprint = true;
+      if (hasKeyboard) {
+        inputRef.current.forward = 0;
+        inputRef.current.right = 0;
+        inputRef.current.jump = false;
+        inputRef.current.sprint = false;
+
+        if (keysRef.current['w'] || keysRef.current['arrowup']) inputRef.current.forward = 1;
+        if (keysRef.current['s'] || keysRef.current['arrowdown']) inputRef.current.forward = -1;
+        if (keysRef.current['a'] || keysRef.current['arrowleft']) inputRef.current.right = -1;
+        if (keysRef.current['d'] || keysRef.current['arrowright']) inputRef.current.right = 1;
+        if (keysRef.current[' ']) inputRef.current.jump = true;
+        if (keysRef.current['shift']) inputRef.current.sprint = true;
+      }
 
       const result = engine.update(inputRef.current);
       setNearbyBuilding(result.nearbyBuilding);
