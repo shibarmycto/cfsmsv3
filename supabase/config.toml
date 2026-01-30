@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.telnyx-elevenlabs-setup]
 verify_jwt = false
+
+[functions.telegram-solana-bot]
+verify_jwt = false
+
+[functions.telegram-ai-worker-bot]
+verify_jwt = false

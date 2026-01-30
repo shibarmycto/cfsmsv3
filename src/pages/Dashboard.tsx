@@ -385,6 +385,8 @@ export default function Dashboard() {
                 { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
                 { id: 'exchange', icon: TrendingUp, label: 'Exchange', isLink: true, href: '/exchange' },
                 { id: 'create-coin', icon: PlusCircle, label: 'Coin', isLink: true, href: '/exchange?tab=create' },
+                { id: 'solana-bot', icon: Sparkles, label: 'Solana', isExternal: true, href: 'https://t.me/Cfsolanasoldier_bot' },
+                { id: 'ai-worker-bot', icon: Bot, label: 'Worker', isExternal: true, href: 'https://t.me/Cfaiworkerbot' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
@@ -396,7 +398,9 @@ export default function Dashboard() {
                 <button
                   key={item.id}
                   onClick={() => {
-                    if ('isLink' in item && item.isLink && 'href' in item) {
+                    if ('isExternal' in item && item.isExternal && 'href' in item) {
+                      window.open(item.href as string, '_blank');
+                    } else if ('isLink' in item && item.isLink && 'href' in item) {
                       navigate(item.href as string);
                     } else {
                       setActiveTab(item.id);
