@@ -361,15 +361,15 @@ export default function EliteHUD({
 
             {/* Menu Grid */}
             <div className="grid grid-cols-3 gap-3 mb-6">
-              <MenuButton icon={User} label="Profile" color="cyan" onClick={() => toast.info('Profile coming soon!')} />
-              <MenuButton icon={Briefcase} label="Jobs" color="green" onClick={() => toast.info('Find jobs at Job Centre!')} />
+              <MenuButton icon={User} label="Profile" color="cyan" onClick={() => toast.info('Open Profile from CF Menu!')} />
+              <MenuButton icon={Briefcase} label="Jobs" color="green" onClick={() => toast.info('Criminal jobs available! Press J key')} />
               <MenuButton icon={Car} label="Vehicles" color="blue" onClick={() => toast.info('Visit the Dealership!')} />
               <MenuButton icon={Building2} label="Properties" color="purple" onClick={() => toast.info('Properties coming soon!')} />
-              <MenuButton icon={Store} label="Shops" color="amber" onClick={() => toast.info('Find shops nearby!')} />
+              <MenuButton icon={Swords} label="Weapons" color="red" onClick={() => toast.info('Buy weapons at Gun Shop!')} />
               <MenuButton icon={Shield} label="Police" color="indigo" onClick={() => toast.info('Apply at Police Station!')} />
-              <MenuButton icon={Users} label="Gangs" color="red" onClick={() => toast.info('Organizations coming soon!')} />
-              <MenuButton icon={Phone} label="Contacts" color="emerald" onClick={() => toast.info('Contacts coming soon!')} />
-              <MenuButton icon={Map} label="Map" color="orange" onClick={() => toast.info('Map coming soon!')} />
+              <MenuButton icon={Crown} label="Gangs" color="pink" onClick={() => toast.info('Gang system active! Press G key')} />
+              <MenuButton icon={Wallet} label="Exchange" color="yellow" onClick={() => toast.info('CF Credits exchange! Press C key')} />
+              <MenuButton icon={Store} label="Shops" color="amber" onClick={() => toast.info('Find shops nearby!')} />
             </div>
 
             {/* Bottom Row */}

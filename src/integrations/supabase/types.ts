@@ -869,17 +869,25 @@ export type Database = {
           arrests: number
           bank_balance: number
           cash: number
+          cf_credits_spent_in_game: number | null
           created_at: string
           current_job: Database["public"]["Enums"]["job_type"]
+          deaths: number | null
           energy: number
+          equipped_weapon: string | null
+          gang_id: string | null
           gender: Database["public"]["Enums"]["character_gender"]
           hair_color: string
           health: number
           hunger: number
           id: string
+          is_in_jail: boolean | null
           is_knocked_out: boolean
           is_online: boolean
+          jail_reason: string | null
+          jail_until: string | null
           job_experience: number
+          kills: number | null
           knocked_out_by: string | null
           knocked_out_until: string | null
           last_robbery_at: string | null
@@ -899,17 +907,25 @@ export type Database = {
           arrests?: number
           bank_balance?: number
           cash?: number
+          cf_credits_spent_in_game?: number | null
           created_at?: string
           current_job?: Database["public"]["Enums"]["job_type"]
+          deaths?: number | null
           energy?: number
+          equipped_weapon?: string | null
+          gang_id?: string | null
           gender?: Database["public"]["Enums"]["character_gender"]
           hair_color?: string
           health?: number
           hunger?: number
           id?: string
+          is_in_jail?: boolean | null
           is_knocked_out?: boolean
           is_online?: boolean
+          jail_reason?: string | null
+          jail_until?: string | null
           job_experience?: number
+          kills?: number | null
           knocked_out_by?: string | null
           knocked_out_until?: string | null
           last_robbery_at?: string | null
@@ -929,17 +945,25 @@ export type Database = {
           arrests?: number
           bank_balance?: number
           cash?: number
+          cf_credits_spent_in_game?: number | null
           created_at?: string
           current_job?: Database["public"]["Enums"]["job_type"]
+          deaths?: number | null
           energy?: number
+          equipped_weapon?: string | null
+          gang_id?: string | null
           gender?: Database["public"]["Enums"]["character_gender"]
           hair_color?: string
           health?: number
           hunger?: number
           id?: string
+          is_in_jail?: boolean | null
           is_knocked_out?: boolean
           is_online?: boolean
+          jail_reason?: string | null
+          jail_until?: string | null
           job_experience?: number
+          kills?: number | null
           knocked_out_by?: string | null
           knocked_out_until?: string | null
           last_robbery_at?: string | null
@@ -957,8 +981,60 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_game_characters_gang"
+            columns: ["gang_id"]
+            isOneToOne: false
+            referencedRelation: "game_gangs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "game_characters_knocked_out_by_fkey"
             columns: ["knocked_out_by"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_combat_logs: {
+        Row: {
+          attacker_id: string
+          created_at: string | null
+          damage_dealt: number | null
+          id: string
+          is_kill: boolean | null
+          victim_id: string
+          weapon_used: string | null
+        }
+        Insert: {
+          attacker_id: string
+          created_at?: string | null
+          damage_dealt?: number | null
+          id?: string
+          is_kill?: boolean | null
+          victim_id: string
+          weapon_used?: string | null
+        }
+        Update: {
+          attacker_id?: string
+          created_at?: string | null
+          damage_dealt?: number | null
+          id?: string
+          is_kill?: boolean | null
+          victim_id?: string
+          weapon_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_combat_logs_attacker_id_fkey"
+            columns: ["attacker_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_combat_logs_victim_id_fkey"
+            columns: ["victim_id"]
             isOneToOne: false
             referencedRelation: "game_characters"
             referencedColumns: ["id"]
@@ -1016,6 +1092,48 @@ export type Database = {
           },
         ]
       }
+      game_criminal_jobs: {
+        Row: {
+          cooldown_minutes: number | null
+          description: string | null
+          energy_cost: number | null
+          icon: string | null
+          id: string
+          job_type: string
+          max_payout: number
+          min_payout: number
+          name: string
+          required_item: string | null
+          wanted_level_risk: number | null
+        }
+        Insert: {
+          cooldown_minutes?: number | null
+          description?: string | null
+          energy_cost?: number | null
+          icon?: string | null
+          id?: string
+          job_type: string
+          max_payout?: number
+          min_payout?: number
+          name: string
+          required_item?: string | null
+          wanted_level_risk?: number | null
+        }
+        Update: {
+          cooldown_minutes?: number | null
+          description?: string | null
+          energy_cost?: number | null
+          icon?: string | null
+          id?: string
+          job_type?: string
+          max_payout?: number
+          min_payout?: number
+          name?: string
+          required_item?: string | null
+          wanted_level_risk?: number | null
+        }
+        Relationships: []
+      }
       game_friends: {
         Row: {
           character_id: string
@@ -1049,6 +1167,199 @@ export type Database = {
           {
             foreignKeyName: "game_friends_friend_character_id_fkey"
             columns: ["friend_character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_gang_applications: {
+        Row: {
+          character_id: string
+          created_at: string | null
+          gang_id: string
+          id: string
+          message: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+        }
+        Insert: {
+          character_id: string
+          created_at?: string | null
+          gang_id: string
+          id?: string
+          message?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Update: {
+          character_id?: string
+          created_at?: string | null
+          gang_id?: string
+          id?: string
+          message?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_gang_applications_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_gang_applications_gang_id_fkey"
+            columns: ["gang_id"]
+            isOneToOne: false
+            referencedRelation: "game_gangs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_gangs: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          color: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_approved: boolean | null
+          leader_id: string | null
+          max_members: number | null
+          member_count: number | null
+          name: string
+          reputation: number | null
+          tag: string
+          treasury: number | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          color?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_approved?: boolean | null
+          leader_id?: string | null
+          max_members?: number | null
+          member_count?: number | null
+          name: string
+          reputation?: number | null
+          tag: string
+          treasury?: number | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          color?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_approved?: boolean | null
+          leader_id?: string | null
+          max_members?: number | null
+          member_count?: number | null
+          name?: string
+          reputation?: number | null
+          tag?: string
+          treasury?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_gangs_leader_id_fkey"
+            columns: ["leader_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_jail_logs: {
+        Row: {
+          arrested_by: string | null
+          character_id: string
+          created_at: string | null
+          id: string
+          jail_duration_minutes: number | null
+          reason: string | null
+          released_at: string | null
+          released_by: string | null
+          used_jail_card: boolean | null
+        }
+        Insert: {
+          arrested_by?: string | null
+          character_id: string
+          created_at?: string | null
+          id?: string
+          jail_duration_minutes?: number | null
+          reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          used_jail_card?: boolean | null
+        }
+        Update: {
+          arrested_by?: string | null
+          character_id?: string
+          created_at?: string | null
+          id?: string
+          jail_duration_minutes?: number | null
+          reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          used_jail_card?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_jail_logs_arrested_by_fkey"
+            columns: ["arrested_by"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_jail_logs_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_job_logs: {
+        Row: {
+          character_id: string
+          created_at: string | null
+          id: string
+          job_type: string
+          payout: number
+          success: boolean | null
+        }
+        Insert: {
+          character_id: string
+          created_at?: string | null
+          id?: string
+          job_type: string
+          payout: number
+          success?: boolean | null
+        }
+        Update: {
+          character_id?: string
+          created_at?: string | null
+          id?: string
+          job_type?: string
+          payout?: number
+          success?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_job_logs_character_id_fkey"
+            columns: ["character_id"]
             isOneToOne: false
             referencedRelation: "game_characters"
             referencedColumns: ["id"]
@@ -1176,6 +1487,48 @@ export type Database = {
             columns: ["leader_id"]
             isOneToOne: false
             referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_player_inventory: {
+        Row: {
+          acquired_at: string | null
+          ammo: number | null
+          character_id: string
+          id: string
+          is_equipped: boolean | null
+          weapon_id: string
+        }
+        Insert: {
+          acquired_at?: string | null
+          ammo?: number | null
+          character_id: string
+          id?: string
+          is_equipped?: boolean | null
+          weapon_id: string
+        }
+        Update: {
+          acquired_at?: string | null
+          ammo?: number | null
+          character_id?: string
+          id?: string
+          is_equipped?: boolean | null
+          weapon_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_player_inventory_character_id_fkey"
+            columns: ["character_id"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_player_inventory_weapon_id_fkey"
+            columns: ["weapon_id"]
+            isOneToOne: false
+            referencedRelation: "game_weapons"
             referencedColumns: ["id"]
           },
         ]
@@ -1453,6 +1806,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      game_weapons: {
+        Row: {
+          ammo_capacity: number | null
+          damage: number
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          price: number
+          range: number
+          weapon_type: string
+        }
+        Insert: {
+          ammo_capacity?: number | null
+          damage?: number
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          price?: number
+          range?: number
+          weapon_type?: string
+        }
+        Update: {
+          ammo_capacity?: number | null
+          damage?: number
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          price?: number
+          range?: number
+          weapon_type?: string
+        }
+        Relationships: []
       }
       large_transaction_approvals: {
         Row: {
