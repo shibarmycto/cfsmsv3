@@ -1,6 +1,9 @@
 // Game 3D exports
 export { default as OpenWorldGame } from './OpenWorldGame';
-export { default as MobileGame3D } from './MobileGame3D';
+export { default as MobileGame3D } from './EliteGame';
+export { default as EliteGame } from './EliteGame';
+export { default as EliteHUD } from './EliteHUD';
+export { default as ShopInterior } from './ShopInterior';
 export { default as SplashScreen } from './SplashScreen';
 export { default as MobileControls } from './MobileControls';
 export { default as GameHUD } from './GameHUD';
