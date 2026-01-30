@@ -446,26 +446,25 @@ export default function AITwin() {
                   <div className="space-y-2 text-sm">
                     <div className="flex items-start gap-2">
                       <span className="text-primary">✓</span>
-                      <span>UK phone numbers starting from ~$1/month</span>
+                      <span>UK phone numbers for 5 CF Credits</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="text-primary">✓</span>
-                      <span>Calls routed to ElevenLabs AI agent</span>
+                      <span>Admin approval required before activation</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-primary">✓</span>
+                      <span>Calls routed to your ElevenLabs AI agent</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <span className="text-primary">✓</span>
                       <span>Works as a receptionist, assistant, or companion</span>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-primary">✓</span>
-                      <span>Train your agent's personality in ElevenLabs</span>
-                    </div>
                   </div>
 
                   <div className="pt-4 border-t">
                     <p className="text-xs text-muted-foreground">
-                      <strong>Costs:</strong> Telnyx charges for phone numbers and call minutes. 
-                      ElevenLabs charges separately for AI conversation minutes.
+                      <strong>Note:</strong> Credits are only deducted once your request is approved by an admin.
                     </p>
                   </div>
                 </CardContent>

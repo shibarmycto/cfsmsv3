@@ -1,97 +1,107 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Phone, Search, ShoppingCart, Link2, Settings, 
-  CheckCircle2, AlertCircle, Loader2, RefreshCw,
-  ExternalLink, Trash2
+  Phone, Search, ShoppingCart, Settings, 
+  AlertCircle, Loader2, RefreshCw, Clock, Bot, Coins
 } from "lucide-react";
 
 interface PhoneNumber {
   phone_number: string;
   locality?: string;
   region?: string;
-  monthly_cost?: { amount: string; currency: string };
 }
 
-interface OwnedNumber {
+interface PhoneRequest {
   id: string;
   phone_number: string;
+  agent_id: string | null;
+  agent_name: string | null;
   status: string;
-  connection_id?: string;
-  connection_name?: string;
+  credits_charged: number;
+  created_at: string;
 }
 
-interface SIPConnection {
+interface AITwin {
   id: string;
-  connection_name: string;
-  active: boolean;
+  name: string;
 }
+
+const CREDITS_PER_NUMBER = 5;
 
 export function TelnyxPhoneSetup() {
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("setup");
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [purchaseLoading, setPurchaseLoading] = useState<string | null>(null);
+  const [requestLoading, setRequestLoading] = useState<string | null>(null);
   
   // Data states
   const [availableNumbers, setAvailableNumbers] = useState<PhoneNumber[]>([]);
-  const [ownedNumbers, setOwnedNumbers] = useState<OwnedNumber[]>([]);
-  const [connections, setConnections] = useState<SIPConnection[]>([]);
-  const [setupInstructions, setSetupInstructions] = useState<any>(null);
+  const [myRequests, setMyRequests] = useState<PhoneRequest[]>([]);
+  const [agents, setAgents] = useState<AITwin[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string>("");
   
   // Search state
   const [searchLocality, setSearchLocality] = useState("");
-  const [searchCountry, setSearchCountry] = useState("GB");
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   useEffect(() => {
-    loadOwnedNumbers();
-    loadSetupInstructions();
-  }, []);
+    if (user) {
+      loadMyRequests();
+      loadAgents();
+      loadWalletBalance();
+    }
+  }, [user]);
 
-  const loadSetupInstructions = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke("telnyx-elevenlabs-setup", {
-        body: { action: "get_setup_instructions" }
-      });
-      if (data && !error) {
-        setSetupInstructions(data);
-      }
-    } catch (error) {
-      console.error("Failed to load setup instructions:", error);
+  const loadWalletBalance = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (data) {
+      setWalletBalance(data.balance || 0);
     }
   };
 
-  const loadOwnedNumbers = async () => {
+  const loadAgents = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('ai_twins')
+      .select('id, name')
+      .eq('user_id', user.id);
+    
+    if (data && data.length > 0) {
+      setAgents(data);
+      setSelectedAgent(data[0].id);
+    }
+  };
+
+  const loadMyRequests = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("telnyx-phone-numbers", {
-        body: { action: "list_owned_numbers" }
-      });
-      
-      if (error) throw error;
-      setOwnedNumbers(data?.numbers || []);
+      const { data, error } = await supabase
+        .from('telnyx_phone_requests')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      // Also load connections
-      const { data: connData } = await supabase.functions.invoke("telnyx-phone-numbers", {
-        body: { action: "get_connections" }
-      });
-      setConnections(connData?.connections || []);
+      if (error) throw error;
+      setMyRequests((data || []) as PhoneRequest[]);
     } catch (error) {
-      console.error("Failed to load numbers:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load phone numbers"
-      });
+      console.error("Failed to load requests:", error);
     } finally {
       setLoading(false);
     }
@@ -103,7 +113,7 @@ export function TelnyxPhoneSetup() {
       const { data, error } = await supabase.functions.invoke("telnyx-phone-numbers", {
         body: { 
           action: "search_numbers",
-          country_code: searchCountry,
+          country_code: "GB",
           locality: searchLocality || undefined,
           limit: 20
         }
@@ -115,7 +125,7 @@ export function TelnyxPhoneSetup() {
       if (data?.numbers?.length === 0) {
         toast({
           title: "No numbers found",
-          description: "Try a different location or country"
+          description: "Try a different location"
         });
       }
     } catch (error) {
@@ -130,92 +140,68 @@ export function TelnyxPhoneSetup() {
     }
   };
 
-  const purchaseNumber = async (phoneNumber: string) => {
-    setPurchaseLoading(phoneNumber);
-    try {
-      const { data, error } = await supabase.functions.invoke("telnyx-phone-numbers", {
-        body: { 
-          action: "purchase_number",
-          phone_number: phoneNumber
-        }
-      });
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Number Purchased!",
-        description: `${phoneNumber} is now yours. Assign it to your ElevenLabs connection.`
-      });
-      
-      // Refresh owned numbers
-      loadOwnedNumbers();
-      // Remove from available list
-      setAvailableNumbers(prev => prev.filter(n => n.phone_number !== phoneNumber));
-    } catch (error) {
-      console.error("Purchase failed:", error);
+  const requestNumber = async (phoneNumber: string) => {
+    if (!user || !selectedAgent) {
       toast({
         variant: "destructive",
-        title: "Purchase Failed",
-        description: error instanceof Error ? error.message : "Could not purchase number"
+        title: "Missing Agent",
+        description: "Please create an AI Twin agent first before requesting a number"
       });
-    } finally {
-      setPurchaseLoading(null);
-    }
-  };
-
-  const releaseNumber = async (numberId: string, phoneNumber: string) => {
-    if (!confirm(`Are you sure you want to release ${phoneNumber}? This cannot be undone.`)) {
       return;
     }
-    
-    try {
-      const { error } = await supabase.functions.invoke("telnyx-phone-numbers", {
-        body: { action: "release_number", number_id: numberId }
-      });
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Number Released",
-        description: `${phoneNumber} has been released`
-      });
-      
-      loadOwnedNumbers();
-    } catch (error) {
+
+    if (walletBalance < CREDITS_PER_NUMBER) {
       toast({
         variant: "destructive",
-        title: "Failed to release",
-        description: error instanceof Error ? error.message : "Could not release number"
+        title: "Insufficient Credits",
+        description: `You need ${CREDITS_PER_NUMBER} CF Credits. You have ${walletBalance}.`
       });
+      return;
+    }
+
+    const agent = agents.find(a => a.id === selectedAgent);
+
+    setRequestLoading(phoneNumber);
+    try {
+      const { error } = await supabase
+        .from('telnyx_phone_requests')
+        .insert({
+          user_id: user.id,
+          phone_number: phoneNumber,
+          agent_id: selectedAgent,
+          agent_name: agent?.name || 'AI Twin',
+          credits_charged: CREDITS_PER_NUMBER,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Request Submitted!",
+        description: `Your request for ${phoneNumber} is pending admin approval. ${CREDITS_PER_NUMBER} credits will be deducted upon approval.`
+      });
+      
+      // Remove from available list
+      setAvailableNumbers(prev => prev.filter(n => n.phone_number !== phoneNumber));
+      loadMyRequests();
+    } catch (error) {
+      console.error("Request failed:", error);
+      toast({
+        variant: "destructive",
+        title: "Request Failed",
+        description: error instanceof Error ? error.message : "Could not submit request"
+      });
+    } finally {
+      setRequestLoading(null);
     }
   };
 
-  const createElevenLabsConnection = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("telnyx-elevenlabs-setup", {
-        body: { 
-          action: "create_fqdn_connection",
-          connection_name: "ElevenLabs-AI-Agent"
-        }
-      });
-      
-      if (error) throw error;
-      
-      toast({
-        title: data.isExisting ? "Connection Found" : "Connection Created",
-        description: data.message
-      });
-      
-      loadOwnedNumbers();
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Failed",
-        description: error instanceof Error ? error.message : "Could not create connection"
-      });
-    } finally {
-      setLoading(false);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'bg-warning text-warning-foreground';
+      case 'approved': return 'bg-success text-success-foreground';
+      case 'rejected': return 'bg-destructive text-destructive-foreground';
+      default: return 'bg-secondary';
     }
   };
 
@@ -224,228 +210,162 @@ export function TelnyxPhoneSetup() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Phone className="h-5 w-5 text-primary" />
-          Phone Number Setup (Telnyx)
+          Phone Number Setup
         </CardTitle>
-        <CardDescription>
-          Get a UK phone number that routes calls to your ElevenLabs AI agent
+        <CardDescription className="flex items-center gap-2">
+          Get a UK phone number for your AI agent
+          <Badge variant="outline" className="ml-2">
+            <Coins className="h-3 w-3 mr-1" />
+            {CREDITS_PER_NUMBER} CF Credits per number
+          </Badge>
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-3 mb-4">
-            <TabsTrigger value="setup">Setup Guide</TabsTrigger>
-            <TabsTrigger value="numbers">Buy Numbers</TabsTrigger>
-            <TabsTrigger value="manage">My Numbers</TabsTrigger>
-          </TabsList>
+      <CardContent className="space-y-6">
+        {/* Wallet Balance */}
+        <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+          <span className="text-sm text-muted-foreground">Your Balance:</span>
+          <span className="font-bold">{walletBalance.toLocaleString()} CF Credits</span>
+        </div>
 
-          {/* Setup Guide Tab */}
-          <TabsContent value="setup" className="space-y-4">
-            {setupInstructions ? (
-              <div className="space-y-4">
-                <div className="bg-primary/10 p-4 rounded-lg">
-                  <h3 className="font-semibold mb-2 flex items-center gap-2">
-                    <Link2 className="h-4 w-4" />
-                    How It Works
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Callers → Your Telnyx Number → ElevenLabs AI Agent
-                  </p>
-                </div>
+        {/* Agent Selection */}
+        {agents.length > 0 ? (
+          <div className="space-y-2">
+            <Label>Select AI Agent for Phone</Label>
+            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map(agent => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    <span className="flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      {agent.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="p-4 border border-warning/30 bg-warning/10 rounded-lg">
+            <p className="text-sm text-warning flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Create an AI Twin agent first in the Setup tab
+            </p>
+          </div>
+        )}
 
-                <div className="space-y-3">
-                  {setupInstructions.steps?.map((step: any) => (
-                    <div 
-                      key={step.step} 
-                      className="flex gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                        {step.step}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm">{step.title}</h4>
-                        <p className="text-xs text-muted-foreground mt-1">{step.description}</p>
-                        {step.link && (
-                          <a 
-                            href={step.link} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary flex items-center gap-1 mt-1 hover:underline"
-                          >
-                            Open <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        {/* Search Numbers */}
+        <div className="space-y-3">
+          <Label>Search UK Phone Numbers</Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="City or area (e.g., London, Manchester)"
+              value={searchLocality}
+              onChange={(e) => setSearchLocality(e.target.value)}
+            />
+            <Button onClick={searchNumbers} disabled={searchLoading || agents.length === 0}>
+              {searchLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              <span className="ml-2 hidden sm:inline">Search</span>
+            </Button>
+          </div>
+        </div>
 
-                <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg">
-                  <h4 className="font-medium text-sm flex items-center gap-2 text-amber-600">
-                    <AlertCircle className="h-4 w-4" />
-                    Important
-                  </h4>
-                  <ul className="text-xs text-muted-foreground mt-2 space-y-1">
-                    {setupInstructions.important_notes?.map((note: string, i: number) => (
-                      <li key={i}>• {note}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button onClick={createElevenLabsConnection} disabled={loading} className="flex-1">
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Settings className="h-4 w-4 mr-2" />
-                    )}
-                    Create ElevenLabs Connection
-                  </Button>
-                  <Button variant="outline" asChild>
-                    <a href="https://portal.telnyx.com" target="_blank" rel="noopener noreferrer">
-                      Telnyx Portal <ExternalLink className="h-4 w-4 ml-2" />
-                    </a>
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                Loading setup instructions...
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Buy Numbers Tab */}
-          <TabsContent value="numbers" className="space-y-4">
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Label htmlFor="locality" className="sr-only">City/Area</Label>
-                <Input
-                  id="locality"
-                  placeholder="City or area (e.g., London, Manchester)"
-                  value={searchLocality}
-                  onChange={(e) => setSearchLocality(e.target.value)}
-                />
-              </div>
-              <Button onClick={searchNumbers} disabled={searchLoading}>
-                {searchLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                <span className="ml-2 hidden sm:inline">Search UK</span>
-              </Button>
-            </div>
-
-            {availableNumbers.length > 0 ? (
-              <ScrollArea className="h-64">
-                <div className="space-y-2">
-                  {availableNumbers.map((num) => (
-                    <div 
-                      key={num.phone_number} 
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-mono font-medium">{num.phone_number}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {num.locality || num.region || "UK"} 
-                          {num.monthly_cost && ` • ${num.monthly_cost.amount} ${num.monthly_cost.currency}/mo`}
-                        </p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        onClick={() => purchaseNumber(num.phone_number)}
-                        disabled={purchaseLoading === num.phone_number}
-                      >
-                        {purchaseLoading === num.phone_number ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ShoppingCart className="h-4 w-4" />
-                        )}
-                        <span className="ml-2">Buy</span>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground border rounded-lg">
-                <Phone className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>Search for available UK phone numbers</p>
-                <p className="text-xs mt-1">Leave city empty to see all available</p>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Manage Numbers Tab */}
-          <TabsContent value="manage" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">
-                {ownedNumbers.length} number{ownedNumbers.length !== 1 ? "s" : ""} owned
-              </p>
-              <Button variant="ghost" size="sm" onClick={loadOwnedNumbers} disabled={loading}>
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
-
-            {ownedNumbers.length > 0 ? (
+        {/* Available Numbers */}
+        {availableNumbers.length > 0 && (
+          <div className="space-y-3">
+            <Label>Available Numbers</Label>
+            <ScrollArea className="h-48">
               <div className="space-y-2">
-                {ownedNumbers.map((num) => (
+                {availableNumbers.map((num) => (
                   <div 
-                    key={num.id} 
+                    key={num.phone_number} 
                     className="flex items-center justify-between p-3 border rounded-lg"
                   >
                     <div>
                       <p className="font-mono font-medium">{num.phone_number}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={num.status === "active" ? "default" : "secondary"} className="text-xs">
-                          {num.status}
-                        </Badge>
-                        {num.connection_name && (
-                          <Badge variant="outline" className="text-xs">
-                            <Link2 className="h-3 w-3 mr-1" />
-                            {num.connection_name}
-                          </Badge>
-                        )}
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {num.locality || num.region || "UK"} • {CREDITS_PER_NUMBER} CF Credits
+                      </p>
                     </div>
                     <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => releaseNumber(num.id, num.phone_number)}
+                      size="sm" 
+                      onClick={() => requestNumber(num.phone_number)}
+                      disabled={requestLoading === num.phone_number || walletBalance < CREDITS_PER_NUMBER}
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      {requestLoading === num.phone_number ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ShoppingCart className="h-4 w-4" />
+                      )}
+                      <span className="ml-2">Request</span>
                     </Button>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground border rounded-lg">
-                <Phone className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No phone numbers yet</p>
-                <p className="text-xs mt-1">Purchase a number to get started</p>
-              </div>
-            )}
+            </ScrollArea>
+          </div>
+        )}
 
-            {connections.length > 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <h4 className="text-sm font-medium mb-2">SIP Connections</h4>
-                <div className="space-y-2">
-                  {connections.map((conn) => (
-                    <div className="flex items-center gap-2 text-sm">
-                      {conn.active ? (
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <span>{conn.connection_name}</span>
+        {/* My Requests */}
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              My Requests
+            </Label>
+            <Button variant="ghost" size="sm" onClick={loadMyRequests} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+          
+          {myRequests.length > 0 ? (
+            <ScrollArea className="h-40">
+              <div className="space-y-2">
+                {myRequests.map((req) => (
+                  <div 
+                    key={req.id} 
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div>
+                      <p className="font-mono font-medium">{req.phone_number}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {req.agent_name} • {req.credits_charged} Credits
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    <Badge className={getStatusColor(req.status)}>
+                      {req.status}
+                    </Badge>
+                  </div>
+                ))}
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            </ScrollArea>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground border rounded-lg">
+              <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No phone number requests yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* Info Box */}
+        <div className="bg-primary/10 p-4 rounded-lg text-sm space-y-2">
+          <h4 className="font-medium flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            How it works
+          </h4>
+          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+            <li>Search and request a UK phone number</li>
+            <li>Admin reviews and approves your request</li>
+            <li>{CREDITS_PER_NUMBER} CF Credits are deducted from your wallet</li>
+            <li>Your AI agent will answer calls on that number</li>
+          </ol>
+        </div>
       </CardContent>
     </Card>
   );
