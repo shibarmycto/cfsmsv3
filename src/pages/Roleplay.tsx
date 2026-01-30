@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Gamepad2 } from 'lucide-react';
 import CharacterCreation from '@/components/game/CharacterCreation';
-import { MobileGame3D } from '@/components/game3d';
+import { EliteGame } from '@/components/game3d';
 import { toast } from 'sonner';
 
 interface GameCharacter {
@@ -149,7 +149,7 @@ export default function Roleplay() {
 
   if (showGame && character) {
     return (
-      <MobileGame3D 
+      <EliteGame 
         characterId={character.id}
         characterName={character.name}
         onExit={handleExitGame}
@@ -158,61 +158,101 @@ export default function Roleplay() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-900">
-      <div className="container mx-auto px-4 py-4">
-        <Button variant="ghost" onClick={() => navigate('/dashboard')} className="gap-2 text-white hover:text-cyan-400">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-cyan-950 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+      </div>
+
+      {/* Back button */}
+      <div className="relative z-10 p-4">
+        <Button 
+          variant="ghost" 
+          onClick={() => navigate('/dashboard')} 
+          className="gap-2 text-gray-400 hover:text-white hover:bg-white/5"
+        >
           <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
+          Dashboard
         </Button>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="relative z-10 container mx-auto px-4 pb-8">
         {!character ? (
           <CharacterCreation userId={user!.id} onCharacterCreated={handleCharacterCreated} />
         ) : (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-slate-800/80 border border-cyan-500/30 rounded-xl p-8 text-center space-y-6 backdrop-blur-sm">
-              <div className="space-y-2">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                  CF ROLEPLAY
-                </h1>
-                <p className="text-slate-400">Open World 3D Experience</p>
-              </div>
-              
-              <p className="text-xl text-white">Welcome back, <span className="text-cyan-400 font-bold">{character.name}</span>!</p>
-              
-              <div className="flex justify-center py-4">
-                <div className="w-32 h-32 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-full flex items-center justify-center border-2 border-cyan-500/50">
-                  <Gamepad2 className="w-16 h-16 text-cyan-400" />
+          <div className="max-w-xl mx-auto">
+            {/* Main Card */}
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-white/10 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+                      <span className="text-white font-black text-2xl">CF</span>
+                    </div>
+                    <div>
+                      <h1 className="text-2xl font-black text-white tracking-tight">CF ROLEPLAY</h1>
+                      <p className="text-cyan-400 text-sm">Open World 3D Experience</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <StatCard label="Cash" value={`$${character.cash.toLocaleString()}`} color="text-green-400" />
-                <StatCard label="Bank" value={`$${character.bank_balance.toLocaleString()}`} color="text-blue-400" />
-                <StatCard label="Job" value={character.current_job.replace('_', ' ')} color="text-purple-400" />
-              </div>
-
-              <div className="space-y-2">
-                <ProgressBar label="Health" value={character.health} color="bg-red-500" />
-                <ProgressBar label="Hunger" value={character.hunger} color="bg-orange-500" />
-                <ProgressBar label="Energy" value={character.energy} color="bg-yellow-500" />
-              </div>
-
-              {isBanned ? (
-                <div className="bg-red-900/50 border border-red-500 rounded-lg p-4">
-                  <p className="text-red-400 font-bold">You are currently banned from CF Roleplay</p>
+              {/* Player Info */}
+              <div className="p-6 space-y-6">
+                <div className="text-center">
+                  <p className="text-gray-400 text-sm">Welcome back</p>
+                  <h2 className="text-3xl font-bold text-white mt-1">{character.name}</h2>
                 </div>
-              ) : (
-                <Button 
-                  size="lg" 
-                  className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg py-6"
-                  onClick={handleEnterGame}
-                >
-                  <Gamepad2 className="w-5 h-5 mr-2" />
-                  Enter Game World
-                </Button>
-              )}
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
+                    <p className="text-green-400 font-bold text-xl">${character.cash.toLocaleString()}</p>
+                    <p className="text-gray-500 text-xs mt-1">Cash</p>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
+                    <p className="text-blue-400 font-bold text-xl">${character.bank_balance.toLocaleString()}</p>
+                    <p className="text-gray-500 text-xs mt-1">Bank</p>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
+                    <p className="text-purple-400 font-bold text-xl capitalize">{character.current_job.replace('_', ' ')}</p>
+                    <p className="text-gray-500 text-xs mt-1">Job</p>
+                  </div>
+                </div>
+
+                {/* Status Bars */}
+                <div className="space-y-3">
+                  <StatusBar label="Health" value={character.health} color="from-red-600 to-red-500" icon="❤️" />
+                  <StatusBar label="Hunger" value={character.hunger} color="from-orange-500 to-amber-400" icon="🍔" />
+                  <StatusBar label="Energy" value={character.energy} color="from-yellow-500 to-yellow-400" icon="⚡" />
+                </div>
+
+                {/* Enter Game Button */}
+                {isBanned ? (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
+                    <p className="text-red-400 font-bold">⛔ You are currently banned from CF Roleplay</p>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={handleEnterGame}
+                    className="w-full relative overflow-hidden group bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg py-5 rounded-xl transition-all shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50"
+                  >
+                    <span className="relative z-10 flex items-center justify-center gap-3">
+                      <Gamepad2 className="w-6 h-6" />
+                      ENTER GAME WORLD
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Info */}
+            <div className="mt-6 text-center text-gray-500 text-xs space-y-1">
+              <p>🎮 Use WASD to move • SHIFT to run • SPACE to jump</p>
+              <p>📻 Hold R for walkie-talkie • V to toggle camera</p>
             </div>
           </div>
         )}
@@ -221,23 +261,24 @@ export default function Roleplay() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600/50">
-      <div className={`text-xl font-bold ${color} capitalize`}>{value}</div>
-      <div className="text-xs text-slate-400">{label}</div>
-    </div>
-  );
-}
-
-function ProgressBar({ label, value, color }: { label: string; value: number; color: string }) {
+function StatusBar({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-slate-400 w-16">{label}</span>
-      <div className="flex-1 h-3 bg-slate-700 rounded-full overflow-hidden">
-        <div className={`h-full ${color} transition-all`} style={{ width: `${value}%` }} />
+      <span className="text-lg">{icon}</span>
+      <div className="flex-1">
+        <div className="flex justify-between mb-1">
+          <span className="text-xs text-gray-400">{label}</span>
+          <span className="text-xs text-gray-400">{value}%</span>
+        </div>
+        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div 
+            className={`h-full bg-gradient-to-r ${color} transition-all duration-500`} 
+            style={{ width: `${value}%` }}
+          >
+            <div className="h-full w-full bg-gradient-to-t from-transparent to-white/20" />
+          </div>
+        </div>
       </div>
-      <span className="text-sm text-slate-400 w-10 text-right">{value}%</span>
     </div>
   );
 }
