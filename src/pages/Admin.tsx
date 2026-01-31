@@ -43,6 +43,8 @@ import AdminExchangeTab from '@/components/AdminExchangeTab';
 import AdminGameTab from '@/components/AdminGameTab';
 import AdminPhoneRequestsTab from '@/components/AdminPhoneRequestsTab';
 import AdminVMTerminal from '@/components/AdminVMTerminal';
+import SuperAdminVMTab from '@/components/SuperAdminVMTab';
+import UserVMRental from '@/components/UserVMRental';
 
 interface UserProfile {
   id: string;
@@ -1002,6 +1004,8 @@ export default function Admin() {
                 { id: 'phone-requests', icon: Phone, label: 'Phone Numbers', count: 0 },
                 { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
                 { id: 'vm-terminal', icon: Terminal, label: 'VM Terminal', count: 0 },
+                { id: 'super-admin-vm', icon: Shield, label: 'Super Admin VM', count: 0 },
+                { id: 'user-vm', icon: Terminal, label: 'User VM Rentals', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2071,6 +2075,20 @@ export default function Admin() {
             {/* VM Terminal Tab */}
             {activeTab === 'vm-terminal' && (
               <AdminVMTerminal />
+            )}
+
+            {/* Super Admin VM Controls Tab */}
+            {activeTab === 'super-admin-vm' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <SuperAdminVMTab />
+              </div>
+            )}
+
+            {/* User VM Rental Tab */}
+            {activeTab === 'user-vm' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <UserVMRental />
+              </div>
             )}
           </div>
         </div>

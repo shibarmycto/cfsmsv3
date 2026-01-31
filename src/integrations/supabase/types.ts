@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_vm_permissions: {
+        Row: {
+          admin_user_id: string
+          can_use_vm: boolean
+          created_at: string
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          revoked_at: string | null
+        }
+        Insert: {
+          admin_user_id: string
+          can_use_vm?: boolean
+          created_at?: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          revoked_at?: string | null
+        }
+        Update: {
+          admin_user_id?: string
+          can_use_vm?: boolean
+          created_at?: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          revoked_at?: string | null
+        }
+        Relationships: []
+      }
       ai_campaign_logs: {
         Row: {
           campaign_id: string
@@ -457,6 +487,48 @@ export type Database = {
           tx_hash?: string | null
           user_id?: string
           wallet_address?: string
+        }
+        Relationships: []
+      }
+      docker_bots: {
+        Row: {
+          assigned_port: number
+          bot_api_key: string
+          bot_name: string
+          container_name: string
+          created_at: string
+          id: string
+          is_admin_bot: boolean
+          last_started_at: string | null
+          last_stopped_at: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          assigned_port: number
+          bot_api_key: string
+          bot_name: string
+          container_name: string
+          created_at?: string
+          id?: string
+          is_admin_bot?: boolean
+          last_started_at?: string | null
+          last_stopped_at?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          assigned_port?: number
+          bot_api_key?: string
+          bot_name?: string
+          container_name?: string
+          created_at?: string
+          id?: string
+          is_admin_bot?: boolean
+          last_started_at?: string | null
+          last_stopped_at?: string | null
+          status?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -2567,6 +2639,45 @@ export type Database = {
           total_supply?: number
           total_volume?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      vm_rentals: {
+        Row: {
+          created_at: string
+          credits_paid: number
+          expires_at: string
+          id: string
+          is_active: boolean
+          plan_type: string
+          started_at: string
+          time_remaining_seconds: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_paid: number
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          plan_type?: string
+          started_at?: string
+          time_remaining_seconds?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_paid?: number
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          plan_type?: string
+          started_at?: string
+          time_remaining_seconds?: number | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
