@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import DockerBotManager from './DockerBotManager';
 import { 
   Terminal, 
   FolderOpen, 
@@ -24,7 +25,16 @@ import {
   Activity,
   Cpu,
   HardDrive,
-  Wifi
+  Wifi,
+  Network,
+  Database,
+  Lock,
+  Unlock,
+  Copy,
+  Edit,
+  Eye,
+  Package,
+  Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,6 +50,7 @@ interface FileItem {
   type: 'file' | 'folder';
   size?: string;
   modified?: string;
+  permissions?: string;
 }
 
 interface BotStatus {
@@ -51,13 +62,57 @@ interface BotStatus {
   link?: string;
 }
 
+interface ProcessInfo {
+  pid: number;
+  user: string;
+  cpu: number;
+  mem: number;
+  command: string;
+}
+
+// Virtual filesystem
+const virtualFS: Record<string, FileItem[]> = {
+  '/home/admin': [
+    { name: 'telegram-bots', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'edge-functions', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'docker-compose.yml', type: 'file', size: '2.4 KB', permissions: '-rw-r--r--' },
+    { name: 'bot-config.json', type: 'file', size: '1.2 KB', permissions: '-rw-r--r--' },
+    { name: '.env', type: 'file', size: '512 B', permissions: '-rw-------' },
+    { name: 'logs', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'backups', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: '.bashrc', type: 'file', size: '3.5 KB', permissions: '-rw-r--r--' },
+    { name: '.ssh', type: 'folder', permissions: 'drwx------' },
+  ],
+  '/home/admin/telegram-bots': [
+    { name: 'solana-soldier', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'ai-worker', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'bot-monitor', type: 'folder', permissions: 'drwxr-xr-x' },
+  ],
+  '/home/admin/logs': [
+    { name: 'access.log', type: 'file', size: '156 KB', permissions: '-rw-r--r--' },
+    { name: 'error.log', type: 'file', size: '24 KB', permissions: '-rw-r--r--' },
+    { name: 'docker.log', type: 'file', size: '89 KB', permissions: '-rw-r--r--' },
+  ],
+  '/etc': [
+    { name: 'passwd', type: 'file', size: '2.1 KB', permissions: '-rw-r--r--' },
+    { name: 'hosts', type: 'file', size: '256 B', permissions: '-rw-r--r--' },
+    { name: 'nginx', type: 'folder', permissions: 'drwxr-xr-x' },
+    { name: 'docker', type: 'folder', permissions: 'drwxr-xr-x' },
+  ],
+  '/var/log': [
+    { name: 'syslog', type: 'file', size: '1.2 MB', permissions: '-rw-r-----' },
+    { name: 'auth.log', type: 'file', size: '456 KB', permissions: '-rw-r-----' },
+    { name: 'kern.log', type: 'file', size: '234 KB', permissions: '-rw-r-----' },
+  ],
+};
+
 export default function AdminVMTerminal() {
   const [activeTab, setActiveTab] = useState('terminal');
   const [command, setCommand] = useState('');
   const [history, setHistory] = useState<TerminalLine[]>([
     { id: 1, type: 'info', content: '╔═══════════════════════════════════════════════════════════════╗', timestamp: new Date() },
-    { id: 2, type: 'info', content: '║        CF ADMIN VIRTUAL MACHINE TERMINAL v1.0                  ║', timestamp: new Date() },
-    { id: 3, type: 'info', content: '║        Linux Ubuntu 22.04 LTS | Docker Desktop Ready           ║', timestamp: new Date() },
+    { id: 2, type: 'info', content: '║        CF ADMIN VIRTUAL MACHINE TERMINAL v2.0                  ║', timestamp: new Date() },
+    { id: 3, type: 'info', content: '║        Linux Ubuntu 22.04 LTS | Docker Desktop | Root Access   ║', timestamp: new Date() },
     { id: 4, type: 'info', content: '╚═══════════════════════════════════════════════════════════════╝', timestamp: new Date() },
     { id: 5, type: 'success', content: 'System initialized. Type "help" for available commands.', timestamp: new Date() },
   ]);
@@ -112,40 +167,86 @@ export default function AdminVMTerminal() {
     switch (mainCmd) {
       case 'help':
         addLine('output', `
-Available Commands:
-─────────────────────────────────────────
-  ls, dir          - List files and directories
-  cd <path>        - Change directory
-  pwd              - Print working directory
-  cat <file>       - View file contents
-  mkdir <name>     - Create directory
-  rm <file>        - Remove file
-  clear            - Clear terminal
-  
-Docker Commands:
-  docker ps        - List running containers
-  docker images    - List Docker images
-  docker start     - Start a container
-  docker stop      - Stop a container
-  docker logs      - View container logs
-  
-Bot Management:
-  bot status       - Check all bot statuses
-  bot restart <n>  - Restart specific bot
-  bot stop <n>     - Stop specific bot
-  bot logs <n>     - View bot logs
-  
-System:
-  ssh <host>       - Connect to remote server
-  scp <src> <dst>  - Secure copy files
-  git pull         - Pull latest from GitHub
-  git status       - Check git status
-  systemctl        - System service control
-  htop             - Process monitor
-  df -h            - Disk usage
-  free -m          - Memory usage
-  neofetch         - System info
-─────────────────────────────────────────`);
+╔═══════════════════════════════════════════════════════════════╗
+║                    AVAILABLE COMMANDS                          ║
+╠═══════════════════════════════════════════════════════════════╣
+║  FILE SYSTEM:                                                   ║
+║    ls [-la]        - List files and directories                ║
+║    cd <path>       - Change directory                          ║
+║    pwd             - Print working directory                   ║
+║    cat <file>      - View file contents                        ║
+║    mkdir <name>    - Create directory                          ║
+║    rmdir <name>    - Remove directory                          ║
+║    rm [-rf] <file> - Remove file or directory                  ║
+║    touch <file>    - Create empty file                         ║
+║    cp <src> <dst>  - Copy file                                 ║
+║    mv <src> <dst>  - Move/rename file                          ║
+║    chmod <mode>    - Change file permissions                   ║
+║    chown <user>    - Change file owner                         ║
+║    find <pattern>  - Find files                                ║
+║    grep <pattern>  - Search in files                           ║
+║    head/tail       - View file start/end                       ║
+║    wc              - Word count                                ║
+║                                                                 ║
+║  SYSTEM INFO:                                                   ║
+║    neofetch        - System information                        ║
+║    htop            - Process monitor                           ║
+║    top             - Process list                              ║
+║    ps aux          - Process status                            ║
+║    df -h           - Disk usage                                ║
+║    du -sh          - Directory size                            ║
+║    free -m         - Memory usage                              ║
+║    uname -a        - Kernel info                               ║
+║    uptime          - System uptime                             ║
+║    whoami          - Current user                              ║
+║    id              - User/group IDs                            ║
+║    hostname        - System hostname                           ║
+║    date            - Current date/time                         ║
+║    cal             - Calendar                                  ║
+║                                                                 ║
+║  NETWORK:                                                       ║
+║    ifconfig        - Network interfaces                        ║
+║    ip addr         - IP addresses                              ║
+║    ping <host>     - Ping host                                 ║
+║    curl <url>      - HTTP request                              ║
+║    wget <url>      - Download file                             ║
+║    netstat         - Network statistics                        ║
+║    ss              - Socket statistics                         ║
+║    nslookup        - DNS lookup                                ║
+║    traceroute      - Trace route                               ║
+║                                                                 ║
+║  DOCKER:                                                        ║
+║    docker ps       - List containers                           ║
+║    docker images   - List images                               ║
+║    docker start    - Start container                           ║
+║    docker stop     - Stop container                            ║
+║    docker logs     - View logs                                 ║
+║    docker exec     - Execute in container                      ║
+║    docker build    - Build image                               ║
+║    docker-compose  - Compose commands                          ║
+║                                                                 ║
+║  PACKAGE MANAGEMENT:                                            ║
+║    apt update      - Update package list                       ║
+║    apt upgrade     - Upgrade packages                          ║
+║    apt install     - Install package                           ║
+║    apt remove      - Remove package                            ║
+║    apt search      - Search packages                           ║
+║                                                                 ║
+║  BOTS:                                                          ║
+║    bot status      - Check all bot statuses                    ║
+║    bot restart     - Restart bots                              ║
+║    bot logs        - View bot logs                             ║
+║                                                                 ║
+║  OTHER:                                                         ║
+║    clear           - Clear terminal                            ║
+║    history         - Command history                           ║
+║    echo <text>     - Print text                                ║
+║    exit            - Exit SSH session                          ║
+║    sudo <cmd>      - Run as root                               ║
+║    man <cmd>       - Manual page                               ║
+║    which <cmd>     - Find command location                     ║
+║    alias           - Show aliases                              ║
+╚═══════════════════════════════════════════════════════════════╝`);
         break;
 
       case 'clear':
@@ -154,11 +255,7 @@ System:
 
       case 'ls':
       case 'dir':
-        addLine('output', files.map(f => 
-          f.type === 'folder' 
-            ? `📁 ${f.name}/` 
-            : `📄 ${f.name} ${f.size || ''}`
-        ).join('\n'));
+        handleLsCommand(args);
         break;
 
       case 'pwd':
@@ -166,18 +263,239 @@ System:
         break;
 
       case 'cd':
-        if (args[0] === '..') {
-          const parts = currentPath.split('/');
-          parts.pop();
-          setCurrentPath(parts.join('/') || '/');
-        } else if (args[0]) {
-          setCurrentPath(`${currentPath}/${args[0]}`);
+        handleCdCommand(args);
+        break;
+
+      case 'whoami':
+        addLine('output', 'admin');
+        break;
+
+      case 'id':
+        addLine('output', 'uid=1000(admin) gid=1000(admin) groups=1000(admin),27(sudo),999(docker)');
+        break;
+
+      case 'hostname':
+        addLine('output', 'cf-admin-vm');
+        break;
+
+      case 'date':
+        addLine('output', new Date().toString());
+        break;
+
+      case 'uptime':
+        addLine('output', ` ${new Date().toLocaleTimeString()}  up 24:32,  1 user,  load average: 0.52, 0.48, 0.44`);
+        break;
+
+      case 'uname':
+        if (args.includes('-a')) {
+          addLine('output', 'Linux cf-admin-vm 5.15.0-generic #1 SMP Ubuntu x86_64 GNU/Linux');
+        } else {
+          addLine('output', 'Linux');
         }
-        addLine('success', `Changed to ${currentPath}`);
+        break;
+
+      case 'cal':
+        const now = new Date();
+        addLine('output', `     ${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}
+Su Mo Tu We Th Fr Sa
+                1  2  3
+ 4  5  6  7  8  9 10
+11 12 13 14 15 16 17
+18 19 20 21 22 23 24
+25 26 27 28 29 30 31`);
+        break;
+
+      case 'echo':
+        addLine('output', args.join(' '));
+        break;
+
+      case 'touch':
+        if (args[0]) {
+          addLine('success', `Created file: ${args[0]}`);
+        } else {
+          addLine('error', 'touch: missing file operand');
+        }
+        break;
+
+      case 'mkdir':
+        if (args[0]) {
+          addLine('success', `Created directory: ${args[0]}`);
+        } else {
+          addLine('error', 'mkdir: missing operand');
+        }
+        break;
+
+      case 'rm':
+        if (args[0]) {
+          addLine('success', `Removed: ${args.filter(a => !a.startsWith('-')).join(', ')}`);
+        } else {
+          addLine('error', 'rm: missing operand');
+        }
+        break;
+
+      case 'cp':
+        if (args.length >= 2) {
+          addLine('success', `Copied ${args[0]} to ${args[1]}`);
+        } else {
+          addLine('error', 'cp: missing file operand');
+        }
+        break;
+
+      case 'mv':
+        if (args.length >= 2) {
+          addLine('success', `Moved ${args[0]} to ${args[1]}`);
+        } else {
+          addLine('error', 'mv: missing file operand');
+        }
+        break;
+
+      case 'chmod':
+        if (args.length >= 2) {
+          addLine('success', `Changed permissions of ${args[1]} to ${args[0]}`);
+        } else {
+          addLine('error', 'chmod: missing operand');
+        }
+        break;
+
+      case 'sudo':
+        if (args.length > 0) {
+          addLine('info', '[sudo] password for admin: ');
+          setTimeout(() => {
+            addLine('success', `Executing: ${args.join(' ')}`);
+          }, 500);
+        } else {
+          addLine('error', 'usage: sudo <command>');
+        }
+        break;
+
+      case 'apt':
+      case 'apt-get':
+        handleAptCommand(args);
+        break;
+
+      case 'ping':
+        if (args[0]) {
+          addLine('info', `PING ${args[0]} (127.0.0.1) 56(84) bytes of data.`);
+          for (let i = 1; i <= 4; i++) {
+            setTimeout(() => {
+              addLine('output', `64 bytes from ${args[0]}: icmp_seq=${i} ttl=64 time=${(Math.random() * 10 + 1).toFixed(1)} ms`);
+            }, i * 500);
+          }
+          setTimeout(() => {
+            addLine('success', `--- ${args[0]} ping statistics ---\n4 packets transmitted, 4 received, 0% packet loss`);
+          }, 2500);
+        } else {
+          addLine('error', 'ping: missing host');
+        }
+        break;
+
+      case 'ifconfig':
+      case 'ip':
+        addLine('output', `eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.0.2.15  netmask 255.255.255.0  broadcast 10.0.2.255
+        inet6 fe80::a00:27ff:fe8e:8aa8  prefixlen 64  scopeid 0x20<link>
+        ether 08:00:27:8e:8a:a8  txqueuelen 1000  (Ethernet)
+        RX packets 12543  bytes 15234567 (14.5 MiB)
+        TX packets 8234  bytes 1234567 (1.1 MiB)
+
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:ac:11:00:01  txqueuelen 0  (Ethernet)`);
+        break;
+
+      case 'netstat':
+        addLine('output', `Active Internet connections
+Proto Recv-Q Send-Q Local Address           Foreign Address         State
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:3000            0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:3001            0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:5432            0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:6379            0.0.0.0:*               LISTEN`);
+        break;
+
+      case 'curl':
+        if (args[0]) {
+          addLine('info', `Connecting to ${args[0]}...`);
+          setTimeout(() => {
+            addLine('success', `HTTP/1.1 200 OK\nContent-Type: text/html\n\n<!DOCTYPE html>...`);
+          }, 1000);
+        } else {
+          addLine('error', 'curl: try \'curl --help\' for more information');
+        }
+        break;
+
+      case 'wget':
+        if (args[0]) {
+          addLine('info', `--${new Date().toISOString()}--  ${args[0]}`);
+          addLine('info', 'Resolving host... done.');
+          setTimeout(() => {
+            addLine('success', `'index.html' saved [12345/12345]`);
+          }, 1500);
+        } else {
+          addLine('error', 'wget: missing URL');
+        }
+        break;
+
+      case 'grep':
+        if (args.length >= 1) {
+          addLine('output', `Searching for "${args[0]}"...\nMatched 3 lines in 2 files.`);
+        } else {
+          addLine('error', 'Usage: grep <pattern> [file]');
+        }
+        break;
+
+      case 'find':
+        addLine('output', `${currentPath}/telegram-bots
+${currentPath}/edge-functions
+${currentPath}/logs
+${currentPath}/backups`);
+        break;
+
+      case 'history':
+        addLine('output', commandHistory.map((cmd, i) => `  ${i + 1}  ${cmd}`).join('\n'));
+        break;
+
+      case 'alias':
+        addLine('output', `alias ll='ls -la'
+alias la='ls -A'
+alias l='ls -CF'
+alias docker-logs='docker logs -f'
+alias dc='docker-compose'`);
+        break;
+
+      case 'which':
+        if (args[0]) {
+          addLine('output', `/usr/bin/${args[0]}`);
+        } else {
+          addLine('error', 'which: missing argument');
+        }
+        break;
+
+      case 'man':
+        if (args[0]) {
+          addLine('output', `${args[0].toUpperCase()}(1)                User Commands                ${args[0].toUpperCase()}(1)
+
+NAME
+       ${args[0]} - ${args[0]} command
+
+SYNOPSIS
+       ${args[0]} [OPTION]...
+
+DESCRIPTION
+       This is a simulated man page for ${args[0]}.
+       
+Press q to exit.`);
+        } else {
+          addLine('error', 'What manual page do you want?');
+        }
         break;
 
       case 'docker':
         handleDockerCommand(args);
+        break;
+
+      case 'docker-compose':
+        handleDockerComposeCommand(args);
         break;
 
       case 'bot':
@@ -212,20 +530,20 @@ System:
 
       case 'neofetch':
         addLine('output', `
-       .-/+oossssoo+/-.              admin@cf-vm
-    \`:+ssssssssssssssssss+:\`          ─────────────
-  -+sssssssssssssssssssyyssss+-       OS: Ubuntu 22.04 LTS
+       .-/+oossssoo+/-.              admin@cf-admin-vm
+    \`:+ssssssssssssssssss+:\`          ─────────────────
+  -+sssssssssssssssssssyyssss+-       OS: Ubuntu 22.04.3 LTS x86_64
  /ssssssssssssssssssssssdMMMNysss/    Host: Lovable Cloud VM
 :sssssssssssssssssssshNMMMNdysss:     Kernel: 5.15.0-generic
 +sssssssssssssyssssyhMMMMNssss+       Uptime: 24 hours, 32 mins
-ossssssssssssNMMMMNhyssss/             Packages: 1847
-ossssssssssssNMMNNhyssss/              Shell: bash 5.1.16
-+sssssssssssshNNNdyssss+               Terminal: CF Admin Terminal
-:sssssssssssssyyyyyysss:               CPU: 4x Intel Xeon @ 2.4GHz
- /sssssssssssssssssss/                 Memory: 2.1GB / 8GB
-  -+sssssssssssssss+-                  Disk: 42GB / 100GB
-    \`:+ssssssssss+:\`                   Docker: 24.0.5
-       .-/+oossoo+/-.                  Bots: 3 running
+ossssssssssssNMMMMNhyssss/            Packages: 1847 (apt)
+ossssssssssssNMMNNhyssss/             Shell: bash 5.1.16
++sssssssssssshNNNdyssss+              Terminal: CF Admin Terminal v2.0
+:sssssssssssssyyyyyysss:              CPU: 4x Intel Xeon @ 2.4GHz
+ /sssssssssssssssssss/                Memory: 2.1GB / 8GB
+  -+sssssssssssssss+-                 Disk: 42GB / 100GB
+    \`:+ssssssssss+:\`                  Docker: 24.0.5
+       .-/+oossoo+/-.                 Bots: 3 running
 `);
         break;
 
@@ -235,30 +553,46 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1       100G   42G   58G  42% /
 tmpfs           4.0G     0  4.0G   0% /dev/shm
 /dev/sdb1       500G  120G  380G  24% /data
+overlay          50G   12G   38G  24% /var/lib/docker/overlay2
 `);
         break;
 
       case 'free':
         addLine('output', `
-              total        used        free      shared  buff/cache   available
+               total        used        free      shared  buff/cache   available
 Mem:           8192        2100        3800         256        2292        5600
 Swap:          4096         512        3584
 `);
         break;
 
       case 'htop':
+      case 'top':
         addLine('output', `
-  CPU[||||||||                    ] 32.4%    Tasks: 124, 412 thr; 3 running
-  Mem[||||||||||||||              ] 51.2%    Load average: 0.52 0.48 0.44
-  Swp[||                          ] 12.5%    Uptime: 24:32:15
+  CPU[||||||||||||||||                ] 42.4%    Tasks: 124, 412 thr; 3 running
+  Mem[||||||||||||||||||              ] 51.2%    Load average: 0.52 0.48 0.44
+  Swp[||||                            ] 12.5%    Uptime: 24:32:15
 
   PID USER      PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command
     1 root       20   0  168M  13.2M  8.5M S  0.0  0.2  0:02.45 systemd
-  245 root       20   0  125M  45.2M  12M  S  1.2  0.6  0:45.12 docker
-  892 admin      20   0  892M  156M   42M  S  2.4  1.9  1:23.45 solana-bot
-  893 admin      20   0  756M  124M   38M  S  1.8  1.5  0:58.23 ai-worker
+  245 root       20   0  125M  45.2M  12M  S  1.2  0.6  0:45.12 dockerd
+  892 admin      20   0  892M  156M   42M  S  2.4  1.9  1:23.45 node solana-bot
+  893 admin      20   0  756M  124M   38M  S  1.8  1.5  0:58.23 node ai-worker
  1024 admin      20   0  125M   28M   15M  S  0.5  0.3  0:12.34 bot-monitor
-`);
+ 1234 root       20   0   45M   12M    8M  S  0.1  0.1  0:05.67 sshd
+ 2345 admin      20   0  234M   56M   23M  S  0.8  0.7  0:34.56 nginx
+ 3456 root       20   0  512M  234M   45M  S  1.5  2.9  1:45.23 postgres
+
+Press q to exit.`);
+        break;
+
+      case 'ps':
+        addLine('output', `
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root         1  0.0  0.2 168892 13200 ?        Ss   00:00   0:02 /sbin/init
+root       245  1.2  0.6 128000 45200 ?        Ssl  00:00   0:45 dockerd
+admin      892  2.4  1.9 913408 156000 ?       Sl   00:00   1:23 node /app/solana-bot
+admin      893  1.8  1.5 774144 124000 ?       Sl   00:00   0:58 node /app/ai-worker
+admin     1024  0.5  0.3 128000 28000 ?        S    00:00   0:12 /app/bot-monitor`);
         break;
 
       case 'cat':
@@ -269,11 +603,173 @@ Swap:          4096         512        3584
         }
         break;
 
+      case 'systemctl':
+        handleSystemctlCommand(args);
+        break;
+
       default:
-        addLine('error', `Command not found: ${mainCmd}. Type "help" for available commands.`);
+        addLine('error', `bash: ${mainCmd}: command not found`);
     }
 
     setCommand('');
+  };
+
+  const handleLsCommand = (args: string[]) => {
+    const showDetails = args.includes('-l') || args.includes('-la') || args.includes('-al');
+    const showHidden = args.includes('-a') || args.includes('-la') || args.includes('-al');
+    
+    const currentFiles = virtualFS[currentPath] || virtualFS['/home/admin'];
+    const filesToShow = showHidden ? currentFiles : currentFiles.filter(f => !f.name.startsWith('.'));
+    
+    if (showDetails) {
+      const lines = filesToShow.map(f => {
+        const perm = f.permissions || (f.type === 'folder' ? 'drwxr-xr-x' : '-rw-r--r--');
+        const size = f.size || '4.0K';
+        const date = 'Jan 15 14:30';
+        return `${perm} 1 admin admin ${size.padStart(6)} ${date} ${f.name}${f.type === 'folder' ? '/' : ''}`;
+      });
+      addLine('output', `total ${filesToShow.length * 4}\n${lines.join('\n')}`);
+    } else {
+      addLine('output', filesToShow.map(f => 
+        f.type === 'folder' ? `📁 ${f.name}/` : `📄 ${f.name}`
+      ).join('\n'));
+    }
+  };
+
+  const handleCdCommand = (args: string[]) => {
+    if (!args[0] || args[0] === '~') {
+      setCurrentPath('/home/admin');
+      addLine('success', 'Changed to /home/admin');
+    } else if (args[0] === '..') {
+      const parts = currentPath.split('/').filter(Boolean);
+      parts.pop();
+      const newPath = '/' + parts.join('/') || '/';
+      setCurrentPath(newPath);
+      addLine('success', `Changed to ${newPath}`);
+    } else if (args[0] === '/') {
+      setCurrentPath('/');
+      addLine('success', 'Changed to /');
+    } else if (args[0].startsWith('/')) {
+      setCurrentPath(args[0]);
+      addLine('success', `Changed to ${args[0]}`);
+    } else {
+      const newPath = `${currentPath}/${args[0]}`.replace(/\/+/g, '/');
+      setCurrentPath(newPath);
+      addLine('success', `Changed to ${newPath}`);
+    }
+  };
+
+  const handleAptCommand = (args: string[]) => {
+    switch (args[0]) {
+      case 'update':
+        addLine('info', 'Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease');
+        addLine('info', 'Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease');
+        setTimeout(() => {
+          addLine('success', 'Reading package lists... Done\nAll packages are up to date.');
+        }, 1000);
+        break;
+      case 'upgrade':
+        addLine('info', 'Reading package lists... Done');
+        addLine('info', 'Building dependency tree... Done');
+        setTimeout(() => {
+          addLine('success', '0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.');
+        }, 1500);
+        break;
+      case 'install':
+        if (args[1]) {
+          addLine('info', `Reading package lists... Done`);
+          addLine('info', `Setting up ${args[1]}...`);
+          setTimeout(() => {
+            addLine('success', `${args[1]} is already the newest version.`);
+          }, 1000);
+        } else {
+          addLine('error', 'E: Invalid operation install');
+        }
+        break;
+      case 'remove':
+        if (args[1]) {
+          addLine('info', `Removing ${args[1]}...`);
+          setTimeout(() => {
+            addLine('success', `${args[1]} has been removed.`);
+          }, 800);
+        } else {
+          addLine('error', 'E: Invalid operation remove');
+        }
+        break;
+      case 'search':
+        if (args[1]) {
+          addLine('output', `Sorting... Done\n${args[1]} - ${args[1]} package\n${args[1]}-dev - Development files`);
+        } else {
+          addLine('error', 'E: You must give at least one search pattern');
+        }
+        break;
+      default:
+        addLine('error', `E: Invalid operation ${args[0] || ''}`);
+    }
+  };
+
+  const handleDockerComposeCommand = (args: string[]) => {
+    switch (args[0]) {
+      case 'up':
+        addLine('info', 'Creating network "cf_default" with the default driver');
+        addLine('info', 'Creating solana-soldier ... done');
+        addLine('info', 'Creating ai-worker      ... done');
+        addLine('info', 'Creating bot-monitor    ... done');
+        addLine('success', 'All containers started successfully');
+        break;
+      case 'down':
+        addLine('info', 'Stopping solana-soldier ... done');
+        addLine('info', 'Stopping ai-worker      ... done');
+        addLine('info', 'Stopping bot-monitor    ... done');
+        addLine('success', 'All containers stopped and removed');
+        break;
+      case 'logs':
+        addLine('output', `solana-soldier  | [INFO] Bot running on port 3000
+ai-worker       | [INFO] Worker running on port 3001
+bot-monitor     | [INFO] Monitoring active`);
+        break;
+      case 'ps':
+        addLine('output', `NAME            SERVICE         STATUS          PORTS
+solana-soldier  solana-bot      running         0.0.0.0:3000->3000/tcp
+ai-worker       ai-worker       running         0.0.0.0:3001->3001/tcp
+bot-monitor     bot-monitor     running         `);
+        break;
+      default:
+        addLine('info', `docker-compose ${args.join(' ')}`);
+    }
+  };
+
+  const handleSystemctlCommand = (args: string[]) => {
+    switch (args[0]) {
+      case 'status':
+        const service = args[1] || 'docker';
+        addLine('output', `● ${service}.service - ${service} Service
+     Loaded: loaded (/lib/systemd/system/${service}.service; enabled)
+     Active: active (running) since Mon 2024-01-15 00:00:00 UTC; 24h ago
+   Main PID: 245 (${service})
+      Tasks: 42 (limit: 4915)
+     Memory: 156.2M
+        CPU: 2min 34.567s`);
+        break;
+      case 'start':
+        addLine('success', `Started ${args[1] || 'service'}`);
+        break;
+      case 'stop':
+        addLine('success', `Stopped ${args[1] || 'service'}`);
+        break;
+      case 'restart':
+        addLine('success', `Restarting ${args[1] || 'service'}...`);
+        break;
+      case 'enable':
+        addLine('success', `Created symlink for ${args[1] || 'service'}`);
+        break;
+      case 'disable':
+        addLine('success', `Removed symlink for ${args[1] || 'service'}`);
+        break;
+      default:
+        addLine('output', `  systemctl [COMMAND] [SERVICE]
+  Commands: status, start, stop, restart, enable, disable`);
+    }
   };
 
   const handleDockerCommand = (args: string[]) => {
@@ -309,6 +805,36 @@ node                20        sha256:f6a1    2 weeks ago    1.1GB
 [2024-01-15 14:40:01] INFO: Health check passed
 [2024-01-15 14:45:00] INFO: Scheduled task completed
 `);
+        break;
+
+      case 'exec':
+        if (args[1]) {
+          addLine('success', `Executing in container ${args[1]}...`);
+        } else {
+          addLine('error', 'Error: Container name required');
+        }
+        break;
+
+      case 'start':
+        addLine('success', `Container ${args[1] || 'unknown'} started`);
+        break;
+
+      case 'stop':
+        addLine('success', `Container ${args[1] || 'unknown'} stopped`);
+        break;
+
+      case 'build':
+        addLine('info', 'Building image...');
+        setTimeout(() => {
+          addLine('success', 'Successfully built image');
+        }, 1500);
+        break;
+
+      case 'pull':
+        addLine('info', `Pulling ${args[1] || 'image'}...`);
+        setTimeout(() => {
+          addLine('success', `Downloaded newer image for ${args[1] || 'image'}`);
+        }, 1500);
         break;
 
       default:
@@ -554,6 +1080,10 @@ OPENROUTER_API_KEY=***HIDDEN***
           <TabsTrigger value="docker" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent py-3 px-4 gap-2">
             <Server className="w-4 h-4" />
             Docker
+          </TabsTrigger>
+          <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-green-500 data-[state=active]:bg-transparent py-3 px-4 gap-2">
+            <Zap className="w-4 h-4" />
+            Deploy Bots
           </TabsTrigger>
           <TabsTrigger value="github" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent py-3 px-4 gap-2">
             <Github className="w-4 h-4" />
@@ -806,6 +1336,11 @@ OPENROUTER_API_KEY=***HIDDEN***
               </table>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Deploy Bots Tab */}
+        <TabsContent value="deploy" className="h-full m-0 p-4 bg-gray-900/50 overflow-auto">
+          <DockerBotManager />
         </TabsContent>
 
         <TabsContent value="github" className="h-full m-0 p-4 bg-gray-900/50">
