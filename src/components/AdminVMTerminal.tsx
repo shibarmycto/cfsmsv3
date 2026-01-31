@@ -47,6 +47,8 @@ interface BotStatus {
   status: 'running' | 'stopped' | 'error';
   lastCheck: Date;
   uptime?: string;
+  username?: string;
+  link?: string;
 }
 
 export default function AdminVMTerminal() {
@@ -72,9 +74,9 @@ export default function AdminVMTerminal() {
     { name: 'backups', type: 'folder' },
   ]);
   const [bots, setBots] = useState<BotStatus[]>([
-    { name: 'CF Solana Soldier', status: 'running', lastCheck: new Date(), uptime: '24h 32m' },
-    { name: 'AI Worker Bot', status: 'running', lastCheck: new Date(), uptime: '24h 32m' },
-    { name: 'Bot Monitor Cron', status: 'running', lastCheck: new Date(), uptime: '24h 32m' },
+    { name: 'CF Solana Soldier', status: 'running', lastCheck: new Date(), uptime: '24h 32m', username: '@CFSolanaSoldierBot', link: 'https://t.me/CFSolanaSoldierBot' },
+    { name: 'AI Worker Bot', status: 'running', lastCheck: new Date(), uptime: '24h 32m', username: '@CFAGENTAIV2_BOT', link: 'https://t.me/CFAGENTAIV2_BOT' },
+    { name: 'Bot Monitor Cron', status: 'running', lastCheck: new Date(), uptime: '24h 32m', username: 'System', link: '' },
   ]);
   const [sshConnected, setSshConnected] = useState(false);
   const [sshHost, setSshHost] = useState('');
@@ -688,6 +690,16 @@ OPENROUTER_API_KEY=***HIDDEN***
                         <p className="text-xs text-gray-400">
                           Uptime: {bot.uptime} • Last check: {bot.lastCheck.toLocaleTimeString()}
                         </p>
+                        {bot.username && bot.link && (
+                          <a 
+                            href={bot.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-cyan-400 hover:text-cyan-300 mt-1 block"
+                          >
+                            {bot.username} →
+                          </a>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">

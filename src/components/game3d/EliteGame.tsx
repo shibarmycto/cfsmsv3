@@ -5,7 +5,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { EnhancedGameEngine, GameInput } from './EnhancedGameEngine';
 import { GameBuilding } from './UKWorld';
 import EliteHUD from './EliteHUD';
-import EliteMobileControls from './EliteMobileControls';
+import OneStateHUD from './OneStateHUD';
+import GameSideMenu from './GameSideMenu';
+import ShopUI from './ShopUI';
 import SplashScreen from './SplashScreen';
 import ShopInterior from './ShopInterior';
 
@@ -33,6 +35,8 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
   const [walkieTalkieActive, setWalkieTalkieActive] = useState(false);
   const [cameraMode, setCameraMode] = useState<'third' | 'first'>('third');
   const [insideBuilding, setInsideBuilding] = useState<GameBuilding | null>(null);
+  const [showShop, setShowShop] = useState(false);
+  const [showSideMenu, setShowSideMenu] = useState(false);
   
   const isMobile = useIsMobile();
 
@@ -257,40 +261,99 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
     );
   }
 
+  // Handle menu actions
+  const handleMenuAction = useCallback((action: string) => {
+    switch(action) {
+      case 'garage':
+      case 'armory':
+        setShowShop(true);
+        setShowSideMenu(false);
+        break;
+      case 'main-menu':
+        handleExit();
+        break;
+      default:
+        toast.info(`${action} coming soon!`);
+    }
+    setShowSideMenu(false);
+  }, [handleExit]);
+
+  // Handle shop purchase
+  const handleShopPurchase = useCallback((item: { id: string; name: string; price: number }) => {
+    if (stats.cash >= item.price) {
+      setStats(prev => ({ ...prev, cash: prev.cash - item.price }));
+      toast.success(`Purchased ${item.name}!`);
+    }
+  }, [stats.cash]);
+
   return (
     <div className="fixed inset-0 bg-black overflow-hidden touch-none">
       <div ref={containerRef} className="w-full h-full" />
       
-      <EliteHUD
-        characterName={characterName}
-        stats={stats}
-        gameTime={gameTime}
-        onlinePlayers={onlinePlayers}
-        nearbyBuilding={nearbyBuilding}
-        showChat={showChat}
-        setShowChat={setShowChat}
-        showMenu={showMenu}
-        setShowMenu={setShowMenu}
-        chatMessages={chatMessages}
-        onExit={handleExit}
-        onSendMessage={handleSendMessage}
-        isMobile={isMobile}
-        walkieTalkieActive={walkieTalkieActive}
-        setWalkieTalkieActive={setWalkieTalkieActive}
-        cameraMode={cameraMode}
-        setCameraMode={setCameraMode}
-      />
-      
-      {isMobile && (
-        <EliteMobileControls
+      {/* Use new OneState HUD on mobile, keep original on desktop */}
+      {isMobile ? (
+        <OneStateHUD
+          playerName={characterName}
+          playerLevel={Math.floor(stats.cash / 10000) + 1}
+          cash={stats.cash}
+          bankBalance={stats.bank}
+          health={stats.health}
+          energy={stats.energy}
+          hunger={stats.hunger}
           onMove={handleMobileMove}
-          onAction={handleMobileAction}
-          isLandscape={isLandscape}
-          onToggleFullscreen={toggleFullscreen}
-          isSprinting={inputRef.current.sprint}
+          onAction={(action) => {
+            if (action === 'menu') setShowSideMenu(true);
+            else if (action === 'attack') toast.info('Combat coming soon!');
+            else if (action === 'sprint') inputRef.current.sprint = true;
+            else if (action === 'voice') setWalkieTalkieActive(prev => !prev);
+            else if (action === 'chat') setShowChat(true);
+          }}
+          onOpenMenu={() => setShowSideMenu(true)}
+          onOpenStore={() => setShowShop(true)}
+          onOpenChat={() => setShowChat(true)}
+          equippedWeapon={undefined}
+          ammo={0}
+          gameTime={gameTime}
+          onlinePlayers={onlinePlayers}
+        />
+      ) : (
+        <EliteHUD
+          characterName={characterName}
+          stats={stats}
+          gameTime={gameTime}
+          onlinePlayers={onlinePlayers}
+          nearbyBuilding={nearbyBuilding}
+          showChat={showChat}
+          setShowChat={setShowChat}
+          showMenu={showMenu}
+          setShowMenu={setShowMenu}
+          chatMessages={chatMessages}
+          onExit={handleExit}
+          onSendMessage={handleSendMessage}
+          isMobile={isMobile}
           walkieTalkieActive={walkieTalkieActive}
+          setWalkieTalkieActive={setWalkieTalkieActive}
+          cameraMode={cameraMode}
+          setCameraMode={setCameraMode}
         />
       )}
+
+      {/* Side menu panel */}
+      <GameSideMenu
+        isOpen={showSideMenu}
+        onClose={() => setShowSideMenu(false)}
+        gameTime={gameTime}
+        onlinePlayers={onlinePlayers}
+        onMenuAction={handleMenuAction}
+      />
+
+      {/* Shop UI */}
+      <ShopUI
+        isOpen={showShop}
+        onClose={() => setShowShop(false)}
+        playerCash={stats.cash}
+        onPurchase={handleShopPurchase}
+      />
     </div>
   );
 }
