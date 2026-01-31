@@ -20,3 +20,6 @@ export { LondonWorld } from './LondonWorld';
 export { PlayerController } from './PlayerController';
 export { EconomyManager } from './EconomyManager';
 export { MultiplayerSync } from './MultiplayerSync';
+export { default as OneStateHUD } from './OneStateHUD';
+export { default as GameSideMenu } from './GameSideMenu';
+export { default as ShopUI } from './ShopUI';
