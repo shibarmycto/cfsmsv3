@@ -10,6 +10,33 @@ interface EliteMobileControlsProps {
   walkieTalkieActive: boolean;
 }
 
+// Jump button with cooldown to prevent glitching
+function JumpButton({ onJump }: { onJump: () => void }) {
+  const [canJump, setCanJump] = useState(true);
+  
+  const handleJump = useCallback(() => {
+    if (!canJump) return;
+    onJump();
+    setCanJump(false);
+    // Cooldown to prevent continuous jumping
+    setTimeout(() => setCanJump(true), 400);
+  }, [canJump, onJump]);
+  
+  return (
+    <button
+      onTouchStart={(e) => { e.preventDefault(); handleJump(); }}
+      onClick={handleJump}
+      className={`w-16 h-16 rounded-full border-2 flex items-center justify-center shadow-lg transition-all ${
+        canJump 
+          ? 'bg-gradient-to-br from-emerald-500 to-green-600 border-emerald-300 shadow-emerald-500/30 active:scale-90' 
+          : 'bg-gradient-to-br from-gray-500 to-gray-600 border-gray-400 shadow-gray-500/30 opacity-60'
+      }`}
+    >
+      <span className="text-white font-black text-xs">JUMP</span>
+    </button>
+  );
+}
+
 export default function EliteMobileControls({ 
   onMove, 
   onAction, 
@@ -145,17 +172,22 @@ export default function EliteMobileControls({
 
       {/* === RIGHT SIDE - Action Buttons === */}
       <div className="absolute bottom-8 right-8 flex flex-col gap-3 pointer-events-auto">
-        {/* Jump - Large prominent button */}
+        {/* Menu Button - Mobile friendly */}
         <button
-          onTouchStart={() => onAction('jump')}
-          className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 border-2 border-emerald-300 flex items-center justify-center shadow-lg shadow-emerald-500/30 active:scale-90 transition-transform"
+          onTouchStart={(e) => { e.preventDefault(); onAction('menu'); }}
+          onClick={() => onAction('menu')}
+          className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 border-2 border-purple-300 flex items-center justify-center shadow-lg shadow-purple-500/30 active:scale-90 transition-transform"
         >
-          <span className="text-white font-black text-xs">JUMP</span>
+          <span className="text-white font-black text-xs">MENU</span>
         </button>
+
+        {/* Jump - Single tap only, no hold */}
+        <JumpButton onJump={() => onAction('jump')} />
 
         {/* Interact */}
         <button
-          onTouchStart={() => onAction('interact')}
+          onTouchStart={(e) => { e.preventDefault(); onAction('interact'); }}
+          onClick={() => onAction('interact')}
           className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/30 active:scale-90 transition-transform"
         >
           <span className="text-white font-black text-lg">E</span>
@@ -163,7 +195,8 @@ export default function EliteMobileControls({
 
         {/* Walkie Talkie - Hold to talk */}
         <button
-          onTouchStart={() => onAction('walkie')}
+          onTouchStart={(e) => { e.preventDefault(); onAction('walkie'); }}
+          onClick={() => onAction('walkie')}
           className={`w-16 h-16 rounded-full border-2 flex items-center justify-center shadow-lg active:scale-90 transition-all ${
             walkieTalkieActive
               ? 'bg-green-500/50 border-green-400 shadow-green-500/50'

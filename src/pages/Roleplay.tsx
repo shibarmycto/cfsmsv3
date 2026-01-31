@@ -39,16 +39,14 @@ export default function Roleplay() {
   const [isBanned, setIsBanned] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-      return;
-    }
-
+    // Allow guests to view the page - only redirect when trying to play
     if (user) {
       checkBanStatus();
       fetchCharacter();
+    } else if (!authLoading) {
+      setLoading(false);
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading]);
 
   const checkBanStatus = async () => {
     const { data } = await supabase
@@ -96,6 +94,12 @@ export default function Roleplay() {
   };
 
   const handleEnterGame = async () => {
+    // Require login to play
+    if (!user) {
+      toast.error('Please sign in to play CF Roleplay');
+      navigate('/auth');
+      return;
+    }
     if (isBanned) {
       toast.error('You are banned from CF Roleplay');
       return;
@@ -178,8 +182,10 @@ export default function Roleplay() {
       </div>
 
       <div className="relative z-10 container mx-auto px-4 pb-8">
-        {!character ? (
-          <CharacterCreation userId={user!.id} onCharacterCreated={handleCharacterCreated} />
+        {!user ? (
+          <GuestWelcome onSignIn={() => navigate('/auth')} />
+        ) : !character ? (
+          <CharacterCreation userId={user.id} onCharacterCreated={handleCharacterCreated} />
         ) : (
           <div className="max-w-xl mx-auto">
             {/* Main Card */}
@@ -256,6 +262,65 @@ export default function Roleplay() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function GuestWelcome({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div className="max-w-xl mx-auto">
+      <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+        <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-white/10 p-6">
+          <div className="flex items-center justify-center gap-4">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+              <span className="text-white font-black text-3xl">CF</span>
+            </div>
+          </div>
+          <h1 className="text-3xl font-black text-white text-center mt-4">CF ROLEPLAY</h1>
+          <p className="text-cyan-400 text-center">Open World 3D Experience</p>
+        </div>
+        
+        <div className="p-6 space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-bold text-white">Welcome to CF Roleplay!</h2>
+            <p className="text-gray-400">Create your character, explore the city, get a job, build your empire.</p>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
+              <span className="text-2xl">🏙️</span>
+              <p className="text-white font-medium mt-1">Open World</p>
+              <p className="text-gray-500 text-xs">Explore a realistic UK city</p>
+            </div>
+            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
+              <span className="text-2xl">💼</span>
+              <p className="text-white font-medium mt-1">Jobs & Crime</p>
+              <p className="text-gray-500 text-xs">Legal or illegal income</p>
+            </div>
+            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
+              <span className="text-2xl">🚗</span>
+              <p className="text-white font-medium mt-1">Vehicles</p>
+              <p className="text-gray-500 text-xs">Buy & drive cars</p>
+            </div>
+            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
+              <span className="text-2xl">👥</span>
+              <p className="text-white font-medium mt-1">Multiplayer</p>
+              <p className="text-gray-500 text-xs">Play with others</p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={onSignIn}
+            className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-xl transition-all shadow-lg shadow-cyan-500/30"
+          >
+            Sign In to Play
+          </button>
+          
+          <p className="text-center text-gray-500 text-xs">
+            Free to play • No download required
+          </p>
+        </div>
       </div>
     </div>
   );
