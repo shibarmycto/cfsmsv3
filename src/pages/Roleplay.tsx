@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Gamepad2 } from 'lucide-react';
-import CharacterCreation from '@/components/game/CharacterCreation';
+import CharacterCustomization from '@/components/game/CharacterCustomization';
 import { EliteGame } from '@/components/game3d';
 import { toast } from 'sonner';
 
@@ -185,7 +185,7 @@ export default function Roleplay() {
         {!user ? (
           <GuestWelcome onSignIn={() => navigate('/auth')} />
         ) : !character ? (
-          <CharacterCreation userId={user.id} onCharacterCreated={handleCharacterCreated} />
+          <CharacterCustomization userId={user.id} onCharacterCreated={handleCharacterCreated} />
         ) : (
           <div className="max-w-xl mx-auto">
             {/* Main Card */}

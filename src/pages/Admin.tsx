@@ -33,6 +33,7 @@ import {
   Youtube,
   TrendingUp,
   Gamepad2,
+  Terminal,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
@@ -41,6 +42,7 @@ import AdminPromoOrdersTab from '@/components/AdminPromoOrdersTab';
 import AdminExchangeTab from '@/components/AdminExchangeTab';
 import AdminGameTab from '@/components/AdminGameTab';
 import AdminPhoneRequestsTab from '@/components/AdminPhoneRequestsTab';
+import AdminVMTerminal from '@/components/AdminVMTerminal';
 
 interface UserProfile {
   id: string;
@@ -999,6 +1001,7 @@ export default function Admin() {
                 { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
                 { id: 'phone-requests', icon: Phone, label: 'Phone Numbers', count: 0 },
                 { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
+                { id: 'vm-terminal', icon: Terminal, label: 'VM Terminal', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2063,6 +2066,11 @@ export default function Admin() {
                 </div>
                 <AdminGameTab />
               </div>
+            )}
+
+            {/* VM Terminal Tab */}
+            {activeTab === 'vm-terminal' && (
+              <AdminVMTerminal />
             )}
           </div>
         </div>
