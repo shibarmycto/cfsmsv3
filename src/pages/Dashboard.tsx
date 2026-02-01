@@ -11,6 +11,7 @@ import BuyCreditsTab from '@/components/BuyCreditsTab';
 import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
 import SendingOverlay from '@/components/SendingOverlay';
 import AIAgentTab from '@/components/AIAgentTab';
+import UserVMRental from '@/components/UserVMRental';
 import { Switch } from '@/components/ui/switch';
 import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import {
@@ -41,6 +42,7 @@ import {
   TrendingUp,
   PlusCircle,
   Gamepad2,
+  Monitor,
 } from 'lucide-react';
 
 interface SmsLog {
@@ -386,7 +388,8 @@ export default function Dashboard() {
                 { id: 'exchange', icon: TrendingUp, label: 'Exchange', isLink: true, href: '/exchange' },
                 { id: 'create-coin', icon: PlusCircle, label: 'Coin', isLink: true, href: '/exchange?tab=create' },
                 { id: 'solana-bot', icon: Sparkles, label: 'Solana', isExternal: true, href: 'https://t.me/Cfsolanasoldier_bot' },
-                { id: 'ai-worker-bot', icon: Bot, label: 'Worker', isExternal: true, href: 'https://t.me/CFAGENTAIV2_BOT' },
+                { id: 'ai-worker-bot', icon: Bot, label: 'Worker', isExternal: true, href: 'https://cfaiagentworker.pages.dev/' },
+                { id: 'vm', icon: Monitor, label: 'VM' },
                 { id: 'history', icon: History, label: 'History' },
                 { id: 'buy', icon: CreditCard, label: 'Buy' },
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
@@ -796,6 +799,12 @@ export default function Dashboard() {
                     Open CFSMS Bank
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'vm' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <UserVMRental />
               </div>
             )}
 

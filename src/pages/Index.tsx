@@ -8,6 +8,7 @@ import AISection from '@/components/landing/AISection';
 import WhySection from '@/components/landing/WhySection';
 import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
+import FloatingBanners from '@/components/landing/FloatingBanners';
 
 export default function Index() {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export default function Index() {
   return (
     <div className="min-h-screen hero-gradient">
       <Navbar />
+      <FloatingBanners />
       <HeroSection onGetStarted={handleGetStarted} onViewPricing={handleViewFeatures} />
       <BlockchainSection />
       <FeaturesGrid />

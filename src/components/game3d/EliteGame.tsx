@@ -133,75 +133,95 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
   useEffect(() => {
     if (!containerRef.current || showSplash || insideBuilding) return;
 
-    const engine = new EnhancedGameEngine(containerRef.current, isMobile);
-    engine.initWorld(characterName, { x: 0, z: 0 });
-    engineRef.current = engine;
+    let engine: EnhancedGameEngine | null = null;
+    let frameId: number = 0;
+    let isCleanedUp = false;
 
-    // Keyboard input
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      keysRef.current[key] = true;
-      
-      if (key === 'escape') setShowMenu(prev => !prev);
-      if (key === 't' && !showChat) { e.preventDefault(); setShowChat(true); }
-      if (key === 'v') setCameraMode(prev => prev === 'third' ? 'first' : 'third');
-      if (key === 'e' && nearbyBuilding) setInsideBuilding(nearbyBuilding);
-    };
+    try {
+      engine = new EnhancedGameEngine(containerRef.current, isMobile);
+      engine.initWorld(characterName, { x: 0, z: 0 });
+      engineRef.current = engine;
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keysRef.current[e.key.toLowerCase()] = false;
-    };
+      // Keyboard input
+      const handleKeyDown = (e: KeyboardEvent) => {
+        const key = e.key.toLowerCase();
+        keysRef.current[key] = true;
+        
+        if (key === 'escape') setShowMenu(prev => !prev);
+        if (key === 't' && !showChat) { e.preventDefault(); setShowChat(true); }
+        if (key === 'v') setCameraMode(prev => prev === 'third' ? 'first' : 'third');
+        if (key === 'e' && nearbyBuilding) setInsideBuilding(nearbyBuilding);
+      };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+      const handleKeyUp = (e: KeyboardEvent) => {
+        keysRef.current[e.key.toLowerCase()] = false;
+      };
 
-    // Game loop
-    let frameId: number;
-    const gameLoop = () => {
-      frameId = requestAnimationFrame(gameLoop);
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
 
-      // Only reset when using keyboard; mobile handlers write to inputRef directly
-      const hasKeyboard = keysRef.current['w'] || keysRef.current['s'] ||
-                          keysRef.current['a'] || keysRef.current['d'] ||
-                          keysRef.current['arrowup'] || keysRef.current['arrowdown'] ||
-                          keysRef.current['arrowleft'] || keysRef.current['arrowright'] ||
-                          keysRef.current[' '] || keysRef.current['shift'];
+      // Game loop
+      const gameLoop = () => {
+        if (isCleanedUp || !engine) return;
+        frameId = requestAnimationFrame(gameLoop);
 
-      if (hasKeyboard) {
-        inputRef.current.forward = 0;
-        inputRef.current.right = 0;
-        inputRef.current.jump = false;
-        inputRef.current.sprint = false;
+        try {
+          // Only reset when using keyboard; mobile handlers write to inputRef directly
+          const hasKeyboard = keysRef.current['w'] || keysRef.current['s'] ||
+                              keysRef.current['a'] || keysRef.current['d'] ||
+                              keysRef.current['arrowup'] || keysRef.current['arrowdown'] ||
+                              keysRef.current['arrowleft'] || keysRef.current['arrowright'] ||
+                              keysRef.current[' '] || keysRef.current['shift'];
 
-        if (keysRef.current['w'] || keysRef.current['arrowup']) inputRef.current.forward = 1;
-        if (keysRef.current['s'] || keysRef.current['arrowdown']) inputRef.current.forward = -1;
-        if (keysRef.current['a'] || keysRef.current['arrowleft']) inputRef.current.right = -1;
-        if (keysRef.current['d'] || keysRef.current['arrowright']) inputRef.current.right = 1;
-        if (keysRef.current[' ']) inputRef.current.jump = true;
-        if (keysRef.current['shift']) inputRef.current.sprint = true;
-      }
+          if (hasKeyboard) {
+            inputRef.current.forward = 0;
+            inputRef.current.right = 0;
+            inputRef.current.jump = false;
+            inputRef.current.sprint = false;
 
-      const result = engine.update(inputRef.current);
-      setNearbyBuilding(result.nearbyBuilding);
-    };
+            if (keysRef.current['w'] || keysRef.current['arrowup']) inputRef.current.forward = 1;
+            if (keysRef.current['s'] || keysRef.current['arrowdown']) inputRef.current.forward = -1;
+            if (keysRef.current['a'] || keysRef.current['arrowleft']) inputRef.current.right = -1;
+            if (keysRef.current['d'] || keysRef.current['arrowright']) inputRef.current.right = 1;
+            if (keysRef.current[' ']) inputRef.current.jump = true;
+            if (keysRef.current['shift']) inputRef.current.sprint = true;
+          }
 
-    gameLoop();
+          const result = engine.update(inputRef.current);
+          setNearbyBuilding(result.nearbyBuilding);
+        } catch (error) {
+          console.error('Game loop error:', error);
+        }
+      };
 
-    // Resize handler
-    const handleResize = () => engine.handleResize();
-    window.addEventListener('resize', handleResize);
+      gameLoop();
 
-    return () => {
-      cancelAnimationFrame(frameId);
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('resize', handleResize);
-      engine.dispose();
-      if (containerRef.current?.contains(engine.renderer.domElement)) {
-        containerRef.current.removeChild(engine.renderer.domElement);
-      }
-    };
-  }, [showSplash, characterName, isMobile, showChat, nearbyBuilding, insideBuilding]);
+      // Resize handler
+      const handleResize = () => {
+        if (engine) engine.handleResize();
+      };
+      window.addEventListener('resize', handleResize);
+
+      // Cleanup function
+      return () => {
+        isCleanedUp = true;
+        cancelAnimationFrame(frameId);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('resize', handleResize);
+        if (engine) {
+          engine.dispose();
+          if (containerRef.current?.contains(engine.renderer.domElement)) {
+            containerRef.current.removeChild(engine.renderer.domElement);
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Failed to initialize game engine:', error);
+      toast.error('Failed to load game. Please try again.');
+      onExit();
+    }
+  }, [showSplash, characterName, isMobile, showChat, nearbyBuilding, insideBuilding, onExit]);
 
   // Update camera mode in engine
   useEffect(() => {
@@ -232,6 +252,31 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
     onExit();
   }, [characterId, onExit, stats]);
 
+  // Handle menu actions
+  const handleMenuAction = useCallback((action: string) => {
+    switch(action) {
+      case 'garage':
+      case 'armory':
+        setShowShop(true);
+        setShowSideMenu(false);
+        break;
+      case 'main-menu':
+        handleExit();
+        break;
+      default:
+        toast.info(`${action} coming soon!`);
+    }
+    setShowSideMenu(false);
+  }, [handleExit]);
+
+  // Handle shop purchase
+  const handleShopPurchase = useCallback((item: { id: string; name: string; price: number }) => {
+    if (stats.cash >= item.price) {
+      setStats(prev => ({ ...prev, cash: prev.cash - item.price }));
+      toast.success(`Purchased ${item.name}!`);
+    }
+  }, [stats.cash]);
+
   // Show splash screen
   if (showSplash) {
     return <SplashScreen characterName={characterName} onComplete={() => setShowSplash(false)} />;
@@ -260,31 +305,6 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
       />
     );
   }
-
-  // Handle menu actions
-  const handleMenuAction = useCallback((action: string) => {
-    switch(action) {
-      case 'garage':
-      case 'armory':
-        setShowShop(true);
-        setShowSideMenu(false);
-        break;
-      case 'main-menu':
-        handleExit();
-        break;
-      default:
-        toast.info(`${action} coming soon!`);
-    }
-    setShowSideMenu(false);
-  }, [handleExit]);
-
-  // Handle shop purchase
-  const handleShopPurchase = useCallback((item: { id: string; name: string; price: number }) => {
-    if (stats.cash >= item.price) {
-      setStats(prev => ({ ...prev, cash: prev.cash - item.price }));
-      toast.success(`Purchased ${item.name}!`);
-    }
-  }, [stats.cash]);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden touch-none">
