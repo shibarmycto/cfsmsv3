@@ -34,6 +34,7 @@ import {
   TrendingUp,
   Gamepad2,
   Terminal,
+  Monitor,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
@@ -45,6 +46,7 @@ import AdminPhoneRequestsTab from '@/components/AdminPhoneRequestsTab';
 import AdminVMTerminal from '@/components/AdminVMTerminal';
 import SuperAdminVMTab from '@/components/SuperAdminVMTab';
 import UserVMRental from '@/components/UserVMRental';
+import AdminVMApprovalTab from '@/components/AdminVMApprovalTab';
 
 interface UserProfile {
   id: string;
@@ -1004,6 +1006,7 @@ export default function Admin() {
                 { id: 'phone-requests', icon: Phone, label: 'Phone Numbers', count: 0 },
                 { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
                 { id: 'vm-terminal', icon: Terminal, label: 'VM Terminal', count: 0 },
+                { id: 'vm-approval', icon: Monitor, label: 'VM Approvals', count: 0 },
                 { id: 'super-admin-vm', icon: Shield, label: 'Super Admin VM', count: 0 },
                 { id: 'user-vm', icon: Terminal, label: 'User VM Rentals', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
@@ -2081,6 +2084,17 @@ export default function Admin() {
             {activeTab === 'super-admin-vm' && (
               <div className="glass-card p-8 animate-fade-in">
                 <SuperAdminVMTab />
+              </div>
+            )}
+
+            {/* VM Approval Tab */}
+            {activeTab === 'vm-approval' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold">VM Rental Approvals</h2>
+                  <p className="text-muted-foreground">Manage and approve user VM rental requests</p>
+                </div>
+                <AdminVMApprovalTab />
               </div>
             )}
 
