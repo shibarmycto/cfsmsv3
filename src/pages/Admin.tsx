@@ -47,6 +47,7 @@ import AdminVMTerminal from '@/components/AdminVMTerminal';
 import SuperAdminVMTab from '@/components/SuperAdminVMTab';
 import UserVMRental from '@/components/UserVMRental';
 import AdminVMApprovalTab from '@/components/AdminVMApprovalTab';
+import AdminRPTab from '@/components/AdminRPTab';
 
 interface UserProfile {
   id: string;
@@ -2072,6 +2073,17 @@ export default function Admin() {
                   <p className="text-muted-foreground">Manage police applications, bans, transactions, and players</p>
                 </div>
                 <AdminGameTab />
+              </div>
+            )}
+
+            {/* RP Admin Tab */}
+            {activeTab === 'rp-admin' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold">🎮 Roleplay Admin Panel</h2>
+                  <p className="text-muted-foreground">Gang applications, economy, players, and bans</p>
+                </div>
+                <AdminRPTab />
               </div>
             )}
 
