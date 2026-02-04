@@ -12,6 +12,7 @@ import IPhoneMessagePreview from '@/components/IPhoneMessagePreview';
 import SendingOverlay from '@/components/SendingOverlay';
 import AIAgentTab from '@/components/AIAgentTab';
 import UserVMRental from '@/components/UserVMRental';
+import SolanaSignalsDashboard from '@/components/SolanaSignalsDashboard';
 import { Switch } from '@/components/ui/switch';
 import { formatPhoneNumbers } from '@/lib/phoneUtils';
 import {
@@ -387,6 +388,7 @@ export default function Dashboard() {
                 { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
                 { id: 'exchange', icon: TrendingUp, label: 'Exchange', isLink: true, href: '/exchange' },
                 { id: 'create-coin', icon: PlusCircle, label: 'Coin', isLink: true, href: '/exchange?tab=create' },
+                { id: 'signals', icon: Zap, label: 'Signals' },
                 { id: 'solana-bot', icon: Sparkles, label: 'Solana', isExternal: true, href: 'https://t.me/Cfsolanasoldier_bot' },
                 { id: 'ai-worker-bot', icon: Bot, label: 'Worker', isExternal: true, href: 'https://cfaiagentworker.pages.dev/' },
                 { id: 'vm', icon: Monitor, label: 'VM' },
@@ -805,6 +807,12 @@ export default function Dashboard() {
             {activeTab === 'vm' && (
               <div className="glass-card p-8 animate-fade-in">
                 <UserVMRental />
+              </div>
+            )}
+
+            {activeTab === 'signals' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <SolanaSignalsDashboard />
               </div>
             )}
 
