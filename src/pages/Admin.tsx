@@ -48,6 +48,7 @@ import SuperAdminVMTab from '@/components/SuperAdminVMTab';
 import UserVMRental from '@/components/UserVMRental';
 import AdminVMApprovalTab from '@/components/AdminVMApprovalTab';
 import AdminRPTab from '@/components/AdminRPTab';
+import AdminSignalAccessTab from '@/components/AdminSignalAccessTab';
 
 interface UserProfile {
   id: string;
@@ -1006,6 +1007,7 @@ export default function Admin() {
                 { id: 'verify-users', icon: BadgeCheck, label: 'Verify Users', count: 0 },
                 { id: 'phone-requests', icon: Phone, label: 'Phone Numbers', count: 0 },
                 { id: 'game', icon: Gamepad2, label: 'CF Roleplay', count: 0 },
+                { id: 'signals', icon: Zap, label: 'Solana Signals', count: 0 },
                 { id: 'vm-terminal', icon: Terminal, label: 'VM Terminal', count: 0 },
                 { id: 'vm-approval', icon: Monitor, label: 'VM Approvals', count: 0 },
                 { id: 'super-admin-vm', icon: Shield, label: 'Super Admin VM', count: 0 },
@@ -2114,6 +2116,20 @@ export default function Admin() {
             {activeTab === 'user-vm' && (
               <div className="glass-card p-8 animate-fade-in">
                 <UserVMRental />
+              </div>
+            )}
+
+            {/* Solana Signals Admin Tab */}
+            {activeTab === 'signals' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Zap className="text-yellow-500" />
+                    Solana Signals Admin
+                  </h2>
+                  <p className="text-muted-foreground">Manage signal access, live tokens, and subscriptions</p>
+                </div>
+                <AdminSignalAccessTab />
               </div>
             )}
           </div>

@@ -2277,6 +2277,166 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_access: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          can_execute_trades: boolean | null
+          can_view_signals: boolean | null
+          created_at: string
+          id: string
+          is_approved: boolean | null
+          telegram_user_id: number | null
+          telegram_username: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          can_execute_trades?: boolean | null
+          can_view_signals?: boolean | null
+          created_at?: string
+          id?: string
+          is_approved?: boolean | null
+          telegram_user_id?: number | null
+          telegram_username?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          can_execute_trades?: boolean | null
+          can_view_signals?: boolean | null
+          created_at?: string
+          id?: string
+          is_approved?: boolean | null
+          telegram_user_id?: number | null
+          telegram_username?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      signal_batches: {
+        Row: {
+          id: string
+          recipient_count: number | null
+          sent_at: string
+          sent_via: string | null
+          subscription_id: string | null
+          tokens_included: string[] | null
+        }
+        Insert: {
+          id?: string
+          recipient_count?: number | null
+          sent_at?: string
+          sent_via?: string | null
+          subscription_id?: string | null
+          tokens_included?: string[] | null
+        }
+        Update: {
+          id?: string
+          recipient_count?: number | null
+          sent_at?: string
+          sent_via?: string | null
+          subscription_id?: string | null
+          tokens_included?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_batches_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "signal_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signal_subscriptions: {
+        Row: {
+          created_at: string
+          credits_spent: number
+          expires_at: string
+          id: string
+          is_active: boolean
+          plan_type: string
+          signals_sent: number
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_spent?: number
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          plan_type?: string
+          signals_sent?: number
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_spent?: number
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          plan_type?: string
+          signals_sent?: number
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      signal_trades: {
+        Row: {
+          amount_sol: number
+          created_at: string
+          id: string
+          mint_address: string
+          price_at_trade: number | null
+          status: string | null
+          token_amount: number | null
+          token_signal_id: string | null
+          trade_type: string
+          tx_signature: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_sol: number
+          created_at?: string
+          id?: string
+          mint_address: string
+          price_at_trade?: number | null
+          status?: string | null
+          token_amount?: number | null
+          token_signal_id?: string | null
+          trade_type: string
+          tx_signature?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_sol?: number
+          created_at?: string
+          id?: string
+          mint_address?: string
+          price_at_trade?: number | null
+          status?: string | null
+          token_amount?: number | null
+          token_signal_id?: string | null
+          trade_type?: string
+          tx_signature?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_trades_token_signal_id_fkey"
+            columns: ["token_signal_id"]
+            isOneToOne: false
+            referencedRelation: "token_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_logs: {
         Row: {
           api_response: Json | null
@@ -2312,6 +2472,45 @@ export type Database = {
           recipient?: string
           sender_id?: string
           status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      solana_wallets: {
+        Row: {
+          auto_trade_settings: Json | null
+          balance_sol: number | null
+          created_at: string
+          encrypted_private_key: string | null
+          id: string
+          is_trading_enabled: boolean | null
+          last_balance_check: string | null
+          public_key: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_trade_settings?: Json | null
+          balance_sol?: number | null
+          created_at?: string
+          encrypted_private_key?: string | null
+          id?: string
+          is_trading_enabled?: boolean | null
+          last_balance_check?: string | null
+          public_key?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_trade_settings?: Json | null
+          balance_sol?: number | null
+          created_at?: string
+          encrypted_private_key?: string | null
+          id?: string
+          is_trading_enabled?: boolean | null
+          last_balance_check?: string | null
+          public_key?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -2450,6 +2649,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      token_signals: {
+        Row: {
+          created_time: string
+          first_seen_at: string
+          id: string
+          liquidity_sol: number | null
+          market_cap_sol: number | null
+          metadata: Json | null
+          mint_address: string
+          price_usd: number | null
+          source: string | null
+          token_name: string
+          token_symbol: string
+        }
+        Insert: {
+          created_time: string
+          first_seen_at?: string
+          id?: string
+          liquidity_sol?: number | null
+          market_cap_sol?: number | null
+          metadata?: Json | null
+          mint_address: string
+          price_usd?: number | null
+          source?: string | null
+          token_name: string
+          token_symbol: string
+        }
+        Update: {
+          created_time?: string
+          first_seen_at?: string
+          id?: string
+          liquidity_sol?: number | null
+          market_cap_sol?: number | null
+          metadata?: Json | null
+          mint_address?: string
+          price_usd?: number | null
+          source?: string | null
+          token_name?: string
+          token_symbol?: string
+        }
+        Relationships: []
       }
       token_transactions: {
         Row: {
