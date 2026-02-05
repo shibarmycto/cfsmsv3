@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { EnhancedGameEngine, GameInput } from './EnhancedGameEngine';
 import { GameBuilding } from './UKWorld';
+import { RealtimeMultiplayer } from './RealtimeMultiplayer';
 import EliteHUD from './EliteHUD';
 import OneStateHUD from './OneStateHUD';
 import GameSideMenu from './GameSideMenu';
 import ShopUI from './ShopUI';
 import SplashScreen from './SplashScreen';
 import ShopInterior from './ShopInterior';
+import GameCombat from './GameCombat';
+import EnhancedMobileControls from './EnhancedMobileControls';
 
 interface EliteGameProps {
   characterId: string;
@@ -20,8 +24,10 @@ interface EliteGameProps {
 export default function EliteGame({ characterId, characterName, onExit }: EliteGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EnhancedGameEngine | null>(null);
+  const multiplayerRef = useRef<RealtimeMultiplayer | null>(null);
   const inputRef = useRef<GameInput>({ forward: 0, right: 0, jump: false, sprint: false });
   const keysRef = useRef<Record<string, boolean>>({});
+  const sprintingRef = useRef(false);
   
   const [showSplash, setShowSplash] = useState(true);
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight);
@@ -37,10 +43,14 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
   const [insideBuilding, setInsideBuilding] = useState<GameBuilding | null>(null);
   const [showShop, setShowShop] = useState(false);
   const [showSideMenu, setShowSideMenu] = useState(false);
+  const [equippedWeapon, setEquippedWeapon] = useState('fists');
+  const [playerPosition, setPlayerPosition] = useState(new THREE.Vector3(0, 0, 0));
+  const [playerRotation, setPlayerRotation] = useState(0);
+  const [isSprinting, setIsSprinting] = useState(false);
   
   const isMobile = useIsMobile();
 
-  // Load character data
+  // Load character data and equipped weapon
   useEffect(() => {
     const loadCharacter = async () => {
       const { data } = await supabase.from('game_characters').select('*').eq('id', characterId).single();
@@ -53,9 +63,9 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
           bank: data.bank_balance || 0,
           wantedLevel: data.wanted_level || 0
         });
+        setEquippedWeapon(data.equipped_weapon || 'fists');
       }
     };
-    loadCharacter();
   }, [characterId]);
 
   // Orientation change
@@ -73,9 +83,30 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
     return () => clearInterval(interval);
   }, []);
 
-  // Multiplayer sync
+  // Initialize realtime multiplayer
   useEffect(() => {
-    const channel = supabase.channel('cf-roleplay-world')
+    if (showSplash || !engineRef.current) return;
+    
+    const multiplayer = new RealtimeMultiplayer(characterId, characterName, engineRef.current.scene);
+    multiplayerRef.current = multiplayer;
+    
+    multiplayer.setPlayerCountHandler((count) => {
+      setOnlinePlayers(count);
+    });
+    
+    multiplayer.initialize().then(() => {
+      console.log('Multiplayer initialized');
+    });
+    
+    return () => {
+      multiplayer.dispose();
+      multiplayerRef.current = null;
+    };
+  }, [showSplash, characterId, characterName]);
+
+  // Chat channel
+  useEffect(() => {
+    const channel = supabase.channel('cf-roleplay-chat')
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         setChatMessages(prev => [...prev.slice(-50), {
           sender: payload.sender,
@@ -83,21 +114,12 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
           time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
         }]);
       })
-      .on('broadcast', { event: 'player-join' }, () => {
-        setOnlinePlayers(prev => prev + 1);
-      })
-      .on('broadcast', { event: 'player-leave' }, () => {
-        setOnlinePlayers(prev => Math.max(1, prev - 1));
-      })
-      .subscribe(() => {
-        channel.send({ type: 'broadcast', event: 'player-join', payload: { name: characterName } });
-      });
+      .subscribe();
 
     return () => {
-      channel.send({ type: 'broadcast', event: 'player-leave', payload: { name: characterName } });
       supabase.removeChannel(channel);
     };
-  }, [characterName]);
+  }, []);
 
   // Send chat message
   const handleSendMessage = useCallback((message: string) => {
@@ -177,7 +199,7 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
             inputRef.current.forward = 0;
             inputRef.current.right = 0;
             inputRef.current.jump = false;
-            inputRef.current.sprint = false;
+            inputRef.current.sprint = sprintingRef.current;
 
             if (keysRef.current['w'] || keysRef.current['arrowup']) inputRef.current.forward = 1;
             if (keysRef.current['s'] || keysRef.current['arrowdown']) inputRef.current.forward = -1;
@@ -189,6 +211,24 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
 
           const result = engine.update(inputRef.current);
           setNearbyBuilding(result.nearbyBuilding);
+          
+          // Update position state for combat system
+          const pos = engine.playerState.position;
+          const rot = engine.playerState.rotation;
+          setPlayerPosition(pos.clone());
+          setPlayerRotation(rot);
+          
+          // Broadcast position to other players
+          if (multiplayerRef.current) {
+            const state = engine.playerState.isMoving 
+              ? (engine.playerState.isSprinting ? 'running' : 'walking') 
+              : 'idle';
+            multiplayerRef.current.broadcastPosition(pos, rot, state, stats.health, equippedWeapon);
+            
+            // Update remote player meshes
+            const delta = 0.016; // ~60fps
+            multiplayerRef.current.update(delta);
+          }
         } catch (error) {
           console.error('Game loop error:', error);
         }
@@ -221,7 +261,7 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
       toast.error('Failed to load game. Please try again.');
       onExit();
     }
-  }, [showSplash, characterName, isMobile, showChat, nearbyBuilding, insideBuilding, onExit]);
+  }, [showSplash, characterName, isMobile, showChat, nearbyBuilding, insideBuilding, onExit, stats.health, equippedWeapon]);
 
   // Update camera mode in engine
   useEffect(() => {
@@ -310,33 +350,46 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
     <div className="fixed inset-0 bg-black overflow-hidden touch-none">
       <div ref={containerRef} className="w-full h-full" />
       
-      {/* Use new OneState HUD on mobile, keep original on desktop */}
-      {isMobile ? (
-        <OneStateHUD
-          playerName={characterName}
-          playerLevel={Math.floor(stats.cash / 10000) + 1}
-          cash={stats.cash}
-          bankBalance={stats.bank}
-          health={stats.health}
-          energy={stats.energy}
-          hunger={stats.hunger}
-          onMove={handleMobileMove}
-          onAction={(action) => {
-            if (action === 'menu') setShowSideMenu(true);
-            else if (action === 'attack') toast.info('Combat coming soon!');
-            else if (action === 'sprint') inputRef.current.sprint = true;
-            else if (action === 'voice') setWalkieTalkieActive(prev => !prev);
-            else if (action === 'chat') setShowChat(true);
-          }}
-          onOpenMenu={() => setShowSideMenu(true)}
-          onOpenStore={() => setShowShop(true)}
-          onOpenChat={() => setShowChat(true)}
-          equippedWeapon={undefined}
-          ammo={0}
-          gameTime={gameTime}
-          onlinePlayers={onlinePlayers}
-        />
-      ) : (
+      {/* Mobile: Enhanced controls with combat */}
+      {isMobile && (
+        <>
+          <EnhancedMobileControls
+            onMove={handleMobileMove}
+            onAttack={() => {}} // Handled by GameCombat
+            onJump={() => { inputRef.current.jump = true; }}
+            onInteract={() => { if (nearbyBuilding) setInsideBuilding(nearbyBuilding); }}
+            onSprint={(active) => { 
+              sprintingRef.current = active;
+              setIsSprinting(active);
+              inputRef.current.sprint = active; 
+            }}
+            onOpenMenu={() => setShowSideMenu(true)}
+            onOpenChat={() => setShowChat(true)}
+            onToggleVoice={() => setWalkieTalkieActive(prev => !prev)}
+            isLandscape={isLandscape}
+            onToggleFullscreen={toggleFullscreen}
+            isSprinting={isSprinting}
+            voiceActive={walkieTalkieActive}
+            nearbyInteraction={nearbyBuilding?.name || null}
+            equippedWeapon={equippedWeapon}
+          />
+          
+          {/* Mobile HUD overlay */}
+          <div className="fixed top-3 left-3 z-40 pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-sm rounded-xl p-2 border border-white/10">
+              <div className="text-white font-bold text-sm">{characterName}</div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="text-green-400 text-xs">❤️ {stats.health}%</div>
+                <div className="text-yellow-400 text-xs">💰 ${stats.cash.toLocaleString()}</div>
+              </div>
+              <div className="text-gray-400 text-xs mt-1">🌐 {onlinePlayers} online • {gameTime}</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Desktop HUD */}
+      {!isMobile && (
         <EliteHUD
           characterName={characterName}
           stats={stats}
@@ -357,6 +410,18 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
           setCameraMode={setCameraMode}
         />
       )}
+
+      {/* Combat system - works on both mobile and desktop */}
+      <GameCombat
+        characterId={characterId}
+        characterName={characterName}
+        playerPosition={playerPosition}
+        playerRotation={playerRotation}
+        health={stats.health}
+        onHealthChange={(health) => setStats(prev => ({ ...prev, health }))}
+        multiplayer={multiplayerRef.current}
+        equippedWeapon={equippedWeapon}
+      />
 
       {/* Side menu panel */}
       <GameSideMenu
