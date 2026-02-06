@@ -216,6 +216,84 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_receptionist_configs: {
+        Row: {
+          ai_model: string | null
+          ai_provider: string
+          business_hours: Json | null
+          closing_message: string | null
+          company_name: string | null
+          created_at: string | null
+          faq_data: Json | null
+          greeting_message: string | null
+          id: string
+          is_active: boolean | null
+          linked_sip_config_id: string | null
+          linked_voice_profile_id: string | null
+          max_tokens: number | null
+          receptionist_name: string
+          system_prompt: string | null
+          temperature: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_model?: string | null
+          ai_provider?: string
+          business_hours?: Json | null
+          closing_message?: string | null
+          company_name?: string | null
+          created_at?: string | null
+          faq_data?: Json | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          linked_sip_config_id?: string | null
+          linked_voice_profile_id?: string | null
+          max_tokens?: number | null
+          receptionist_name?: string
+          system_prompt?: string | null
+          temperature?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_model?: string | null
+          ai_provider?: string
+          business_hours?: Json | null
+          closing_message?: string | null
+          company_name?: string | null
+          created_at?: string | null
+          faq_data?: Json | null
+          greeting_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          linked_sip_config_id?: string | null
+          linked_voice_profile_id?: string | null
+          max_tokens?: number | null
+          receptionist_name?: string
+          system_prompt?: string | null
+          temperature?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_receptionist_configs_linked_sip_config_id_fkey"
+            columns: ["linked_sip_config_id"]
+            isOneToOne: false
+            referencedRelation: "sip_configurations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_receptionist_configs_linked_voice_profile_id_fkey"
+            columns: ["linked_voice_profile_id"]
+            isOneToOne: false
+            referencedRelation: "voice_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_twin_calls: {
         Row: {
           call_sid: string | null
@@ -382,6 +460,42 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           voice_id?: string | null
+        }
+        Relationships: []
+      }
+      api_keys_vault: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_valid: boolean | null
+          key_encrypted: string
+          last_used_at: string | null
+          service_name: string
+          updated_at: string | null
+          usage_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_valid?: boolean | null
+          key_encrypted: string
+          last_used_at?: string | null
+          service_name: string
+          updated_at?: string | null
+          usage_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_valid?: boolean | null
+          key_encrypted?: string
+          last_used_at?: string | null
+          service_name?: string
+          updated_at?: string | null
+          usage_count?: number | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -2437,6 +2551,132 @@ export type Database = {
           },
         ]
       }
+      sip_call_sessions: {
+        Row: {
+          ai_confidence_score: number | null
+          call_status: string | null
+          caller_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          receptionist_config_id: string | null
+          recording_url: string | null
+          sentiment: string | null
+          sip_config_id: string | null
+          started_at: string | null
+          tokens_used: number | null
+          transcript: Json | null
+          user_id: string
+        }
+        Insert: {
+          ai_confidence_score?: number | null
+          call_status?: string | null
+          caller_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          receptionist_config_id?: string | null
+          recording_url?: string | null
+          sentiment?: string | null
+          sip_config_id?: string | null
+          started_at?: string | null
+          tokens_used?: number | null
+          transcript?: Json | null
+          user_id: string
+        }
+        Update: {
+          ai_confidence_score?: number | null
+          call_status?: string | null
+          caller_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          receptionist_config_id?: string | null
+          recording_url?: string | null
+          sentiment?: string | null
+          sip_config_id?: string | null
+          started_at?: string | null
+          tokens_used?: number | null
+          transcript?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sip_call_sessions_receptionist_config_id_fkey"
+            columns: ["receptionist_config_id"]
+            isOneToOne: false
+            referencedRelation: "ai_receptionist_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sip_call_sessions_sip_config_id_fkey"
+            columns: ["sip_config_id"]
+            isOneToOne: false
+            referencedRelation: "sip_configurations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sip_configurations: {
+        Row: {
+          allowed_numbers: Json | null
+          auth_username: string | null
+          connection_status: string | null
+          created_at: string | null
+          domain: string
+          id: string
+          inbound_number: string | null
+          is_active: boolean | null
+          last_tested_at: string | null
+          password_encrypted: string
+          port: number
+          provider_name: string
+          sip_username: string
+          transport: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed_numbers?: Json | null
+          auth_username?: string | null
+          connection_status?: string | null
+          created_at?: string | null
+          domain: string
+          id?: string
+          inbound_number?: string | null
+          is_active?: boolean | null
+          last_tested_at?: string | null
+          password_encrypted: string
+          port?: number
+          provider_name?: string
+          sip_username: string
+          transport?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed_numbers?: Json | null
+          auth_username?: string | null
+          connection_status?: string | null
+          created_at?: string | null
+          domain?: string
+          id?: string
+          inbound_number?: string | null
+          is_active?: boolean | null
+          last_tested_at?: string | null
+          password_encrypted?: string
+          port?: number
+          provider_name?: string
+          sip_username?: string
+          transport?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       sms_logs: {
         Row: {
           api_response: Json | null
@@ -2919,6 +3159,54 @@ export type Database = {
           time_remaining_seconds?: number | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      voice_profiles: {
+        Row: {
+          audio_file_url: string | null
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          metadata: Json | null
+          provider: string
+          quality_score: number | null
+          sample_duration_seconds: number | null
+          training_status: string | null
+          updated_at: string | null
+          user_id: string
+          voice_id: string | null
+          voice_name: string
+        }
+        Insert: {
+          audio_file_url?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          metadata?: Json | null
+          provider: string
+          quality_score?: number | null
+          sample_duration_seconds?: number | null
+          training_status?: string | null
+          updated_at?: string | null
+          user_id: string
+          voice_id?: string | null
+          voice_name: string
+        }
+        Update: {
+          audio_file_url?: string | null
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          metadata?: Json | null
+          provider?: string
+          quality_score?: number | null
+          sample_duration_seconds?: number | null
+          training_status?: string | null
+          updated_at?: string | null
+          user_id?: string
+          voice_id?: string | null
+          voice_name?: string
         }
         Relationships: []
       }

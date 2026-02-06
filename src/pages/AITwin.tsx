@@ -16,10 +16,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { VoiceChat } from "@/components/VoiceChat";
 import { TelnyxPhoneSetup } from "@/components/TelnyxPhoneSetup";
+import { SIPConfigurationPanel } from "@/components/SIPConfigurationPanel";
+import { VoiceCloningManager } from "@/components/VoiceCloningManager";
+import { AIReceptionistConfig } from "@/components/AIReceptionistConfig";
 import { 
   Bot, Phone, Brain, Settings, PhoneCall, Clock, 
   Wallet, Trash2, ArrowLeft, Save, Plus, MessageSquare,
-  User, Heart, Sparkles, Volume2, Headphones, Smartphone
+  User, Heart, Sparkles, Volume2, Headphones, Smartphone, Server, Mic
 } from "lucide-react";
 
 interface AITwin {
@@ -320,10 +323,22 @@ export default function AITwin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-6 mb-6">
+          <TabsList className="grid grid-cols-4 md:grid-cols-9 mb-6 h-auto flex-wrap">
             <TabsTrigger value="voice" className="flex items-center gap-2">
               <Headphones className="h-4 w-4" />
               <span className="hidden sm:inline">Voice</span>
+            </TabsTrigger>
+            <TabsTrigger value="sip" className="flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              <span className="hidden sm:inline">SIP</span>
+            </TabsTrigger>
+            <TabsTrigger value="cloning" className="flex items-center gap-2">
+              <Mic className="h-4 w-4" />
+              <span className="hidden sm:inline">Clone</span>
+            </TabsTrigger>
+            <TabsTrigger value="receptionist" className="flex items-center gap-2">
+              <Bot className="h-4 w-4" />
+              <span className="hidden sm:inline">AI</span>
             </TabsTrigger>
             <TabsTrigger value="phone" className="flex items-center gap-2">
               <Smartphone className="h-4 w-4" />
@@ -414,6 +429,21 @@ export default function AITwin() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* SIP Configuration Tab */}
+          <TabsContent value="sip">
+            <SIPConfigurationPanel />
+          </TabsContent>
+
+          {/* Voice Cloning Tab */}
+          <TabsContent value="cloning">
+            <VoiceCloningManager />
+          </TabsContent>
+
+          {/* AI Receptionist Tab */}
+          <TabsContent value="receptionist">
+            <AIReceptionistConfig />
           </TabsContent>
 
           {/* Phone Tab - Telnyx phone numbers for mobile calls */}
