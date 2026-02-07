@@ -658,6 +658,15 @@ export default function Exchange() {
                       </div>
                     </div>
 
+                    <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 rounded-lg p-4 border border-red-500/20">
+                      <h4 className="font-semibold mb-2 text-red-400">⚠️ Trading Rules</h4>
+                      <ul className="text-sm space-y-1 text-muted-foreground">
+                        <li>• <span className="text-cyan-400">Max 25% ownership</span> per user per token</li>
+                        <li>• <span className="text-red-400">50% early withdrawal fee</span> if sold before graduation</li>
+                        <li>• Hold until graduation to avoid penalties!</li>
+                      </ul>
+                    </div>
+
                     <Button
                       className="w-full"
                       size="lg"
@@ -763,13 +772,18 @@ export default function Exchange() {
                         <p className="font-medium">{selectedToken.total_volume.toLocaleString()}</p>
                       </div>
                       <div className="p-2 rounded bg-muted/30">
-                        <p className="text-xs text-muted-foreground">Circulating</p>
-                        <p className="font-medium">{selectedToken.circulating_supply.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">Holders</p>
+                        <p className="font-medium">{(selectedToken as any).holder_count || 0}</p>
                       </div>
                       <div className="p-2 rounded bg-muted/30">
                         <p className="text-xs text-muted-foreground">Total Sales</p>
                         <p className="font-medium">{selectedToken.total_sales_value.toLocaleString()}</p>
                       </div>
+                    </div>
+
+                    {/* Max Ownership Info */}
+                    <div className="p-2 rounded bg-cyan-500/10 border border-cyan-500/20 text-xs">
+                      <p className="text-cyan-400">📊 Max 25% ownership per user ({Math.floor(selectedToken.total_supply * 0.25).toLocaleString()} tokens)</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -789,6 +803,16 @@ export default function Exchange() {
                       </Button>
                     </div>
 
+                    {/* Early Withdrawal Warning */}
+                    {tradeType === 'sell' && selectedToken.status !== 'graduated' && (
+                      <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-sm">
+                        <p className="text-red-400 font-medium">⚠️ Early Withdrawal Fee</p>
+                        <p className="text-red-300 text-xs mt-1">
+                          Selling before graduation incurs a 50% fee. Hold until the token graduates to avoid this penalty!
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label>Amount</Label>
                       <Input
@@ -799,9 +823,16 @@ export default function Exchange() {
                         min="1"
                       />
                       {tradeAmount && (
-                        <p className="text-sm text-muted-foreground">
-                          Total: {(parseInt(tradeAmount) * selectedToken.price_per_token).toLocaleString()} Credits
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">
+                            Total: {(parseInt(tradeAmount) * selectedToken.price_per_token).toLocaleString()} Credits
+                          </p>
+                          {tradeType === 'sell' && selectedToken.status !== 'graduated' && (
+                            <p className="text-sm text-red-400">
+                              You'll receive: {Math.floor(parseInt(tradeAmount) * selectedToken.price_per_token * 0.5).toLocaleString()} Credits (after 50% fee)
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
 
