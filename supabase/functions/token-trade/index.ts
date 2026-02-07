@@ -8,6 +8,8 @@ const corsHeaders = {
 const TOKEN_CREATION_COST = 25;
 const INITIAL_SUPPLY = 999000000;
 const LARGE_TRADE_THRESHOLD = 10000;
+const MAX_OWNERSHIP_PERCENT = 0.25; // 25% max ownership per user
+const EARLY_WITHDRAWAL_FEE = 0.5; // 50% fee for selling before graduation
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -98,7 +100,7 @@ Deno.serve(async (req) => {
         .update({ sms_credits: profile.sms_credits - TOKEN_CREATION_COST })
         .eq('user_id', user.id);
 
-      // Create token
+      // Create token with 999M supply
       const { data: newToken, error: tokenError } = await supabase
         .from('user_tokens')
         .insert({
@@ -109,7 +111,9 @@ Deno.serve(async (req) => {
           logo_emoji: logoEmoji || '🪙',
           total_supply: INITIAL_SUPPLY,
           circulating_supply: 0,
+          price_per_token: 1,
           market_cap: INITIAL_SUPPLY,
+          holder_count: 0,
         })
         .select()
         .single();
@@ -134,14 +138,14 @@ Deno.serve(async (req) => {
         total_credits: TOKEN_CREATION_COST,
       });
 
-      // Add news event
+      // Add news event for new listing
       await supabase.from('token_news').insert({
         token_id: newToken.id,
         event_type: 'new_listing',
-        title: `🚀 New Token Listed: ${name} (${symbol.toUpperCase()})`,
-        description: description || `A new token has been created on the CF Network!`,
+        title: `🚀 NEW TOKEN: ${name} ($${symbol.toUpperCase()})`,
+        description: `${INITIAL_SUPPLY.toLocaleString()} ${symbol.toUpperCase()} tokens are now available for trading on CF Exchange! ${description || ''}`,
         impact: 'high',
-        metadata: { creator_id: user.id },
+        metadata: { creator_id: user.id, total_supply: INITIAL_SUPPLY },
       });
 
       return new Response(
@@ -193,6 +197,29 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Get current user holding for 25% max check
+      const { data: existingHolding } = await supabase
+        .from('token_holdings')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('token_id', tokenId)
+        .single();
+
+      const currentHolding = existingHolding?.amount || 0;
+      const newTotalHolding = currentHolding + amount;
+      const maxAllowed = Math.floor(tokenData.total_supply * MAX_OWNERSHIP_PERCENT);
+
+      if (newTotalHolding > maxAllowed) {
+        const canBuy = maxAllowed - currentHolding;
+        return new Response(
+          JSON.stringify({ 
+            error: `Max 25% ownership allowed. You can buy up to ${canBuy.toLocaleString()} more tokens.`,
+            maxBuyable: canBuy
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Deduct credits from buyer
       await supabase
         .from('profiles')
@@ -214,13 +241,7 @@ Deno.serve(async (req) => {
       }
 
       // Update or create holding
-      const { data: existingHolding } = await supabase
-        .from('token_holdings')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('token_id', tokenId)
-        .single();
-
+      let isNewHolder = false;
       if (existingHolding) {
         const newAmount = existingHolding.amount + amount;
         const newAvgPrice = ((existingHolding.amount * existingHolding.avg_buy_price) + (amount * pricePerToken)) / newAmount;
@@ -229,6 +250,7 @@ Deno.serve(async (req) => {
           .update({ amount: newAmount, avg_buy_price: newAvgPrice })
           .eq('id', existingHolding.id);
       } else {
+        isNewHolder = true;
         await supabase.from('token_holdings').insert({
           user_id: user.id,
           token_id: tokenId,
@@ -241,6 +263,7 @@ Deno.serve(async (req) => {
       const newCirculating = tokenData.circulating_supply + amount;
       const newTotalVolume = tokenData.total_volume + totalCost;
       const newTotalSalesValue = tokenData.total_sales_value + totalCost;
+      const newHolderCount = isNewHolder ? (tokenData.holder_count || 0) + 1 : (tokenData.holder_count || 0);
       
       // Check for milestone upgrades
       let newStatus = tokenData.status;
@@ -260,6 +283,7 @@ Deno.serve(async (req) => {
           total_sales_value: newTotalSalesValue,
           market_cap: newCirculating * pricePerToken,
           status: newStatus,
+          holder_count: newHolderCount,
         })
         .eq('id', tokenId);
 
@@ -274,13 +298,25 @@ Deno.serve(async (req) => {
         total_credits: totalCost,
       });
 
+      // Add news for new holders
+      if (isNewHolder && newHolderCount % 10 === 0) {
+        await supabase.from('token_news').insert({
+          token_id: tokenId,
+          event_type: 'milestone',
+          title: `📊 ${tokenData.symbol} hits ${newHolderCount} holders!`,
+          description: `${tokenData.name} is growing! The token now has ${newHolderCount} unique holders.`,
+          impact: 'medium',
+          metadata: { holder_count: newHolderCount },
+        });
+      }
+
       // Add news for large trades
       if (totalCost >= LARGE_TRADE_THRESHOLD) {
         await supabase.from('token_news').insert({
           token_id: tokenId,
           event_type: 'large_buy',
-          title: `📈 Large Buy: ${amount.toLocaleString()} ${tokenData.symbol}`,
-          description: `A whale just bought ${amount.toLocaleString()} ${tokenData.symbol} tokens worth ${totalCost.toLocaleString()} credits!`,
+          title: `📈 WHALE BUY: ${amount.toLocaleString()} $${tokenData.symbol}`,
+          description: `A whale just bought ${amount.toLocaleString()} ${tokenData.symbol} tokens worth ${totalCost.toLocaleString()} credits! Bullish signal 🟢`,
           impact: totalCost >= 50000 ? 'high' : 'medium',
           metadata: { amount, total_credits: totalCost },
         });
@@ -288,19 +324,31 @@ Deno.serve(async (req) => {
 
       // Add news for status upgrades
       if (newStatus !== tokenData.status) {
-        const statusMessages: Record<string, string> = {
-          established: `🏆 ${tokenData.name} achieved Established Token status!`,
-          verified: `✅ ${tokenData.name} owner is now Verified on the platform!`,
-          graduated: `🎓 ${tokenData.name} has GRADUATED! Brand deal unlocked!`,
+        const statusMessages: Record<string, { title: string; description: string }> = {
+          established: {
+            title: `🏆 ${tokenData.symbol} ESTABLISHED!`,
+            description: `${tokenData.name} has reached £10,000 in total sales and achieved Established status!`
+          },
+          verified: {
+            title: `✅ ${tokenData.symbol} VERIFIED!`,
+            description: `${tokenData.name} has reached £50,000 in total sales! Creator is now verified on the platform!`
+          },
+          graduated: {
+            title: `🎓 ${tokenData.symbol} GRADUATED! 🎉`,
+            description: `HUGE NEWS! ${tokenData.name} has reached £100,000 in total sales and GRADUATED! Brand deal unlocked!`
+          },
         };
-        await supabase.from('token_news').insert({
-          token_id: tokenId,
-          event_type: newStatus,
-          title: statusMessages[newStatus],
-          description: `${tokenData.symbol} has reached ${newTotalSalesValue.toLocaleString()} credits in total sales!`,
-          impact: 'high',
-          metadata: { total_sales_value: newTotalSalesValue },
-        });
+        const msg = statusMessages[newStatus];
+        if (msg) {
+          await supabase.from('token_news').insert({
+            token_id: tokenId,
+            event_type: newStatus,
+            title: msg.title,
+            description: msg.description,
+            impact: 'high',
+            metadata: { total_sales_value: newTotalSalesValue },
+          });
+        }
       }
 
       return new Response(
@@ -350,17 +398,26 @@ Deno.serve(async (req) => {
       }
 
       const pricePerToken = tokenData.price_per_token;
-      const totalValue = Math.floor(amount * pricePerToken);
+      let totalValue = Math.floor(amount * pricePerToken);
+      let earlyWithdrawalPenalty = 0;
+
+      // Apply 50% early withdrawal fee if token hasn't graduated
+      if (tokenData.status !== 'graduated') {
+        earlyWithdrawalPenalty = Math.floor(totalValue * EARLY_WITHDRAWAL_FEE);
+        totalValue = totalValue - earlyWithdrawalPenalty;
+      }
 
       // Update holding
       const newHoldingAmount = holding.amount - amount;
+      let holderRemoved = false;
       if (newHoldingAmount <= 0) {
         await supabase.from('token_holdings').delete().eq('id', holding.id);
+        holderRemoved = true;
       } else {
         await supabase.from('token_holdings').update({ amount: newHoldingAmount }).eq('id', holding.id);
       }
 
-      // Credit user with credits
+      // Credit user with credits (after fee)
       await supabase
         .from('profiles')
         .update({ sms_credits: profile.sms_credits + totalValue })
@@ -368,7 +425,8 @@ Deno.serve(async (req) => {
 
       // Update token stats
       const newCirculating = tokenData.circulating_supply - amount;
-      const newTotalVolume = tokenData.total_volume + totalValue;
+      const newTotalVolume = tokenData.total_volume + (totalValue + earlyWithdrawalPenalty);
+      const newHolderCount = holderRemoved ? Math.max(0, (tokenData.holder_count || 0) - 1) : (tokenData.holder_count || 0);
 
       await supabase
         .from('user_tokens')
@@ -376,6 +434,7 @@ Deno.serve(async (req) => {
           circulating_supply: Math.max(0, newCirculating),
           total_volume: newTotalVolume,
           market_cap: Math.max(0, newCirculating) * pricePerToken,
+          holder_count: newHolderCount,
         })
         .eq('id', tokenId);
 
@@ -387,23 +446,58 @@ Deno.serve(async (req) => {
         transaction_type: 'sell',
         amount,
         price_per_token: pricePerToken,
-        total_credits: totalValue,
+        total_credits: totalValue + earlyWithdrawalPenalty,
       });
 
-      // Add news for large sales
-      if (totalValue >= LARGE_TRADE_THRESHOLD) {
+      // Add news for early withdrawal with penalty (RED CANDLE)
+      if (earlyWithdrawalPenalty > 0) {
+        await supabase.from('token_news').insert({
+          token_id: tokenId,
+          event_type: 'early_withdrawal',
+          title: `🔴 EARLY SELL: ${amount.toLocaleString()} $${tokenData.symbol}`,
+          description: `A holder sold ${amount.toLocaleString()} ${tokenData.symbol} BEFORE graduation! 50% penalty applied (${earlyWithdrawalPenalty.toLocaleString()} credits burned). This is bearish for the token! 📉`,
+          impact: 'high',
+          metadata: { 
+            amount, 
+            penalty: earlyWithdrawalPenalty, 
+            received: totalValue,
+            full_value: totalValue + earlyWithdrawalPenalty 
+          },
+        });
+      }
+
+      // Add news for large sales (additional alert)
+      if ((totalValue + earlyWithdrawalPenalty) >= LARGE_TRADE_THRESHOLD) {
         await supabase.from('token_news').insert({
           token_id: tokenId,
           event_type: 'large_sell',
-          title: `📉 Large Sale: ${amount.toLocaleString()} ${tokenData.symbol}`,
-          description: `${amount.toLocaleString()} ${tokenData.symbol} tokens worth ${totalValue.toLocaleString()} credits were sold!`,
-          impact: totalValue >= 50000 ? 'high' : 'medium',
+          title: `📉 LARGE SELL: ${amount.toLocaleString()} $${tokenData.symbol}`,
+          description: `${amount.toLocaleString()} ${tokenData.symbol} tokens sold for ${totalValue.toLocaleString()} credits${earlyWithdrawalPenalty > 0 ? ` (${earlyWithdrawalPenalty.toLocaleString()} burned)` : ''}!`,
+          impact: (totalValue + earlyWithdrawalPenalty) >= 50000 ? 'high' : 'medium',
           metadata: { amount, total_credits: totalValue },
         });
       }
 
+      // Add news if holder count dropped significantly
+      if (holderRemoved && newHolderCount > 0 && newHolderCount % 10 === 0) {
+        await supabase.from('token_news').insert({
+          token_id: tokenId,
+          event_type: 'holder_drop',
+          title: `⚠️ ${tokenData.symbol} down to ${newHolderCount} holders`,
+          description: `${tokenData.name} lost a holder. Current holder count: ${newHolderCount}`,
+          impact: 'low',
+          metadata: { holder_count: newHolderCount },
+        });
+      }
+
       return new Response(
-        JSON.stringify({ success: true, amount, totalValue, newBalance: profile.sms_credits + totalValue }),
+        JSON.stringify({ 
+          success: true, 
+          amount, 
+          totalValue, 
+          earlyWithdrawalPenalty,
+          newBalance: profile.sms_credits + totalValue 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

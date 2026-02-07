@@ -3072,6 +3072,7 @@ export type Database = {
           created_at: string
           creator_id: string
           description: string | null
+          holder_count: number | null
           id: string
           is_featured: boolean | null
           logo_emoji: string | null
@@ -3090,6 +3091,7 @@ export type Database = {
           created_at?: string
           creator_id: string
           description?: string | null
+          holder_count?: number | null
           id?: string
           is_featured?: boolean | null
           logo_emoji?: string | null
@@ -3108,6 +3110,7 @@ export type Database = {
           created_at?: string
           creator_id?: string
           description?: string | null
+          holder_count?: number | null
           id?: string
           is_featured?: boolean | null
           logo_emoji?: string | null
