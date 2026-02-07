@@ -8,7 +8,7 @@ import {
   MessageCircle,
   Bot,
   Users,
-  Phone
+  Brain
 } from 'lucide-react';
 
 export default function FeaturesGrid() {
@@ -64,10 +64,11 @@ export default function FeaturesGrid() {
       description: 'Create discussions, share ideas, meet new friends, and build crypto-focused communities.',
     },
     {
-      icon: Phone,
-      title: 'AI Virtual Twin',
-      description: 'Your AI companion that answers calls, remembers conversations, and feels genuinely human.',
-      badge: 'Beta',
+      icon: Brain,
+      title: 'CFGPT AI',
+      description: 'Advanced AI research and development powering the CF blockchain with intelligent automation.',
+      badge: 'New',
+      link: 'https://cfgpt.org/',
     },
   ];
 
@@ -83,32 +84,38 @@ export default function FeaturesGrid() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {features.map((feature, index) => (
-          <div 
-            key={feature.title} 
-            className={`stat-card animate-fade-in relative ${feature.highlight ? 'glow-border' : ''}`}
-            style={{ animationDelay: `${index * 0.05}s` }}
-          >
-            {feature.badge && (
-              <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-full text-xs font-medium ${
-                feature.badge === 'Until 2028' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : feature.badge === 'New'
-                  ? 'bg-green-500/20 text-green-400'
-                  : feature.badge === 'Beta'
-                  ? 'bg-purple-500/20 text-purple-400'
-                  : 'bg-yellow-500/20 text-yellow-400'
-              }`}>
-                {feature.badge}
-              </span>
-            )}
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-              <feature.icon className="w-5 h-5 text-primary" />
-            </div>
-            <h3 className="text-base font-semibold mb-1.5">{feature.title}</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">{feature.description}</p>
-          </div>
-        ))}
+        {features.map((feature, index) => {
+          const CardWrapper = feature.link ? 'a' : 'div';
+          const cardProps = feature.link ? { href: feature.link, target: '_blank', rel: 'noopener noreferrer' } : {};
+          
+          return (
+            <CardWrapper 
+              key={feature.title} 
+              {...cardProps}
+              className={`stat-card animate-fade-in relative ${feature.highlight ? 'glow-border' : ''} ${feature.link ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''}`}
+              style={{ animationDelay: `${index * 0.05}s` }}
+            >
+              {feature.badge && (
+                <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  feature.badge === 'Until 2028' 
+                    ? 'bg-primary text-primary-foreground' 
+                    : feature.badge === 'New'
+                    ? 'bg-green-500/20 text-green-400'
+                    : feature.badge === 'Beta'
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-yellow-500/20 text-yellow-400'
+                }`}>
+                  {feature.badge}
+                </span>
+              )}
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                <feature.icon className="w-5 h-5 text-primary" />
+              </div>
+              <h3 className="text-base font-semibold mb-1.5">{feature.title}</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">{feature.description}</p>
+            </CardWrapper>
+          );
+        })}
       </div>
     </section>
   );

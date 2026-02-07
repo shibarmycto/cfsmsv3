@@ -15,7 +15,7 @@ export default function Navbar() {
     { label: 'Forum', path: '/forum' },
     { label: 'Exchange', path: '/exchange' },
     { label: 'Mining', path: '/miner' },
-    { label: 'Promo', path: '/promo' },
+    { label: 'CFGPT', path: 'https://cfgpt.org/', external: true },
   ];
 
   return (
@@ -32,13 +32,25 @@ export default function Navbar() {
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
           {navLinks.map((link) => (
-            <button
-              key={link.path}
-              onClick={() => navigate(link.path)}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {link.label}
-            </button>
+            link.external ? (
+              <a
+                key={link.path}
+                href={link.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </a>
+            ) : (
+              <button
+                key={link.path}
+                onClick={() => navigate(link.path)}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </button>
+            )
           ))}
         </div>
 
@@ -84,16 +96,29 @@ export default function Navbar() {
         <div className="md:hidden mt-4 py-4 border-t border-border animate-fade-in">
           <div className="flex flex-col gap-3">
             {navLinks.map((link) => (
-              <button
-                key={link.path}
-                onClick={() => {
-                  navigate(link.path);
-                  setMobileMenuOpen(false);
-                }}
-                className="text-left py-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {link.label}
-              </button>
+              link.external ? (
+                <a
+                  key={link.path}
+                  href={link.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-left py-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <button
+                  key={link.path}
+                  onClick={() => {
+                    navigate(link.path);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-left py-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {link.label}
+                </button>
+              )
             ))}
             <a 
               href="https://t.me/cfsmsbulkofficialchat" 
