@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Gamepad2 } from 'lucide-react';
+import { Gamepad2 } from 'lucide-react';
 import CharacterCustomization from '@/components/game/CharacterCustomization';
-import { EliteGame } from '@/components/game3d';
+import MobileOnlyGame from '@/components/game3d/MobileOnlyGame';
 import { toast } from 'sonner';
 
 interface GameCharacter {
@@ -39,7 +38,6 @@ export default function Roleplay() {
   const [isBanned, setIsBanned] = useState(false);
 
   useEffect(() => {
-    // Allow guests to view the page - only redirect when trying to play
     if (user) {
       checkBanStatus();
       fetchCharacter();
@@ -94,7 +92,6 @@ export default function Roleplay() {
   };
 
   const handleEnterGame = async () => {
-    // Require login to play
     if (!user) {
       toast.error('Please sign in to play CF Roleplay');
       navigate('/auth');
@@ -140,6 +137,7 @@ export default function Roleplay() {
     };
   }, [character]);
 
+  // Loading state
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -151,9 +149,10 @@ export default function Roleplay() {
     );
   }
 
+  // In-game view - Mobile optimized full screen
   if (showGame && character) {
     return (
-      <EliteGame 
+      <MobileOnlyGame 
         characterId={character.id}
         characterName={character.name}
         onExit={handleExitGame}
@@ -161,93 +160,72 @@ export default function Roleplay() {
     );
   }
 
+  // Pre-game menu - Mobile optimized
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-cyan-950 relative overflow-hidden">
-      {/* Animated background elements */}
+      {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute top-0 left-1/4 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
-      {/* Back button */}
-      <div className="relative z-10 p-4">
-        <Button 
-          variant="ghost" 
-          onClick={() => navigate('/dashboard')} 
-          className="gap-2 text-gray-400 hover:text-white hover:bg-white/5"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Dashboard
-        </Button>
-      </div>
-
-      <div className="relative z-10 container mx-auto px-4 pb-8">
+      <div className="relative z-10 px-4 py-6 min-h-screen flex flex-col">
         {!user ? (
           <GuestWelcome onSignIn={() => navigate('/auth')} />
         ) : !character ? (
-          <CharacterCustomization userId={user.id} onCharacterCreated={handleCharacterCreated} />
+          <div className="flex-1 flex items-center justify-center">
+            <CharacterCustomization userId={user.id} onCharacterCreated={handleCharacterCreated} />
+          </div>
         ) : (
-          <div className="max-w-xl mx-auto">
-            {/* Main Card */}
-            <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+            {/* Game Card */}
+            <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
               {/* Header */}
-              <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-white/10 p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
-                      <span className="text-white font-black text-2xl">CF</span>
-                    </div>
-                    <div>
-                      <h1 className="text-2xl font-black text-white tracking-tight">CF ROLEPLAY</h1>
-                      <p className="text-cyan-400 text-sm">Open World 3D Experience</p>
-                    </div>
+              <div className="bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border-b border-white/10 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+                    <span className="text-white font-black text-xl">CF</span>
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-white tracking-tight">CF ROLEPLAY</h1>
+                    <p className="text-cyan-400 text-sm">Mobile Open World</p>
                   </div>
                 </div>
               </div>
 
               {/* Player Info */}
-              <div className="p-6 space-y-6">
+              <div className="p-4 space-y-4">
                 <div className="text-center">
-                  <p className="text-gray-400 text-sm">Welcome back</p>
-                  <h2 className="text-3xl font-bold text-white mt-1">{character.name}</h2>
+                  <p className="text-gray-400 text-xs">Welcome back</p>
+                  <h2 className="text-2xl font-bold text-white">{character.name}</h2>
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
-                    <p className="text-green-400 font-bold text-xl">${character.cash.toLocaleString()}</p>
-                    <p className="text-gray-500 text-xs mt-1">Cash</p>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
-                    <p className="text-blue-400 font-bold text-xl">${character.bank_balance.toLocaleString()}</p>
-                    <p className="text-gray-500 text-xs mt-1">Bank</p>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-xl p-4 text-center border border-white/5">
-                    <p className="text-purple-400 font-bold text-xl capitalize">{character.current_job.replace('_', ' ')}</p>
-                    <p className="text-gray-500 text-xs mt-1">Job</p>
-                  </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <StatBox label="Cash" value={`$${character.cash.toLocaleString()}`} color="text-green-400" />
+                  <StatBox label="Bank" value={`$${character.bank_balance.toLocaleString()}`} color="text-blue-400" />
+                  <StatBox label="Job" value={character.current_job.replace('_', ' ')} color="text-purple-400" />
                 </div>
 
-                {/* Status Bars */}
-                <div className="space-y-3">
-                  <StatusBar label="Health" value={character.health} color="from-red-600 to-red-500" icon="❤️" />
-                  <StatusBar label="Hunger" value={character.hunger} color="from-orange-500 to-amber-400" icon="🍔" />
-                  <StatusBar label="Energy" value={character.energy} color="from-yellow-500 to-yellow-400" icon="⚡" />
+                {/* Health/Energy bars */}
+                <div className="space-y-2">
+                  <ProgressBar label="Health" value={character.health} color="from-red-600 to-red-400" icon="❤️" />
+                  <ProgressBar label="Energy" value={character.energy} color="from-yellow-600 to-yellow-400" icon="⚡" />
                 </div>
 
-                {/* Enter Game Button */}
+                {/* Play button */}
                 {isBanned ? (
-                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
-                    <p className="text-red-400 font-bold">⛔ You are currently banned from CF Roleplay</p>
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
+                    <p className="text-red-400 font-bold text-sm">⛔ You are banned from CF Roleplay</p>
                   </div>
                 ) : (
                   <button 
                     onClick={handleEnterGame}
-                    className="w-full relative overflow-hidden group bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg py-5 rounded-xl transition-all shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50"
+                    className="w-full relative overflow-hidden group bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-cyan-500/30 active:scale-95"
                   >
-                    <span className="relative z-10 flex items-center justify-center gap-3">
-                      <Gamepad2 className="w-6 h-6" />
-                      ENTER GAME WORLD
+                    <span className="flex items-center justify-center gap-2">
+                      <Gamepad2 className="w-5 h-5" />
+                      ENTER GAME
                     </span>
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                   </button>
@@ -255,11 +233,19 @@ export default function Roleplay() {
               </div>
             </div>
 
-            {/* Quick Info */}
-            <div className="mt-6 text-center text-gray-500 text-xs space-y-1">
-              <p>🎮 Use WASD to move • SHIFT to run • SPACE to jump</p>
-              <p>📻 Hold R for walkie-talkie • V to toggle camera</p>
+            {/* Mobile controls info */}
+            <div className="mt-4 text-center text-gray-500 text-xs">
+              <p>📱 Touch joystick to move • Tap buttons to interact</p>
+              <p className="mt-1">🔄 Best in landscape mode</p>
             </div>
+
+            {/* Back button */}
+            <button 
+              onClick={() => navigate('/dashboard')} 
+              className="mt-4 text-gray-400 text-sm underline mx-auto"
+            >
+              ← Back to Dashboard
+            </button>
           </div>
         )}
       </div>
@@ -269,81 +255,81 @@ export default function Roleplay() {
 
 function GuestWelcome({ onSignIn }: { onSignIn: () => void }) {
   return (
-    <div className="max-w-xl mx-auto">
-      <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border-b border-white/10 p-6">
-          <div className="flex items-center justify-center gap-4">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+    <div className="flex-1 flex items-center justify-center">
+      <div className="max-w-sm w-full">
+        <div className="bg-gray-900/80 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="bg-gradient-to-r from-cyan-600/30 to-blue-600/30 p-6 text-center border-b border-white/10">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30 mx-auto">
               <span className="text-white font-black text-3xl">CF</span>
             </div>
-          </div>
-          <h1 className="text-3xl font-black text-white text-center mt-4">CF ROLEPLAY</h1>
-          <p className="text-cyan-400 text-center">Open World 3D Experience</p>
-        </div>
-        
-        <div className="p-6 space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-xl font-bold text-white">Welcome to CF Roleplay!</h2>
-            <p className="text-gray-400">Create your character, explore the city, get a job, build your empire.</p>
+            <h1 className="text-2xl font-black text-white mt-4">CF ROLEPLAY</h1>
+            <p className="text-cyan-400 text-sm">Mobile Open World Game</p>
           </div>
           
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
-              <span className="text-2xl">🏙️</span>
-              <p className="text-white font-medium mt-1">Open World</p>
-              <p className="text-gray-500 text-xs">Explore a realistic UK city</p>
+          <div className="p-4 space-y-4">
+            <div className="text-center">
+              <h2 className="text-lg font-bold text-white">Play Now!</h2>
+              <p className="text-gray-400 text-sm">Create a character, explore, work, fight!</p>
             </div>
-            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
-              <span className="text-2xl">💼</span>
-              <p className="text-white font-medium mt-1">Jobs & Crime</p>
-              <p className="text-gray-500 text-xs">Legal or illegal income</p>
+            
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <FeatureBox icon="🏙️" title="Open World" />
+              <FeatureBox icon="💼" title="Jobs & Crime" />
+              <FeatureBox icon="🚗" title="Vehicles" />
+              <FeatureBox icon="👥" title="Multiplayer" />
             </div>
-            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
-              <span className="text-2xl">🚗</span>
-              <p className="text-white font-medium mt-1">Vehicles</p>
-              <p className="text-gray-500 text-xs">Buy & drive cars</p>
-            </div>
-            <div className="bg-gray-800/50 rounded-xl p-3 border border-white/5">
-              <span className="text-2xl">👥</span>
-              <p className="text-white font-medium mt-1">Multiplayer</p>
-              <p className="text-gray-500 text-xs">Play with others</p>
-            </div>
+            
+            <button 
+              onClick={onSignIn}
+              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/30 active:scale-95"
+            >
+              Sign In to Play
+            </button>
+            
+            <p className="text-center text-gray-500 text-xs">
+              Free to play • No download required
+            </p>
           </div>
-          
-          <button 
-            onClick={onSignIn}
-            className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg py-4 rounded-xl transition-all shadow-lg shadow-cyan-500/30"
-          >
-            Sign In to Play
-          </button>
-          
-          <p className="text-center text-gray-500 text-xs">
-            Free to play • No download required
-          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function StatusBar({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
+function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-lg">{icon}</span>
+    <div className="bg-gray-800/50 rounded-lg p-2 text-center border border-white/5">
+      <p className={`${color} font-bold text-sm capitalize truncate`}>{value}</p>
+      <p className="text-gray-500 text-[10px]">{label}</p>
+    </div>
+  );
+}
+
+function ProgressBar({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm">{icon}</span>
       <div className="flex-1">
-        <div className="flex justify-between mb-1">
-          <span className="text-xs text-gray-400">{label}</span>
-          <span className="text-xs text-gray-400">{value}%</span>
+        <div className="flex justify-between mb-0.5">
+          <span className="text-[10px] text-gray-400">{label}</span>
+          <span className="text-[10px] text-gray-400">{value}%</span>
         </div>
-        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
           <div 
             className={`h-full bg-gradient-to-r ${color} transition-all duration-500`} 
             style={{ width: `${value}%` }}
-          >
-            <div className="h-full w-full bg-gradient-to-t from-transparent to-white/20" />
-          </div>
+          />
         </div>
       </div>
+    </div>
+  );
+}
+
+function FeatureBox({ icon, title }: { icon: string; title: string }) {
+  return (
+    <div className="bg-gray-800/50 rounded-lg p-2 border border-white/5 text-center">
+      <span className="text-xl">{icon}</span>
+      <p className="text-white text-xs font-medium mt-1">{title}</p>
     </div>
   );
 }

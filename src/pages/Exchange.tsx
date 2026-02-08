@@ -248,18 +248,28 @@ export default function Exchange() {
         },
       });
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (error) {
+        console.error('Token creation error:', error);
+        throw new Error(error.message || 'Failed to create token');
+      }
+      if (data?.error) throw new Error(data.error);
 
-      toast.success(`${tokenSymbol.toUpperCase()} token created successfully!`);
+      toast.success(`${tokenSymbol.toUpperCase()} token created! MCap starts at 3K`);
+      
+      // Reset form using functional updates
       setTokenName('');
       setTokenSymbol('');
       setTokenDescription('');
       setTokenEmoji('🪙');
-      refreshProfile();
-      fetchData();
-      setActiveTab('market');
+      
+      // Refresh data with delay to prevent race conditions
+      await refreshProfile();
+      setTimeout(() => {
+        fetchData();
+        setActiveTab('market');
+      }, 500);
     } catch (error: any) {
+      console.error('Token creation failed:', error);
       toast.error(error.message || 'Failed to create token');
     } finally {
       setIsCreating(false);
@@ -292,18 +302,26 @@ export default function Exchange() {
         },
       });
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (error) {
+        console.error('Trade error:', error);
+        throw new Error(error.message || 'Trade failed');
+      }
+      if (data?.error) throw new Error(data.error);
 
+      const priceInfo = data.newPrice ? ` (New price: ${data.newPrice})` : '';
       toast.success(
         tradeType === 'buy'
-          ? `Bought ${amount.toLocaleString()} ${selectedToken.symbol} for ${data.totalCost} credits`
-          : `Sold ${amount.toLocaleString()} ${selectedToken.symbol} for ${data.totalValue} credits`
+          ? `Bought ${amount.toLocaleString()} ${selectedToken.symbol} for ${data.totalCost} credits${priceInfo}`
+          : `Sold ${amount.toLocaleString()} ${selectedToken.symbol} for ${data.totalValue} credits${priceInfo}`
       );
+      
       setTradeAmount('');
-      refreshProfile();
-      fetchData();
+      await refreshProfile();
+      
+      // Delay fetchData to prevent race conditions
+      setTimeout(() => fetchData(), 300);
     } catch (error: any) {
+      console.error('Trade failed:', error);
       toast.error(error.message || 'Trade failed');
     } finally {
       setIsTrading(false);
@@ -625,8 +643,12 @@ export default function Exchange() {
                             <p className="font-bold text-primary">25 Credits</p>
                           </div>
                           <div>
-                            <p className="text-xs text-muted-foreground">Initial Supply</p>
+                            <p className="text-xs text-muted-foreground">Total Supply</p>
                             <p className="font-bold">999M</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Starting MCap</p>
+                            <p className="font-bold text-green-400">3,000</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Starting Price</p>

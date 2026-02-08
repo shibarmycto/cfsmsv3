@@ -2,14 +2,36 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 const TOKEN_CREATION_COST = 25;
 const INITIAL_SUPPLY = 999000000;
+const INITIAL_CIRCULATING = 3000; // Start with 3K circulating for 3K market cap at price 1
 const LARGE_TRADE_THRESHOLD = 10000;
 const MAX_OWNERSHIP_PERCENT = 0.25; // 25% max ownership per user
 const EARLY_WITHDRAWAL_FEE = 0.5; // 50% fee for selling before graduation
+const PRICE_IMPACT_FACTOR = 0.0001; // Price impact per trade (0.01% per 100 tokens)
+
+// Calculate new price based on trade impact
+function calculatePriceImpact(
+  currentPrice: number,
+  tradeAmount: number,
+  isBuy: boolean,
+  circulatingSupply: number
+): number {
+  // Larger trades relative to circulating supply have more impact
+  const supplyRatio = tradeAmount / Math.max(circulatingSupply, 1000);
+  const impact = supplyRatio * PRICE_IMPACT_FACTOR * 10000; // Scale impact
+  
+  if (isBuy) {
+    // Buys increase price
+    return Math.max(0.01, currentPrice * (1 + impact));
+  } else {
+    // Sells decrease price
+    return Math.max(0.01, currentPrice * (1 - impact));
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -39,7 +61,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { action, ...params } = await req.json();
+    const body = await req.json();
+    const { action, ...params } = body;
 
     // Get user profile for credits
     const { data: profile } = await supabase
@@ -100,7 +123,7 @@ Deno.serve(async (req) => {
         .update({ sms_credits: profile.sms_credits - TOKEN_CREATION_COST })
         .eq('user_id', user.id);
 
-      // Create token with 999M supply
+      // Create token with 999M total supply, 3K circulating (MCap starts at 3K)
       const { data: newToken, error: tokenError } = await supabase
         .from('user_tokens')
         .insert({
@@ -110,9 +133,9 @@ Deno.serve(async (req) => {
           description: description || null,
           logo_emoji: logoEmoji || '🪙',
           total_supply: INITIAL_SUPPLY,
-          circulating_supply: 0,
+          circulating_supply: INITIAL_CIRCULATING,
           price_per_token: 1,
-          market_cap: INITIAL_SUPPLY,
+          market_cap: INITIAL_CIRCULATING, // MCap = circulating * price = 3000 * 1 = 3000
           holder_count: 0,
         })
         .select()
@@ -143,9 +166,9 @@ Deno.serve(async (req) => {
         token_id: newToken.id,
         event_type: 'new_listing',
         title: `🚀 NEW TOKEN: ${name} ($${symbol.toUpperCase()})`,
-        description: `${INITIAL_SUPPLY.toLocaleString()} ${symbol.toUpperCase()} tokens are now available for trading on CF Exchange! ${description || ''}`,
+        description: `${INITIAL_SUPPLY.toLocaleString()} ${symbol.toUpperCase()} tokens created! ${INITIAL_CIRCULATING.toLocaleString()} available for trading now. ${description || ''}`,
         impact: 'high',
-        metadata: { creator_id: user.id, total_supply: INITIAL_SUPPLY },
+        metadata: { creator_id: user.id, total_supply: INITIAL_SUPPLY, initial_circulating: INITIAL_CIRCULATING },
       });
 
       return new Response(
@@ -259,10 +282,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Update token stats
+      // Calculate new price with trade impact (buys push price UP)
       const newCirculating = tokenData.circulating_supply + amount;
-      const newTotalVolume = tokenData.total_volume + totalCost;
-      const newTotalSalesValue = tokenData.total_sales_value + totalCost;
+      const newPrice = calculatePriceImpact(pricePerToken, amount, true, tokenData.circulating_supply);
+      const newMarketCap = Math.round(newCirculating * newPrice);
+      
+      const newTotalVolume = (tokenData.total_volume || 0) + totalCost;
+      const newTotalSalesValue = (tokenData.total_sales_value || 0) + totalCost;
       const newHolderCount = isNewHolder ? (tokenData.holder_count || 0) + 1 : (tokenData.holder_count || 0);
       
       // Check for milestone upgrades
@@ -279,9 +305,10 @@ Deno.serve(async (req) => {
         .from('user_tokens')
         .update({
           circulating_supply: newCirculating,
+          price_per_token: Math.round(newPrice * 10000) / 10000, // Round to 4 decimals
           total_volume: newTotalVolume,
           total_sales_value: newTotalSalesValue,
-          market_cap: newCirculating * pricePerToken,
+          market_cap: newMarketCap,
           status: newStatus,
           holder_count: newHolderCount,
         })
@@ -312,13 +339,14 @@ Deno.serve(async (req) => {
 
       // Add news for large trades
       if (totalCost >= LARGE_TRADE_THRESHOLD) {
+        const priceChangePercent = ((newPrice - pricePerToken) / pricePerToken * 100).toFixed(2);
         await supabase.from('token_news').insert({
           token_id: tokenId,
           event_type: 'large_buy',
           title: `📈 WHALE BUY: ${amount.toLocaleString()} $${tokenData.symbol}`,
-          description: `A whale just bought ${amount.toLocaleString()} ${tokenData.symbol} tokens worth ${totalCost.toLocaleString()} credits! Bullish signal 🟢`,
+          description: `A whale just bought ${amount.toLocaleString()} ${tokenData.symbol} tokens worth ${totalCost.toLocaleString()} credits! Price pumped +${priceChangePercent}% 🟢`,
           impact: totalCost >= 50000 ? 'high' : 'medium',
-          metadata: { amount, total_credits: totalCost },
+          metadata: { amount, total_credits: totalCost, price_impact: priceChangePercent },
         });
       }
 
@@ -352,7 +380,13 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ success: true, amount, totalCost, newBalance: profile.sms_credits - totalCost }),
+        JSON.stringify({ 
+          success: true, 
+          amount, 
+          totalCost, 
+          newPrice: Math.round(newPrice * 10000) / 10000,
+          newBalance: profile.sms_credits - totalCost 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -423,17 +457,21 @@ Deno.serve(async (req) => {
         .update({ sms_credits: profile.sms_credits + totalValue })
         .eq('user_id', user.id);
 
-      // Update token stats
-      const newCirculating = tokenData.circulating_supply - amount;
-      const newTotalVolume = tokenData.total_volume + (totalValue + earlyWithdrawalPenalty);
+      // Calculate new price with trade impact (sells push price DOWN)
+      const newCirculating = Math.max(0, tokenData.circulating_supply - amount);
+      const newPrice = calculatePriceImpact(pricePerToken, amount, false, tokenData.circulating_supply);
+      const newMarketCap = Math.round(newCirculating * newPrice);
+      
+      const newTotalVolume = (tokenData.total_volume || 0) + (totalValue + earlyWithdrawalPenalty);
       const newHolderCount = holderRemoved ? Math.max(0, (tokenData.holder_count || 0) - 1) : (tokenData.holder_count || 0);
 
       await supabase
         .from('user_tokens')
         .update({
-          circulating_supply: Math.max(0, newCirculating),
+          circulating_supply: newCirculating,
+          price_per_token: Math.round(newPrice * 10000) / 10000,
           total_volume: newTotalVolume,
-          market_cap: Math.max(0, newCirculating) * pricePerToken,
+          market_cap: newMarketCap,
           holder_count: newHolderCount,
         })
         .eq('id', tokenId);
@@ -449,19 +487,22 @@ Deno.serve(async (req) => {
         total_credits: totalValue + earlyWithdrawalPenalty,
       });
 
+      const priceChangePercent = ((newPrice - pricePerToken) / pricePerToken * 100).toFixed(2);
+
       // Add news for early withdrawal with penalty (RED CANDLE)
       if (earlyWithdrawalPenalty > 0) {
         await supabase.from('token_news').insert({
           token_id: tokenId,
           event_type: 'early_withdrawal',
           title: `🔴 EARLY SELL: ${amount.toLocaleString()} $${tokenData.symbol}`,
-          description: `A holder sold ${amount.toLocaleString()} ${tokenData.symbol} BEFORE graduation! 50% penalty applied (${earlyWithdrawalPenalty.toLocaleString()} credits burned). This is bearish for the token! 📉`,
+          description: `A holder sold ${amount.toLocaleString()} ${tokenData.symbol} BEFORE graduation! 50% penalty applied (${earlyWithdrawalPenalty.toLocaleString()} credits burned). Price dropped ${priceChangePercent}% 📉`,
           impact: 'high',
           metadata: { 
             amount, 
             penalty: earlyWithdrawalPenalty, 
             received: totalValue,
-            full_value: totalValue + earlyWithdrawalPenalty 
+            full_value: totalValue + earlyWithdrawalPenalty,
+            price_impact: priceChangePercent
           },
         });
       }
@@ -472,9 +513,9 @@ Deno.serve(async (req) => {
           token_id: tokenId,
           event_type: 'large_sell',
           title: `📉 LARGE SELL: ${amount.toLocaleString()} $${tokenData.symbol}`,
-          description: `${amount.toLocaleString()} ${tokenData.symbol} tokens sold for ${totalValue.toLocaleString()} credits${earlyWithdrawalPenalty > 0 ? ` (${earlyWithdrawalPenalty.toLocaleString()} burned)` : ''}!`,
+          description: `${amount.toLocaleString()} ${tokenData.symbol} tokens sold for ${totalValue.toLocaleString()} credits${earlyWithdrawalPenalty > 0 ? ` (${earlyWithdrawalPenalty.toLocaleString()} burned)` : ''}! Price dropped ${priceChangePercent}%`,
           impact: (totalValue + earlyWithdrawalPenalty) >= 50000 ? 'high' : 'medium',
-          metadata: { amount, total_credits: totalValue },
+          metadata: { amount, total_credits: totalValue, price_impact: priceChangePercent },
         });
       }
 
@@ -496,6 +537,7 @@ Deno.serve(async (req) => {
           amount, 
           totalValue, 
           earlyWithdrawalPenalty,
+          newPrice: Math.round(newPrice * 10000) / 10000,
           newBalance: profile.sms_credits + totalValue 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
