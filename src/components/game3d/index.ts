@@ -2,6 +2,7 @@
 export { default as OpenWorldGame } from './OpenWorldGame';
 export { default as MobileGame3D } from './EliteGame';
 export { default as EliteGame } from './EliteGame';
+export { default as MobileOnlyGame } from './MobileOnlyGame';
 export { default as EliteHUD } from './EliteHUD';
 export { default as ShopInterior } from './ShopInterior';
 export { default as SplashScreen } from './SplashScreen';
