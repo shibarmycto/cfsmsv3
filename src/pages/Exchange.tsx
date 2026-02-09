@@ -85,23 +85,30 @@ export default function Exchange() {
   const [tradeAmount, setTradeAmount] = useState('');
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
 
-  // Memoized fetch function for realtime updates
+  // Stable fetch function for realtime updates (must NOT depend on selectedToken)
   const fetchTokens = useCallback(async () => {
-    const { data: tokensData } = await supabase
+    const { data: tokensData, error } = await supabase
       .from('user_tokens')
       .select('*')
       .neq('status', 'suspended')
       .order('total_volume', { ascending: false });
 
+    if (error) {
+      console.error('Error fetching tokens:', error);
+      return;
+    }
+
     if (tokensData) {
       setTokens(tokensData as Token[]);
-      // Update selected token if it exists
-      if (selectedToken) {
-        const updated = tokensData.find(t => t.id === selectedToken.id);
-        if (updated) setSelectedToken(updated as Token);
-      }
+
+      // Update selected token (if any) without making fetchTokens re-create on selection
+      setSelectedToken((prev) => {
+        if (!prev) return prev;
+        const updated = tokensData.find((t) => t.id === prev.id);
+        return updated ? (updated as Token) : prev;
+      });
     }
-  }, [selectedToken]);
+  }, []);
 
   const fetchHoldings = useCallback(async () => {
     if (!user) return;

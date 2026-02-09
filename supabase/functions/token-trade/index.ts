@@ -104,11 +104,15 @@ Deno.serve(async (req) => {
       }
 
       // Check if symbol exists
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('user_tokens')
         .select('id')
         .eq('symbol', symbol.toUpperCase())
-        .single();
+        .maybeSingle();
+
+      if (existingError) {
+        throw existingError;
+      }
 
       if (existing) {
         return new Response(
@@ -323,6 +327,20 @@ Deno.serve(async (req) => {
         amount,
         price_per_token: pricePerToken,
         total_credits: totalCost,
+      });
+
+      // ALWAYS add a simple news item for each buy (token + amount + timestamp)
+      await supabase.from('token_news').insert({
+        token_id: tokenId,
+        event_type: 'buy',
+        title: `📈 BUY: ${amount.toLocaleString()} $${tokenData.symbol}`,
+        description: `${amount.toLocaleString()} ${tokenData.symbol} bought for ${totalCost.toLocaleString()} credits at ${pricePerToken} each.`,
+        impact: 'low',
+        metadata: {
+          amount,
+          total_credits: totalCost,
+          price_per_token: pricePerToken,
+        },
       });
 
       // Add news for new holders

@@ -10,7 +10,11 @@ import GameCombat from './GameCombat';
 import SplashScreen from './SplashScreen';
 import GameSideMenu from './GameSideMenu';
 import ShopUI from './ShopUI';
-import { Maximize2, Minimize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp } from 'lucide-react';
+import CriminalJobsSystem from './CriminalJobsSystem';
+import GangSystem from './GangSystem';
+import TryYourLuckPanel, { type LuckPrize } from './TryYourLuckPanel';
+import MobileInfoModal from './MobileInfoModal';
+import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp } from 'lucide-react';
 
 interface MobileOnlyGameProps {
   characterId: string;
@@ -47,6 +51,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [insideBuilding, setInsideBuilding] = useState<GameBuilding | null>(null);
   const [showSideMenu, setShowSideMenu] = useState(false);
   const [showShop, setShowShop] = useState(false);
+  const [showJobs, setShowJobs] = useState(false);
+  const [showGangs, setShowGangs] = useState(false);
+  const [showLuck, setShowLuck] = useState(false);
+  const [infoModal, setInfoModal] = useState<{ title: string; message: string } | null>(null);
+  const [gangId, setGangId] = useState<string | null>(null);
   const [equippedWeapon, setEquippedWeapon] = useState('fists');
   const [playerPosition, setPlayerPosition] = useState(new THREE.Vector3(0, 0, 0));
   const [playerRotation, setPlayerRotation] = useState(0);
@@ -70,6 +79,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
           wantedLevel: data.wanted_level || 0
         });
         setEquippedWeapon(data.equipped_weapon || 'fists');
+        setGangId(data.gang_id ?? null);
       }
     };
     loadCharacter();
@@ -285,20 +295,55 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
 
   // Menu actions
   const handleMenuAction = useCallback((action: string) => {
+    const openInfo = (title: string, message: string) => {
+      setInfoModal({ title, message });
+      setShowSideMenu(false);
+    };
+
     switch(action) {
       case 'garage':
       case 'armory':
+      case 'business':
         setShowShop(true);
         setShowSideMenu(false);
+        break;
+      case 'jobs':
+        setShowJobs(true);
+        setShowSideMenu(false);
+        break;
+      case 'gangs':
+        setShowGangs(true);
+        setShowSideMenu(false);
+        break;
+      case 'luck':
+        setShowLuck(true);
+        setShowSideMenu(false);
+        break;
+      case 'events':
+        openInfo('Events', 'No live events are running right now.\n\nCheck back later — limited-time events appear here when they go live.');
+        break;
+      case 'tasks':
+        openInfo('Tasks', 'Daily tasks refresh at midnight.\n\nComplete Jobs to earn cash + XP, and keep your Wanted Level low to increase success rates.');
+        break;
+      case 'friends':
+        openInfo('Friends', 'Friends unlock after you own a Phone.\n\nTip: win one from Try Your Luck or buy one in the store when available.');
+        break;
+      case 'parking':
+        openInfo('Parking', 'Parking unlocks after you own your first vehicle.\n\nBuy a car in Garage or win one from Try Your Luck.');
+        break;
+      case 'factions':
+        openInfo('Factions', 'Factions unlock after you build a reputation.\n\nDo 3+ Jobs or reach Wanted Level 1+ to unlock faction invites.');
+        break;
+      case 'profile':
+        openInfo('Profile', `Name: ${characterName}\nWeapon: ${equippedWeapon}\nCash: $${stats.cash.toLocaleString()}\nBank: $${stats.bank.toLocaleString()}\nWanted: ${stats.wantedLevel}/5`);
         break;
       case 'main-menu':
         handleExit();
         break;
       default:
-        toast.info(`${action} coming soon!`);
+        openInfo('Locked', 'This feature is locked right now.\n\nProgress by completing Jobs, joining a Gang, and building up your cash.');
     }
-    setShowSideMenu(false);
-  }, [handleExit]);
+  }, [characterName, equippedWeapon, handleExit, stats.bank, stats.cash, stats.wantedLevel]);
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(() => {
@@ -593,6 +638,68 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
             toast.success(`Purchased ${item.name}!`);
           }
         }}
+      />
+
+      {/* Jobs */}
+      {showJobs && (
+        <CriminalJobsSystem
+          characterId={characterId}
+          characterName={characterName}
+          cash={stats.cash}
+          energy={stats.energy}
+          wantedLevel={stats.wantedLevel}
+          onCashChange={(delta) => setStats(prev => ({ ...prev, cash: prev.cash + delta }))}
+          onEnergyChange={(delta) => setStats(prev => ({ ...prev, energy: Math.max(0, Math.min(100, prev.energy + delta)) }))}
+          onWantedLevelChange={(level) => setStats(prev => ({ ...prev, wantedLevel: Math.max(0, Math.min(5, level)) }))}
+          onClose={() => setShowJobs(false)}
+        />
+      )}
+
+      {/* Gangs */}
+      {showGangs && (
+        <GangSystem
+          characterId={characterId}
+          characterName={characterName}
+          currentGangId={gangId}
+          onClose={() => setShowGangs(false)}
+          onJoinGang={(id) => setGangId(id)}
+          onLeaveGang={() => setGangId(null)}
+        />
+      )}
+
+      {/* Try Your Luck */}
+      <TryYourLuckPanel
+        isOpen={showLuck}
+        characterId={characterId}
+        cash={stats.cash}
+        spinCost={5000}
+        onClose={() => setShowLuck(false)}
+        onCashDelta={(delta) => {
+          setStats((prev) => {
+            const nextCash = prev.cash + delta;
+            void supabase.from('game_characters').update({ cash: nextCash }).eq('id', characterId);
+            return { ...prev, cash: nextCash };
+          });
+        }}
+        onPrizeWon={(prize: LuckPrize) => {
+          if (prize.kind === 'item') {
+            void supabase.from('game_messages').insert({
+              sender_id: characterId,
+              sender_name: characterName,
+              message_type: 'system',
+              message: `🎁 ${characterName} won: ${prize.label}`,
+              receiver_id: null,
+            });
+          }
+        }}
+      />
+
+      {/* Info modal (replaces "coming soon") */}
+      <MobileInfoModal
+        isOpen={!!infoModal}
+        title={infoModal?.title || ''}
+        message={infoModal?.message || ''}
+        onClose={() => setInfoModal(null)}
       />
     </div>
   );
