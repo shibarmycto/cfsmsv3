@@ -61,6 +61,7 @@ export class EnhancedGameEngine {
 
   private targetCameraPos = new THREE.Vector3();
   private currentCameraPos = new THREE.Vector3();
+  private cameraYaw = 0; // For camera-relative joystick input
   private clock = new THREE.Clock();
   private isMobile: boolean;
 
@@ -175,15 +176,21 @@ export class EnhancedGameEngine {
     const friction = this.playerState.isGrounded ? this.GROUND_FRICTION : this.AIR_FRICTION;
     const control = this.playerState.isGrounded ? 1 : this.AIR_CONTROL;
 
-    // Calculate movement direction
+    // Calculate movement direction — CAMERA-RELATIVE (OneState-style)
     const hasInput = Math.abs(forward) > 0.1 || Math.abs(right) > 0.1;
     this.playerState.isMoving = hasInput;
     this.playerState.isSprinting = sprint && hasInput;
 
     if (hasInput) {
-      // Calculate target velocity based on input
       const inputMagnitude = Math.min(Math.sqrt(forward * forward + right * right), 1);
-      const targetAngle = Math.atan2(right, -forward);
+
+      // Rotate joystick input by camera yaw so "up" = camera forward
+      const cosYaw = Math.cos(this.cameraYaw);
+      const sinYaw = Math.sin(this.cameraYaw);
+      const worldForward = forward * cosYaw + right * sinYaw;
+      const worldRight = -forward * sinYaw + right * cosYaw;
+
+      const targetAngle = Math.atan2(worldRight, worldForward);
       
       // Smooth rotation
       let angleDiff = targetAngle - this.playerState.rotation;
@@ -265,20 +272,22 @@ export class EnhancedGameEngine {
 
       this.camera.position.copy(this.currentCameraPos);
       this.camera.lookAt(pos.x, pos.y + 1.5, pos.z);
+
+      // Compute camera yaw for camera-relative input
+      // Camera forward = direction from camera to player on XZ plane
+      this.cameraYaw = Math.atan2(
+        pos.x - this.currentCameraPos.x,
+        pos.z - this.currentCameraPos.z
+      );
     } else {
       // First person camera - at eye level
-      this.camera.position.set(
-        pos.x,
-        pos.y + 1.7, // Eye height
-        pos.z
-      );
-      
-      // Look in the direction player is facing
+      this.camera.position.set(pos.x, pos.y + 1.7, pos.z);
       this.camera.lookAt(
         pos.x + Math.sin(rot) * 10,
         pos.y + 1.5,
         pos.z + Math.cos(rot) * 10
       );
+      this.cameraYaw = rot;
     }
   }
 
