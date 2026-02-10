@@ -64,6 +64,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [joystickPos, setJoystickPos] = useState({ x: 0, y: 0 });
   const [joystickOrigin, setJoystickOrigin] = useState({ x: 0, y: 0 });
   const [joystickActive, setJoystickActive] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
 
   // Load character data
   useEffect(() => {
@@ -100,9 +101,9 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize multiplayer
+  // Initialize multiplayer — depends on engineReady state (not ref)
   useEffect(() => {
-    if (showSplash || !engineRef.current) return;
+    if (!engineReady || !engineRef.current) return;
     
     const multiplayer = new RealtimeMultiplayer(characterId, characterName, engineRef.current.scene);
     multiplayerRef.current = multiplayer;
@@ -112,16 +113,23 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     });
     
     multiplayer.initialize();
+
+    // Mark character online in DB
+    supabase.from('game_characters').update({ is_online: true, last_seen_at: new Date().toISOString() }).eq('id', characterId).then();
     
     return () => {
       multiplayer.dispose();
       multiplayerRef.current = null;
+      supabase.from('game_characters').update({ is_online: false, last_seen_at: new Date().toISOString() }).eq('id', characterId).then();
     };
-  }, [showSplash, characterId, characterName]);
+  }, [engineReady, characterId, characterName]);
 
-  // Chat channel
+  // Chat channel — use SAME channel name for subscribe and send
+  const chatChannelRef = useRef<any>(null);
   useEffect(() => {
-    const channel = supabase.channel('cf-roleplay-chat')
+    const channel = supabase.channel('cf-roleplay-world-chat', {
+      config: { broadcast: { self: false } }
+    })
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         setChatMessages(prev => [...prev.slice(-50), {
           sender: payload.sender,
@@ -131,15 +139,18 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       })
       .subscribe();
 
+    chatChannelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
+      chatChannelRef.current = null;
     };
   }, []);
 
   // Send chat message
   const handleSendMessage = useCallback(() => {
-    if (!chatInput.trim()) return;
-    supabase.channel('cf-roleplay-world').send({
+    if (!chatInput.trim() || !chatChannelRef.current) return;
+    chatChannelRef.current.send({
       type: 'broadcast',
       event: 'chat',
       payload: { sender: characterName, message: chatInput.trim() }
@@ -164,6 +175,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       engine = new EnhancedGameEngine(containerRef.current, true);
       engine.initWorld(characterName, { x: 0, z: 0 });
       engineRef.current = engine;
+      setEngineReady(true);
 
       // Game loop
       const gameLoop = () => {
@@ -198,6 +210,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
 
       return () => {
         isCleanedUp = true;
+        setEngineReady(false);
         cancelAnimationFrame(frameId);
         window.removeEventListener('resize', handleResize);
         if (engine) {
