@@ -26,6 +26,7 @@ export class RealtimeMultiplayer {
   private playerName: string;
   private scene: THREE.Scene;
   private channel: any = null;
+  private presenceChannel: any = null;
   private remotePlayers: Map<string, PlayerData> = new Map();
   private playerMeshes: Map<string, THREE.Group> = new Map();
   private lastBroadcast = 0;
@@ -40,44 +41,68 @@ export class RealtimeMultiplayer {
   }
 
   async initialize(): Promise<void> {
-    // Use Supabase Realtime broadcast for player sync
+    // Main broadcast channel for position sync
     this.channel = supabase.channel('cf-roleplay-multiplayer', {
       config: { broadcast: { self: false } }
     });
 
-    // Listen for player position updates
     this.channel.on('broadcast', { event: 'player-update' }, ({ payload }: { payload: PlayerData }) => {
       if (payload.id !== this.playerId) {
         this.handlePlayerUpdate(payload);
       }
     });
 
-    // Listen for players joining
-    this.channel.on('broadcast', { event: 'player-join' }, ({ payload }: { payload: { id: string; name: string } }) => {
-      if (payload.id !== this.playerId) {
-        console.log(`Player joined: ${payload.name}`);
-        this.onPlayerCountChange?.(this.remotePlayers.size + 1);
-      }
-    });
-
-    // Listen for players leaving
     this.channel.on('broadcast', { event: 'player-leave' }, ({ payload }: { payload: { id: string } }) => {
       this.removeRemotePlayer(payload.id);
       this.onPlayerCountChange?.(this.remotePlayers.size + 1);
     });
 
-    // Listen for combat events
     this.channel.on('broadcast', { event: 'combat' }, ({ payload }: { payload: CombatEvent }) => {
       this.onCombatEvent?.(payload);
     });
 
-    await this.channel.subscribe((status: string) => {
+    await this.channel.subscribe();
+
+    // Presence channel — tracks who's actually online
+    this.presenceChannel = supabase.channel('cf-roleplay-presence');
+    
+    this.presenceChannel.on('presence', { event: 'sync' }, () => {
+      const state = this.presenceChannel.presenceState();
+      const allKeys = Object.keys(state);
+      this.onPlayerCountChange?.(allKeys.length);
+      
+      // Remove players who left presence but didn't send leave event
+      const presentIds = new Set<string>();
+      allKeys.forEach(key => {
+        const presences = state[key] as any[];
+        presences.forEach(p => presentIds.add(p.id));
+      });
+      
+      this.remotePlayers.forEach((_, id) => {
+        if (!presentIds.has(id)) {
+          this.removeRemotePlayer(id);
+        }
+      });
+    });
+
+    this.presenceChannel.on('presence', { event: 'join' }, ({ newPresences }: any) => {
+      console.log('Players joined:', newPresences.map((p: any) => p.name));
+    });
+
+    this.presenceChannel.on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
+      leftPresences.forEach((p: any) => {
+        if (p.id !== this.playerId) {
+          this.removeRemotePlayer(p.id);
+        }
+      });
+    });
+
+    await this.presenceChannel.subscribe(async (status: string) => {
       if (status === 'SUBSCRIBED') {
-        // Announce joining
-        this.channel.send({
-          type: 'broadcast',
-          event: 'player-join',
-          payload: { id: this.playerId, name: this.playerName }
+        await this.presenceChannel.track({
+          id: this.playerId,
+          name: this.playerName,
+          online_at: new Date().toISOString()
         });
       }
     });
@@ -406,13 +431,17 @@ export class RealtimeMultiplayer {
 
   dispose(): void {
     if (this.channel) {
-      // Announce leaving
       this.channel.send({
         type: 'broadcast',
         event: 'player-leave',
         payload: { id: this.playerId }
       });
       supabase.removeChannel(this.channel);
+    }
+
+    if (this.presenceChannel) {
+      this.presenceChannel.untrack();
+      supabase.removeChannel(this.presenceChannel);
     }
 
     // Clean up all meshes
