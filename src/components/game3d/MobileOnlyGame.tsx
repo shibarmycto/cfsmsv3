@@ -264,10 +264,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     
     setJoystickPos({ x: dx, y: dy });
     
+    // Feed raw screen-space input — engine handles camera-relative rotation
     const normalizedX = dx / maxDistance;
     const normalizedZ = dy / maxDistance;
     inputRef.current.right = normalizedX;
-    inputRef.current.forward = -normalizedZ;
+    inputRef.current.forward = normalizedZ; // Positive Y (down on screen) = forward into screen
     
     const shouldSprint = distance >= sprintThreshold;
     if (shouldSprint !== autoSprintRef.current) {

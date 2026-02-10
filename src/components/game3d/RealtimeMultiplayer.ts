@@ -34,6 +34,17 @@ export class RealtimeMultiplayer {
   private onCombatEvent: ((event: CombatEvent) => void) | null = null;
   private onPlayerCountChange: ((count: number) => void) | null = null;
 
+  // DB-backed sync for cross-domain visibility
+  private lastDbWrite = 0;
+  private dbWriteInterval = 500; // Write position to DB every 500ms
+  private dbPollInterval = 2000; // Poll DB every 2s as fallback
+  private dbPollTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPosition = { x: 0, y: 0, z: 0 };
+  private lastRotation = 0;
+  private lastState: 'idle' | 'walking' | 'running' | 'attacking' = 'idle';
+  private lastHealth = 100;
+  private lastWeapon = 'fists';
+
   constructor(playerId: string, playerName: string, scene: THREE.Scene) {
     this.playerId = playerId;
     this.playerName = playerName;
@@ -41,7 +52,7 @@ export class RealtimeMultiplayer {
   }
 
   async initialize(): Promise<void> {
-    // Main broadcast channel for position sync
+    // Main broadcast channel for fast position sync
     this.channel = supabase.channel('cf-roleplay-multiplayer', {
       config: { broadcast: { self: false } }
     });
@@ -71,7 +82,6 @@ export class RealtimeMultiplayer {
       const allKeys = Object.keys(state);
       this.onPlayerCountChange?.(allKeys.length);
       
-      // Remove players who left presence but didn't send leave event
       const presentIds = new Set<string>();
       allKeys.forEach(key => {
         const presences = state[key] as any[];
@@ -106,6 +116,77 @@ export class RealtimeMultiplayer {
         });
       }
     });
+
+    // Start DB polling fallback for cross-domain sync
+    this.startDbPolling();
+  }
+
+  // --- DB-backed fallback sync ---
+
+  private startDbPolling(): void {
+    const poll = async () => {
+      try {
+        // Fetch all online characters except self
+        const { data } = await supabase
+          .from('game_characters')
+          .select('id, name, position_x, position_y, health, equipped_weapon, is_online, last_seen_at')
+          .eq('is_online', true)
+          .neq('id', this.playerId);
+
+        if (data) {
+          const now = Date.now();
+          for (const char of data) {
+            // Skip stale records (no update in 10s)
+            const lastSeen = char.last_seen_at ? new Date(char.last_seen_at).getTime() : 0;
+            if (now - lastSeen > 10000) continue;
+
+            const existing = this.remotePlayers.get(char.id);
+            // Only apply DB data if we haven't received a broadcast recently
+            if (!existing || (now - existing.lastUpdate > 3000)) {
+              this.handlePlayerUpdate({
+                id: char.id,
+                name: char.name,
+                position: { x: char.position_x || 0, y: 0, z: char.position_y || 0 },
+                rotation: 0,
+                health: char.health || 100,
+                state: 'idle',
+                equippedWeapon: char.equipped_weapon || 'fists',
+                lastUpdate: lastSeen
+              });
+            }
+          }
+
+          // Update online count from DB as well
+          const broadcastCount = this.remotePlayers.size + 1;
+          this.onPlayerCountChange?.(Math.max(broadcastCount, (data.length || 0) + 1));
+        }
+      } catch (e) {
+        console.warn('DB poll failed:', e);
+      }
+
+      this.dbPollTimer = setTimeout(poll, this.dbPollInterval);
+    };
+
+    this.dbPollTimer = setTimeout(poll, this.dbPollInterval);
+  }
+
+  private writePositionToDb(): void {
+    const now = Date.now();
+    if (now - this.lastDbWrite < this.dbWriteInterval) return;
+    this.lastDbWrite = now;
+
+    supabase
+      .from('game_characters')
+      .update({
+        position_x: Math.round(this.lastPosition.x * 10) / 10,
+        position_y: Math.round(this.lastPosition.z * 10) / 10, // z → position_y in DB
+        health: this.lastHealth,
+        equipped_weapon: this.lastWeapon,
+        is_online: true,
+        last_seen_at: new Date().toISOString()
+      })
+      .eq('id', this.playerId)
+      .then();
   }
 
   setCombatEventHandler(handler: (event: CombatEvent) => void): void {
@@ -117,6 +198,17 @@ export class RealtimeMultiplayer {
   }
 
   broadcastPosition(position: THREE.Vector3, rotation: number, state: 'idle' | 'walking' | 'running' | 'attacking', health: number, weapon: string): void {
+    // Store latest for DB writes
+    this.lastPosition = { x: position.x, y: position.y, z: position.z };
+    this.lastRotation = rotation;
+    this.lastState = state;
+    this.lastHealth = health;
+    this.lastWeapon = weapon;
+
+    // Write to DB periodically for cross-domain fallback
+    this.writePositionToDb();
+
+    // Fast broadcast for same-session players
     const now = Date.now();
     if (now - this.lastBroadcast < this.broadcastInterval) return;
     this.lastBroadcast = now;
@@ -160,10 +252,8 @@ export class RealtimeMultiplayer {
     const existing = this.remotePlayers.get(data.id);
     
     if (existing) {
-      // Update existing player data
       Object.assign(existing, data);
     } else {
-      // New player - create mesh
       this.remotePlayers.set(data.id, data);
       this.createPlayerMesh(data);
       this.onPlayerCountChange?.(this.remotePlayers.size + 1);
@@ -173,7 +263,6 @@ export class RealtimeMultiplayer {
   private createPlayerMesh(player: PlayerData): void {
     const group = new THREE.Group();
 
-    // Body - capsule shape
     const bodyGeometry = new THREE.CapsuleGeometry(0.4, 0.8, 8, 16);
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: this.getRandomPlayerColor(player.id),
@@ -185,18 +274,13 @@ export class RealtimeMultiplayer {
     body.castShadow = true;
     group.add(body);
 
-    // Head
     const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
-    const headMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffdbac,
-      roughness: 0.6
-    });
+    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.6 });
     const head = new THREE.Mesh(headGeometry, headMaterial);
     head.position.y = 1.55;
     head.castShadow = true;
     group.add(head);
 
-    // Arms
     const armGeometry = new THREE.CapsuleGeometry(0.1, 0.5, 4, 8);
     const armMaterial = bodyMaterial.clone();
     
@@ -210,12 +294,8 @@ export class RealtimeMultiplayer {
     rightArm.rotation.z = -0.1;
     group.add(rightArm);
 
-    // Legs
     const legGeometry = new THREE.CapsuleGeometry(0.12, 0.5, 4, 8);
-    const legMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1a1a2e,
-      roughness: 0.7
-    });
+    const legMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.7 });
 
     const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
     leftLeg.position.set(-0.2, 0.35, 0);
@@ -225,20 +305,11 @@ export class RealtimeMultiplayer {
     rightLeg.position.set(0.2, 0.35, 0);
     group.add(rightLeg);
 
-    // Nameplate with health bar
     const nameSprite = this.createNameplate(player.name, player.health);
     nameSprite.position.set(0, 2.2, 0);
     group.add(nameSprite);
 
-    // Store references for animation
-    group.userData = {
-      leftArm,
-      rightArm,
-      leftLeg,
-      rightLeg,
-      nameSprite,
-      animTime: 0
-    };
+    group.userData = { leftArm, rightArm, leftLeg, rightLeg, nameSprite, animTime: 0 };
 
     group.position.set(player.position.x, player.position.y, player.position.z);
     group.rotation.y = player.rotation;
@@ -253,31 +324,22 @@ export class RealtimeMultiplayer {
     canvas.height = 80;
     const ctx = canvas.getContext('2d')!;
 
-    // Background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
     ctx.roundRect(8, 8, 240, 64, 8);
     ctx.fill();
 
-    // Name
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(name.substring(0, 15), 128, 32);
 
-    // Health bar background
     ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
     ctx.fillRect(24, 42, 208, 16);
 
-    // Health bar fill
     const healthWidth = (health / 100) * 208;
-    const gradient = ctx.createLinearGradient(24, 0, 232, 0);
-    gradient.addColorStop(0, '#22c55e');
-    gradient.addColorStop(0.5, '#84cc16');
-    gradient.addColorStop(1, '#ef4444');
     ctx.fillStyle = health > 50 ? '#22c55e' : health > 25 ? '#eab308' : '#ef4444';
     ctx.fillRect(24, 42, healthWidth, 16);
 
-    // Health text
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 12px Arial';
     ctx.fillText(`${health}/100`, 128, 55);
@@ -290,7 +352,6 @@ export class RealtimeMultiplayer {
   }
 
   private getRandomPlayerColor(id: string): number {
-    // Generate consistent color from player ID
     let hash = 0;
     for (let i = 0; i < id.length; i++) {
       hash = id.charCodeAt(i) + ((hash << 5) - hash);
@@ -340,17 +401,15 @@ export class RealtimeMultiplayer {
       const mesh = this.playerMeshes.get(id);
       if (!mesh) return;
 
-      // Remove inactive players (no update in 5 seconds)
-      if (now - player.lastUpdate > 5000) {
+      // Remove inactive players (no update in 10 seconds — increased for DB fallback)
+      if (now - player.lastUpdate > 10000) {
         this.removeRemotePlayer(id);
         return;
       }
 
-      // Smooth position interpolation
       const targetPos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
       mesh.position.lerp(targetPos, 0.15);
 
-      // Smooth rotation interpolation
       let targetRot = player.rotation;
       let currentRot = mesh.rotation.y;
       let diff = targetRot - currentRot;
@@ -358,10 +417,8 @@ export class RealtimeMultiplayer {
       while (diff < -Math.PI) diff += Math.PI * 2;
       mesh.rotation.y += diff * 0.15;
 
-      // Animate character based on state
       this.animateRemotePlayer(mesh, player.state, delta);
 
-      // Update nameplate if health changed
       const storedHealth = mesh.userData.lastHealth || 100;
       if (Math.abs(storedHealth - player.health) > 1) {
         this.updateNameplate(mesh, player.health, player.name);
@@ -386,10 +443,8 @@ export class RealtimeMultiplayer {
       leftLeg.rotation.x = -Math.sin(t * speed) * amplitude * 0.8;
       rightLeg.rotation.x = Math.sin(t * speed) * amplitude * 0.8;
     } else if (state === 'attacking') {
-      // Attack animation - punch forward
       rightArm.rotation.x = -Math.sin(t * 20) * 1.5;
     } else {
-      // Idle - slight breathing motion
       leftArm.rotation.x = Math.sin(t * 2) * 0.05;
       rightArm.rotation.x = Math.sin(t * 2) * 0.05;
       leftLeg.rotation.x = 0;
@@ -401,7 +456,6 @@ export class RealtimeMultiplayer {
     const mesh = this.playerMeshes.get(id);
     if (mesh) {
       this.scene.remove(mesh);
-      // Dispose geometries and materials
       mesh.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
@@ -430,6 +484,12 @@ export class RealtimeMultiplayer {
   }
 
   dispose(): void {
+    // Stop DB polling
+    if (this.dbPollTimer) {
+      clearTimeout(this.dbPollTimer);
+      this.dbPollTimer = null;
+    }
+
     if (this.channel) {
       this.channel.send({
         type: 'broadcast',
@@ -444,7 +504,6 @@ export class RealtimeMultiplayer {
       supabase.removeChannel(this.presenceChannel);
     }
 
-    // Clean up all meshes
     this.playerMeshes.forEach((mesh, id) => {
       this.removeRemotePlayer(id);
     });
