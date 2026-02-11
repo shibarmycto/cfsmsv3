@@ -36,8 +36,8 @@ export class RealtimeMultiplayer {
 
   // DB-backed sync for cross-domain visibility
   private lastDbWrite = 0;
-  private dbWriteInterval = 500; // Write position to DB every 500ms
-  private dbPollInterval = 2000; // Poll DB every 2s as fallback
+  private dbWriteInterval = 300; // Write position to DB every 300ms
+  private dbPollInterval = 1000; // Poll DB every 1s for cross-domain
   private dbPollTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPosition = { x: 0, y: 0, z: 0 };
   private lastRotation = 0;
@@ -136,13 +136,13 @@ export class RealtimeMultiplayer {
         if (data) {
           const now = Date.now();
           for (const char of data) {
-            // Skip stale records (no update in 10s)
+            // Skip stale records (no update in 15s)
             const lastSeen = char.last_seen_at ? new Date(char.last_seen_at).getTime() : 0;
-            if (now - lastSeen > 10000) continue;
+            if (now - lastSeen > 15000) continue;
 
             const existing = this.remotePlayers.get(char.id);
-            // Only apply DB data if we haven't received a broadcast recently
-            if (!existing || (now - existing.lastUpdate > 3000)) {
+            // Always apply DB data if no recent broadcast (1.5s threshold)
+            if (!existing || (now - existing.lastUpdate > 1500)) {
               this.handlePlayerUpdate({
                 id: char.id,
                 name: char.name,
@@ -401,8 +401,8 @@ export class RealtimeMultiplayer {
       const mesh = this.playerMeshes.get(id);
       if (!mesh) return;
 
-      // Remove inactive players (no update in 10 seconds — increased for DB fallback)
-      if (now - player.lastUpdate > 10000) {
+      // Remove inactive players (no update in 15 seconds)
+      if (now - player.lastUpdate > 15000) {
         this.removeRemotePlayer(id);
         return;
       }
