@@ -4,47 +4,45 @@ export interface Country {
   flag: string;
   currency: string;
   currencySymbol: string;
-  rate: number; // Conversion rate from GBP base
+  rate: number; // Conversion rate from USD base
 }
 
 export const COUNTRIES: Country[] = [
-  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', currencySymbol: '£', rate: 1 },
-  { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD', currencySymbol: '$', rate: 1.27 },
-  { code: 'EU', name: 'Europe (EUR)', flag: '🇪🇺', currency: 'EUR', currencySymbol: '€', rate: 1.17 },
-  { code: 'CA', name: 'Canada', flag: '🇨🇦', currency: 'CAD', currencySymbol: 'C$', rate: 1.72 },
-  { code: 'AU', name: 'Australia', flag: '🇦🇺', currency: 'AUD', currencySymbol: 'A$', rate: 1.93 },
-  { code: 'IN', name: 'India', flag: '🇮🇳', currency: 'INR', currencySymbol: '₹', rate: 105 },
-  { code: 'AE', name: 'UAE', flag: '🇦🇪', currency: 'AED', currencySymbol: 'د.إ', rate: 4.67 },
-  { code: 'SG', name: 'Singapore', flag: '🇸🇬', currency: 'SGD', currencySymbol: 'S$', rate: 1.70 },
-  { code: 'JP', name: 'Japan', flag: '🇯🇵', currency: 'JPY', currencySymbol: '¥', rate: 190 },
-  { code: 'ZA', name: 'South Africa', flag: '🇿🇦', currency: 'ZAR', currencySymbol: 'R', rate: 23.50 },
-  { code: 'NG', name: 'Nigeria', flag: '🇳🇬', currency: 'NGN', currencySymbol: '₦', rate: 1950 },
-  { code: 'KE', name: 'Kenya', flag: '🇰🇪', currency: 'KES', currencySymbol: 'KSh', rate: 165 },
-  { code: 'PH', name: 'Philippines', flag: '🇵🇭', currency: 'PHP', currencySymbol: '₱', rate: 71 },
-  { code: 'PK', name: 'Pakistan', flag: '🇵🇰', currency: 'PKR', currencySymbol: '₨', rate: 355 },
-  { code: 'BD', name: 'Bangladesh', flag: '🇧🇩', currency: 'BDT', currencySymbol: '৳', rate: 140 },
-  { code: 'BR', name: 'Brazil', flag: '🇧🇷', currency: 'BRL', currencySymbol: 'R$', rate: 6.35 },
-  { code: 'MX', name: 'Mexico', flag: '🇲🇽', currency: 'MXN', currencySymbol: 'MX$', rate: 21.80 },
-  { code: 'DE', name: 'Germany', flag: '🇩🇪', currency: 'EUR', currencySymbol: '€', rate: 1.17 },
-  { code: 'FR', name: 'France', flag: '🇫🇷', currency: 'EUR', currencySymbol: '€', rate: 1.17 },
-  { code: 'NL', name: 'Netherlands', flag: '🇳🇱', currency: 'EUR', currencySymbol: '€', rate: 1.17 },
+  { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD', currencySymbol: '$', rate: 1 },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', currencySymbol: '£', rate: 0.79 },
+  { code: 'EU', name: 'Europe (EUR)', flag: '🇪🇺', currency: 'EUR', currencySymbol: '€', rate: 0.92 },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦', currency: 'CAD', currencySymbol: 'C$', rate: 1.36 },
+  { code: 'AU', name: 'Australia', flag: '🇦🇺', currency: 'AUD', currencySymbol: 'A$', rate: 1.53 },
+  { code: 'IN', name: 'India', flag: '🇮🇳', currency: 'INR', currencySymbol: '₹', rate: 83 },
+  { code: 'AE', name: 'UAE', flag: '🇦🇪', currency: 'AED', currencySymbol: 'د.إ', rate: 3.67 },
+  { code: 'SG', name: 'Singapore', flag: '🇸🇬', currency: 'SGD', currencySymbol: 'S$', rate: 1.34 },
+  { code: 'JP', name: 'Japan', flag: '🇯🇵', currency: 'JPY', currencySymbol: '¥', rate: 150 },
+  { code: 'ZA', name: 'South Africa', flag: '🇿🇦', currency: 'ZAR', currencySymbol: 'R', rate: 18.50 },
+  { code: 'NG', name: 'Nigeria', flag: '🇳🇬', currency: 'NGN', currencySymbol: '₦', rate: 1550 },
+  { code: 'KE', name: 'Kenya', flag: '🇰🇪', currency: 'KES', currencySymbol: 'KSh', rate: 130 },
+  { code: 'PH', name: 'Philippines', flag: '🇵🇭', currency: 'PHP', currencySymbol: '₱', rate: 56 },
+  { code: 'PK', name: 'Pakistan', flag: '🇵🇰', currency: 'PKR', currencySymbol: '₨', rate: 280 },
+  { code: 'BD', name: 'Bangladesh', flag: '🇧🇩', currency: 'BDT', currencySymbol: '৳', rate: 110 },
+  { code: 'BR', name: 'Brazil', flag: '🇧🇷', currency: 'BRL', currencySymbol: 'R$', rate: 5.00 },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽', currency: 'MXN', currencySymbol: 'MX$', rate: 17.20 },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪', currency: 'EUR', currencySymbol: '€', rate: 0.92 },
+  { code: 'FR', name: 'France', flag: '🇫🇷', currency: 'EUR', currencySymbol: '€', rate: 0.92 },
+  { code: 'NL', name: 'Netherlands', flag: '🇳🇱', currency: 'EUR', currencySymbol: '€', rate: 0.92 },
 ];
 
+// $1 = 1 credit. Packages are priced in USD.
 export const SMS_PACKAGES = [
-  { credits: 100, basePrice: 10 },        // £0.100/SMS (base)
-  { credits: 500, basePrice: 49 },        // £0.098/SMS (3% off)
-  { credits: 1000, basePrice: 94 },       // £0.094/SMS (6% off)
-  { credits: 5000, basePrice: 456, popular: true }, // £0.091/SMS (9% off)
-  { credits: 10000, basePrice: 886 },     // £0.089/SMS (12% off)
-  { credits: 20000, basePrice: 1718 },    // £0.086/SMS (15% off)
+  { credits: 10, basePrice: 10 },
+  { credits: 50, basePrice: 50 },
+  { credits: 100, basePrice: 100 },
+  { credits: 500, basePrice: 500, popular: true },
+  { credits: 1000, basePrice: 1000 },
+  { credits: 5000, basePrice: 5000 },
 ];
 
 export function formatPrice(basePrice: number, country: Country): string {
   const convertedPrice = Math.round(basePrice * country.rate);
-  
-  // Format large numbers with commas
   const formattedNumber = convertedPrice.toLocaleString();
-  
   return `${country.currencySymbol}${formattedNumber}`;
 }
 
