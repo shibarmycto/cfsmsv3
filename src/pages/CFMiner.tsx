@@ -56,8 +56,8 @@ interface PromoVideo {
   user_id: string;
 }
 
-const TASKS_PER_TOKEN = 1000;
 const DEFAULT_VIDEO_ID = 'avFU7vFfdvY';
+const SWAGBUCKS_LINK = 'https://www.swagbucks.com/profile/r_229737321?rp=r1';
 
 export default function CFMiner() {
   const { user, loading } = useAuth();
@@ -73,7 +73,7 @@ export default function CFMiner() {
   const [balance, setBalance] = useState(0);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'leaderboard'>('tasks');
+  const [activeTab, setActiveTab] = useState<'start' | 'tasks' | 'leaderboard'>('start');
   const [taskStatus, setTaskStatus] = useState<TaskStatus>({
     signup: { completed: false, completedAt: null },
     freebitcoin: { completed: false, lastCompleted: null, canDoAt: null },
@@ -386,8 +386,7 @@ export default function CFMiner() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressToNextToken = session ? (session.captchasCompleted % TASKS_PER_TOKEN) : 0;
-  const progressPercent = (progressToNextToken / TASKS_PER_TOKEN) * 100;
+  // Remove captcha-based progress tracking
 
   if (loading || isApproved === null) {
     return (
@@ -485,39 +484,59 @@ export default function CFMiner() {
               <div className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-green-500" />
                 <div>
-                  <p className="text-xs text-muted-foreground">To Next Token</p>
-                  <p className="text-lg font-bold">{TASKS_PER_TOKEN - progressToNextToken}</p>
+                  <p className="text-xs text-muted-foreground">Balance</p>
+                  <p className="text-lg font-bold">{balance.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Progress to Next Token */}
-        <Card className="mb-6">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Progress to Next Token</span>
-              <span className="text-sm text-muted-foreground">
-                {progressToNextToken} / {TASKS_PER_TOKEN}
-              </span>
-            </div>
-            <Progress value={progressPercent} className="h-3" />
-          </CardContent>
-        </Card>
 
         {/* Tabs for Tasks and Leaderboard */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'tasks' | 'leaderboard')} className="mb-6">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'start' | 'tasks' | 'leaderboard')} className="mb-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="start" className="flex items-center gap-2">
+              <Play className="w-4 h-4" />
+              Start Mining
+            </TabsTrigger>
             <TabsTrigger value="tasks" className="flex items-center gap-2">
               <Pickaxe className="w-4 h-4" />
-              Mining Tasks
+              Tasks
             </TabsTrigger>
             <TabsTrigger value="leaderboard" className="flex items-center gap-2">
               <Trophy className="w-4 h-4" />
               Leaderboard
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="start" className="mt-6">
+            <Card className="border-2 border-green-500/30 bg-green-500/5">
+              <CardHeader className="text-center">
+                <div className="mx-auto w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
+                  <Pickaxe className="w-8 h-8 text-green-500" />
+                </div>
+                <CardTitle className="text-xl">Join Our Mining Program</CardTitle>
+                <CardDescription className="text-base mt-2">
+                  Click the link below to join our mining program through Swagbucks so we can track your earnings and reward you accordingly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <a
+                  href={SWAGBUCKS_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-green-500/30 active:scale-95"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                  Join Mining Program on Swagbucks
+                </a>
+                <p className="text-xs text-muted-foreground text-center">
+                  After joining through the link above, complete the tasks in the "Tasks" tab to earn CFSMS tokens.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="tasks" className="space-y-4 mt-6">
             {/* Task 1: Website Sign-up */}
@@ -840,8 +859,9 @@ export default function CFMiner() {
             <Card className="bg-muted/50">
               <CardContent className="pt-4 pb-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>How it works:</strong> Complete tasks to earn progress. Every {TASKS_PER_TOKEN} tasks = 1 CFSMS token. 
-                  FreeBitcoin rolls and YouTube watches can be done once per hour.
+                  <strong>How it works:</strong> Complete tasks to earn CFSMS tokens. 
+                  FreeBitcoin rolls and YouTube watches can be done once per hour. 
+                  Join our mining program via the "Start Mining" tab first!
                 </p>
               </CardContent>
             </Card>
