@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createRealisticCharacter, animateCharacter } from './RealisticCharacter';
 import { createUKWorld, GameBuilding } from './UKWorld';
+import { buildBuildingBoxes, resolveXZCollision, BuildingBox } from './buildingPhysics';
 
 export interface GameInput {
   forward: number;
@@ -31,6 +32,7 @@ export class EnhancedGameEngine {
   renderer: THREE.WebGLRenderer;
   player: THREE.Group | null = null;
   buildings: GameBuilding[] = [];
+  private buildingBoxes: BuildingBox[] = [];
   
   playerState: PlayerState = {
     position: new THREE.Vector3(0, 0, 0),
@@ -48,32 +50,31 @@ export class EnhancedGameEngine {
     smoothing: 0.1
   };
 
-  // Enhanced physics constants
-  readonly WALK_SPEED = 12; // Increased from 6
-  readonly RUN_SPEED = 22; // Increased from 12
-  readonly JUMP_FORCE = 12; // Increased for better jumps
-  readonly GRAVITY = 32; // Slightly higher for snappier falls
-  readonly AIR_CONTROL = 0.4; // Control while in air
-  readonly GROUND_FRICTION = 0.92;
+  // Physics constants - tuned for stability
+  readonly WALK_SPEED = 10;
+  readonly RUN_SPEED = 18;
+  readonly JUMP_FORCE = 10;
+  readonly GRAVITY = 28;
+  readonly AIR_CONTROL = 0.4;
+  readonly GROUND_FRICTION = 0.88;
   readonly AIR_FRICTION = 0.98;
   readonly ROTATION_SPEED = 12;
-  readonly ACCELERATION = 50; // How quickly player reaches max speed
+  readonly ACCELERATION = 40;
 
   private targetCameraPos = new THREE.Vector3();
   private currentCameraPos = new THREE.Vector3();
-  private cameraYaw = 0; // For camera-relative joystick input
+  private cameraYaw = 0;
   private clock = new THREE.Clock();
   private isMobile: boolean;
+  private frameCount = 0;
 
   constructor(container: HTMLDivElement, isMobile: boolean = false) {
     this.isMobile = isMobile;
 
-    // Scene setup
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x7EC8E3); // Brighter sky
+    this.scene.background = new THREE.Color(0x7EC8E3);
     this.scene.fog = new THREE.Fog(0x7EC8E3, 150, 600);
 
-    // Camera
     this.camera = new THREE.PerspectiveCamera(
       isMobile ? 70 : 65,
       window.innerWidth / window.innerHeight,
@@ -81,7 +82,6 @@ export class EnhancedGameEngine {
       2000
     );
 
-    // Renderer with optimizations
     this.renderer = new THREE.WebGLRenderer({ 
       antialias: !isMobile,
       powerPreference: 'high-performance',
@@ -90,7 +90,7 @@ export class EnhancedGameEngine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
     container.appendChild(this.renderer.domElement);
@@ -99,18 +99,16 @@ export class EnhancedGameEngine {
   }
 
   private setupLighting() {
-    // Ambient - slightly blue tint for sky bounce
-    const ambient = new THREE.AmbientLight(0xB0E0FF, 0.5);
+    // Ambient
+    const ambient = new THREE.AmbientLight(0xB0E0FF, 0.6);
     this.scene.add(ambient);
 
-    // Main sun light
+    // Single directional sun - ONLY shadow caster
     const sun = new THREE.DirectionalLight(0xFFFFDD, 1.0);
     sun.position.set(150, 250, 100);
     sun.castShadow = true;
-    
-    // High quality shadows
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
+    sun.shadow.mapSize.width = this.isMobile ? 1024 : 2048;
+    sun.shadow.mapSize.height = this.isMobile ? 1024 : 2048;
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = 600;
     sun.shadow.camera.left = -200;
@@ -120,35 +118,61 @@ export class EnhancedGameEngine {
     sun.shadow.bias = -0.0001;
     this.scene.add(sun);
 
-    // Fill light from opposite side
+    // Fill light - no shadows
     const fill = new THREE.DirectionalLight(0x8080FF, 0.3);
     fill.position.set(-100, 100, -50);
     this.scene.add(fill);
 
-    // Hemisphere light for natural sky/ground color
+    // Hemisphere for natural sky/ground
     const hemi = new THREE.HemisphereLight(0x87CEEB, 0x3D5C3D, 0.4);
     this.scene.add(hemi);
   }
 
   initWorld(characterName: string, startPos?: { x: number; z: number }) {
-    // Create world
     this.buildings = createUKWorld(this.scene);
+    
+    // Build collision boxes for buildings
+    this.buildingBoxes = buildBuildingBoxes(this.buildings, 0.8);
 
     // Create player
     this.player = createRealisticCharacter({ name: characterName, isPlayer: true });
     
-    if (startPos) {
-      this.playerState.position.set(startPos.x, 0, startPos.z);
-    }
+    // Find a safe spawn point not inside any building
+    const spawn = startPos || { x: 0, z: 0 };
+    const safeSpawn = this.findSafeSpawn(spawn.x, spawn.z);
+    
+    this.playerState.position.set(safeSpawn.x, 0, safeSpawn.z);
+    this.playerState.velocity.set(0, 0, 0);
+    this.playerState.isGrounded = true;
+    
     this.player.position.copy(this.playerState.position);
     this.scene.add(this.player);
 
-    // Initialize camera position
     this.updateCameraPosition(true);
   }
 
+  private findSafeSpawn(x: number, z: number): { x: number; z: number } {
+    const point = new THREE.Vector3(x, 0, z);
+    const isBlocked = this.buildingBoxes.some(b => b.box.containsPoint(point));
+    if (!isBlocked) return { x, z };
+    
+    // Spiral outward to find a clear spot
+    for (let r = 2; r < 50; r += 2) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        const tx = x + Math.cos(a) * r;
+        const tz = z + Math.sin(a) * r;
+        point.set(tx, 0, tz);
+        if (!this.buildingBoxes.some(b => b.box.containsPoint(point))) {
+          return { x: tx, z: tz };
+        }
+      }
+    }
+    return { x: 5, z: 5 }; // Fallback
+  }
+
   update(input: GameInput): { position: { x: number; y: number; z: number }; nearbyBuilding: GameBuilding | null } {
-    const delta = Math.min(this.clock.getDelta(), 0.05);
+    const delta = Math.min(this.clock.getDelta(), 0.033); // Cap at ~30fps worth of physics
+    this.frameCount++;
 
     this.updatePlayerMovement(input, delta);
     this.updatePlayerAnimation(delta);
@@ -156,7 +180,8 @@ export class EnhancedGameEngine {
     
     this.renderer.render(this.scene, this.camera);
 
-    const nearbyBuilding = this.checkNearbyBuildings();
+    // Check nearby buildings every 3 frames for performance
+    const nearbyBuilding = this.frameCount % 3 === 0 ? this.checkNearbyBuildings() : null;
 
     return {
       position: {
@@ -171,12 +196,10 @@ export class EnhancedGameEngine {
   private updatePlayerMovement(input: GameInput, delta: number) {
     const { forward, right, jump, sprint } = input;
 
-    // Determine speed
     const targetSpeed = sprint ? this.RUN_SPEED : this.WALK_SPEED;
     const friction = this.playerState.isGrounded ? this.GROUND_FRICTION : this.AIR_FRICTION;
     const control = this.playerState.isGrounded ? 1 : this.AIR_CONTROL;
 
-    // Calculate movement direction — CAMERA-RELATIVE (OneState-style)
     const hasInput = Math.abs(forward) > 0.1 || Math.abs(right) > 0.1;
     this.playerState.isMoving = hasInput;
     this.playerState.isSprinting = sprint && hasInput;
@@ -184,7 +207,6 @@ export class EnhancedGameEngine {
     if (hasInput) {
       const inputMagnitude = Math.min(Math.sqrt(forward * forward + right * right), 1);
 
-      // Rotate joystick input by camera yaw so "up" = camera forward
       const cosYaw = Math.cos(this.cameraYaw);
       const sinYaw = Math.sin(this.cameraYaw);
       const worldForward = forward * cosYaw + right * sinYaw;
@@ -192,46 +214,69 @@ export class EnhancedGameEngine {
 
       const targetAngle = Math.atan2(worldRight, worldForward);
       
-      // Smooth rotation
       let angleDiff = targetAngle - this.playerState.rotation;
       while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
       while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
       this.playerState.rotation += angleDiff * Math.min(1, this.ROTATION_SPEED * delta);
 
-      // Apply acceleration towards target velocity
       const targetVelX = Math.sin(targetAngle) * targetSpeed * inputMagnitude;
       const targetVelZ = Math.cos(targetAngle) * targetSpeed * inputMagnitude;
 
       this.playerState.velocity.x += (targetVelX - this.playerState.velocity.x) * this.ACCELERATION * delta * control;
       this.playerState.velocity.z += (targetVelZ - this.playerState.velocity.z) * this.ACCELERATION * delta * control;
     } else {
-      // Apply friction when no input
       this.playerState.velocity.x *= friction;
       this.playerState.velocity.z *= friction;
+      // Zero out tiny velocities to prevent drift
+      if (Math.abs(this.playerState.velocity.x) < 0.01) this.playerState.velocity.x = 0;
+      if (Math.abs(this.playerState.velocity.z) < 0.01) this.playerState.velocity.z = 0;
     }
 
-    // Jump
-    if (jump && this.playerState.isGrounded) {
+    // Jump - only when solidly grounded
+    if (jump && this.playerState.isGrounded && this.playerState.velocity.y === 0) {
       this.playerState.velocity.y = this.JUMP_FORCE;
       this.playerState.isGrounded = false;
     }
 
-    // Gravity
+    // Gravity - only when NOT grounded
     if (!this.playerState.isGrounded) {
       this.playerState.velocity.y -= this.GRAVITY * delta;
+      // Terminal velocity
+      this.playerState.velocity.y = Math.max(this.playerState.velocity.y, -30);
     }
 
-    // Apply velocity
-    this.playerState.position.x += this.playerState.velocity.x * delta;
-    this.playerState.position.z += this.playerState.velocity.z * delta;
+    // Calculate next position
+    const nextX = this.playerState.position.x + this.playerState.velocity.x * delta;
+    const nextZ = this.playerState.position.z + this.playerState.velocity.z * delta;
+
+    // Building collision - slide along walls
+    const resolved = resolveXZCollision(
+      { x: this.playerState.position.x, z: this.playerState.position.z },
+      { x: nextX, z: nextZ },
+      this.buildingBoxes
+    );
+
+    // If collision blocked movement, zero out that velocity component
+    if (resolved.x === this.playerState.position.x) this.playerState.velocity.x = 0;
+    if (resolved.z === this.playerState.position.z) this.playerState.velocity.z = 0;
+
+    this.playerState.position.x = resolved.x;
+    this.playerState.position.z = resolved.z;
+
+    // Vertical movement
     this.playerState.position.y += this.playerState.velocity.y * delta;
 
-    // Ground collision
+    // Ground collision - HARD clamp
     if (this.playerState.position.y <= 0) {
       this.playerState.position.y = 0;
       this.playerState.velocity.y = 0;
       this.playerState.isGrounded = true;
     }
+
+    // World bounds
+    const WORLD_LIMIT = 800;
+    this.playerState.position.x = Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, this.playerState.position.x));
+    this.playerState.position.z = Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, this.playerState.position.z));
 
     // Update player mesh
     if (this.player) {
@@ -257,7 +302,6 @@ export class EnhancedGameEngine {
     const rot = this.playerState.rotation;
 
     if (mode === 'third') {
-      // Third person camera - behind and above player
       this.targetCameraPos.set(
         pos.x - Math.sin(rot) * distance,
         pos.y + height,
@@ -273,14 +317,11 @@ export class EnhancedGameEngine {
       this.camera.position.copy(this.currentCameraPos);
       this.camera.lookAt(pos.x, pos.y + 1.5, pos.z);
 
-      // Compute camera yaw for camera-relative input
-      // Camera forward = direction from camera to player on XZ plane
       this.cameraYaw = Math.atan2(
         pos.x - this.currentCameraPos.x,
         pos.z - this.currentCameraPos.z
       );
     } else {
-      // First person camera - at eye level
       this.camera.position.set(pos.x, pos.y + 1.7, pos.z);
       this.camera.lookAt(
         pos.x + Math.sin(rot) * 10,
@@ -303,13 +344,15 @@ export class EnhancedGameEngine {
   }
 
   private checkNearbyBuildings(): GameBuilding | null {
-    const playerPos = new THREE.Vector2(this.playerState.position.x, this.playerState.position.z);
+    const px = this.playerState.position.x;
+    const pz = this.playerState.position.z;
     let closest: GameBuilding | null = null;
-    let closestDist = 25; // Interaction range
+    let closestDist = 25;
 
     for (const building of this.buildings) {
-      const buildingPos = new THREE.Vector2(building.position.x, building.position.z);
-      const dist = playerPos.distanceTo(buildingPos);
+      const dx = px - building.position.x;
+      const dz = pz - building.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist < closestDist) {
         closestDist = dist;
         closest = building;
@@ -327,6 +370,16 @@ export class EnhancedGameEngine {
 
   dispose() {
     this.renderer.dispose();
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else if (obj.material) {
+          obj.material.dispose();
+        }
+      }
+    });
     this.scene.clear();
   }
 }

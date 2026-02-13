@@ -66,6 +66,7 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
         setEquippedWeapon(data.equipped_weapon || 'fists');
       }
     };
+    loadCharacter();
   }, [characterId]);
 
   // Orientation change

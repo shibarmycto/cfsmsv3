@@ -31,20 +31,23 @@ export class RealtimeMultiplayer {
   private remotePlayers: Map<string, PlayerData> = new Map();
   private playerMeshes: Map<string, THREE.Group> = new Map();
   private lastBroadcast = 0;
-  private broadcastInterval = 50;
+  private broadcastInterval = 80; // Reduced frequency for 100-player scale
   private onCombatEvent: ((event: CombatEvent) => void) | null = null;
   private onPlayerCountChange: ((count: number) => void) | null = null;
 
-  // DB-backed sync for cross-domain visibility
+  // DB-backed sync
   private lastDbWrite = 0;
-  private dbWriteInterval = 300;
-  private dbPollInterval = 1000;
+  private dbWriteInterval = 500; // Less frequent DB writes
+  private dbPollInterval = 2000; // 2s polling - lighter on server
   private dbPollTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPosition = { x: 0, y: 0, z: 0 };
   private lastRotation = 0;
   private lastState: 'idle' | 'walking' | 'running' | 'attacking' = 'idle';
   private lastHealth = 100;
   private lastWeapon = 'fists';
+
+  // Performance: limit visible remote players
+  private readonly MAX_VISIBLE_PLAYERS = 30;
 
   constructor(playerId: string, playerName: string, scene: THREE.Scene) {
     this.playerId = playerId;
@@ -74,25 +77,13 @@ export class RealtimeMultiplayer {
 
     await this.channel.subscribe();
 
-    // Presence channel
+    // Presence
     this.presenceChannel = supabase.channel('cf-roleplay-presence');
     
     this.presenceChannel.on('presence', { event: 'sync' }, () => {
       const state = this.presenceChannel.presenceState();
       const allKeys = Object.keys(state);
       this.onPlayerCountChange?.(Math.max(allKeys.length, this.remotePlayers.size + 1));
-      
-      const presentIds = new Set<string>();
-      allKeys.forEach(key => {
-        const presences = state[key] as any[];
-        presences.forEach(p => presentIds.add(p.id));
-      });
-      
-      // Don't aggressively remove — DB poll will handle cross-domain players
-    });
-
-    this.presenceChannel.on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
-      // Only remove if also not in DB poll results (handled by stale check)
     });
 
     await this.presenceChannel.subscribe(async (status: string) => {
@@ -105,7 +96,6 @@ export class RealtimeMultiplayer {
       }
     });
 
-    // Start DB polling — this is the KEY for cross-domain visibility
     this.startDbPolling();
   }
 
@@ -120,14 +110,16 @@ export class RealtimeMultiplayer {
 
         if (data) {
           const now = Date.now();
+          const dbIds = new Set<string>();
+
           for (const char of data) {
+            dbIds.add(char.id);
             const lastSeen = char.last_seen_at ? new Date(char.last_seen_at).getTime() : 0;
-            // Skip records older than 20s
-            if (now - lastSeen > 20000) continue;
+            if (now - lastSeen > 30000) continue; // Stale
 
             const existing = this.remotePlayers.get(char.id);
-            // Always update from DB if no recent broadcast data (>1s threshold)
-            if (!existing || (now - existing.lastUpdate > 1000)) {
+            // Only use DB data if no recent broadcast
+            if (!existing || (now - existing.lastUpdate > 2000)) {
               this.handlePlayerUpdate({
                 id: char.id,
                 name: char.name,
@@ -141,16 +133,14 @@ export class RealtimeMultiplayer {
             }
           }
 
-          // Remove players no longer in DB results
-          const dbIds = new Set(data.map(c => c.id));
+          // Remove gone players
           this.remotePlayers.forEach((player, id) => {
-            if (!dbIds.has(id) && Date.now() - player.lastUpdate > 10000) {
+            if (!dbIds.has(id) && Date.now() - player.lastUpdate > 15000) {
               this.removeRemotePlayer(id);
             }
           });
 
-          const totalCount = Math.max(this.remotePlayers.size + 1, (data.length || 0) + 1);
-          this.onPlayerCountChange?.(totalCount);
+          this.onPlayerCountChange?.(Math.max(this.remotePlayers.size + 1, (data.length || 0) + 1));
         }
       } catch (e) {
         console.warn('DB poll failed:', e);
@@ -159,7 +149,6 @@ export class RealtimeMultiplayer {
       this.dbPollTimer = setTimeout(poll, this.dbPollInterval);
     };
 
-    // Initial poll immediately
     poll();
   }
 
@@ -241,10 +230,23 @@ export class RealtimeMultiplayer {
     const existing = this.remotePlayers.get(data.id);
     
     if (existing) {
-      // Update data but keep lastUpdate as max of existing and new
       data.lastUpdate = Math.max(data.lastUpdate, existing.lastUpdate);
       Object.assign(existing, data);
     } else {
+      // Don't exceed max visible players
+      if (this.playerMeshes.size >= this.MAX_VISIBLE_PLAYERS) {
+        // Remove the oldest player mesh
+        let oldestId = '';
+        let oldestTime = Infinity;
+        this.remotePlayers.forEach((p, id) => {
+          if (p.lastUpdate < oldestTime) {
+            oldestTime = p.lastUpdate;
+            oldestId = id;
+          }
+        });
+        if (oldestId) this.removeRemotePlayer(oldestId);
+      }
+      
       this.remotePlayers.set(data.id, data);
       this.createPlayerMesh(data);
       this.onPlayerCountChange?.(this.remotePlayers.size + 1);
@@ -252,22 +254,18 @@ export class RealtimeMultiplayer {
   }
 
   private createPlayerMesh(player: PlayerData): void {
-    // Use the SAME realistic character model as the local player
     const group = createRealisticCharacter({
       name: player.name,
       isPlayer: false,
-      // Random colors based on player id
       skinTone: this.getSkintoneFromId(player.id),
       shirtColor: this.getRandomPlayerColor(player.id),
       pantsColor: this.getDarkerColor(this.getRandomPlayerColor(player.id)),
       hairColor: this.getHairColorFromId(player.id),
     });
 
-    // Store animation references
     group.userData.animState = player.state;
-    group.userData.lastHealth = player.health;
-
-    group.position.set(player.position.x, player.position.y, player.position.z);
+    // Spawn at y=0 always - never inherit potentially bad y values
+    group.position.set(player.position.x, 0, player.position.z);
     group.rotation.y = player.rotation;
 
     this.scene.add(group);
@@ -308,25 +306,25 @@ export class RealtimeMultiplayer {
       const mesh = this.playerMeshes.get(id);
       if (!mesh) return;
 
-      // Remove inactive players (no update in 20 seconds)
-      if (now - player.lastUpdate > 20000) {
+      // Remove inactive
+      if (now - player.lastUpdate > 25000) {
         this.removeRemotePlayer(id);
         return;
       }
 
-      // Smooth position interpolation
-      const targetPos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
-      mesh.position.lerp(targetPos, 0.12);
+      // Smooth position interpolation - clamp Y to 0
+      const targetPos = new THREE.Vector3(player.position.x, 0, player.position.z);
+      mesh.position.lerp(targetPos, 0.1);
+      mesh.position.y = 0; // HARD clamp to ground
 
-      // Smooth rotation interpolation
+      // Smooth rotation
       let targetRot = player.rotation;
-      let currentRot = mesh.rotation.y;
-      let diff = targetRot - currentRot;
+      let diff = targetRot - mesh.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      mesh.rotation.y += diff * 0.12;
+      mesh.rotation.y += diff * 0.1;
 
-      // Animate using the same animation system as local player
+      // Animate
       const isMoving = player.state === 'walking' || player.state === 'running';
       const isSprinting = player.state === 'running';
       animateCharacter(mesh, isMoving, isSprinting, delta);
@@ -354,11 +352,9 @@ export class RealtimeMultiplayer {
 
   getNearbyPlayers(position: THREE.Vector3, range: number): PlayerData[] {
     return this.getRemotePlayers().filter(player => {
-      const dist = Math.sqrt(
-        Math.pow(player.position.x - position.x, 2) +
-        Math.pow(player.position.z - position.z, 2)
-      );
-      return dist <= range;
+      const dx = player.position.x - position.x;
+      const dz = player.position.z - position.z;
+      return Math.sqrt(dx * dx + dz * dz) <= range;
     });
   }
 
