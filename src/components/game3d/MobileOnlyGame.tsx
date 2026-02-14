@@ -85,6 +85,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
   const hasGun = weapon.type === 'ranged';
+  const [controlsFlipped, setControlsFlipped] = useState(false);
 
   // Load character data
   useEffect(() => {
@@ -273,6 +274,18 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
   }, []);
+
+  // Auto-enter fullscreen immersive mode on game load
+  useEffect(() => {
+    const enterImmersive = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    };
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(enterImmersive, 500);
+    return () => clearTimeout(timer);
+  }, [showSplash]);
 
   // Handle entering buildings
   const handleEnterBuilding = useCallback(() => {
@@ -472,90 +485,93 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         </div>
       </div>
 
-      {/* BOTTOM RIGHT - Action buttons */}
-      <div className="fixed bottom-4 right-4 flex items-end gap-3 z-40 pointer-events-auto">
-        {/* Left column: weapon info + interact + garage */}
-        <div className="flex flex-col items-center gap-2 mb-2">
-          {/* Weapon switch */}
-          <button onClick={() => setShowWeaponWheel(true)}
-            className="bg-black/70 backdrop-blur-sm rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-1.5 active:scale-95">
-            <span className="text-lg">{weapon.icon}</span>
-            <div>
-              <div className="text-white text-[10px] font-bold capitalize">{equippedWeapon}</div>
-              <div className="text-gray-400 text-[8px]">{weapon.damage} DMG • {weapon.range}m</div>
-            </div>
-          </button>
-          {/* Garage */}
-          <button onClick={() => setShowGarage(true)}
-            className="w-10 h-10 rounded-full bg-cyan-600/40 border border-cyan-400/50 flex items-center justify-center active:scale-90">
-            <Car className="w-5 h-5 text-cyan-300" />
-          </button>
-          {/* Enter building */}
-          {nearbyBuilding && (
-            <button onClick={handleEnterBuilding}
-              className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
-              <span className="text-white font-black text-lg">E</span>
-            </button>
-          )}
-        </div>
-
-        {/* Right column: Aim (if gun) + Fire/Attack */}
-        <div className="flex flex-col items-center gap-3">
-          {/* AIM button - touch & drag to move crosshair */}
-          {hasGun && (
-            <div
-              onTouchStart={(e) => {
-                e.preventDefault();
-                const t = e.touches[0];
-                aimTouchRef.current = { id: t.identifier, startX: t.clientX, startY: t.clientY };
-                setIsAiming(true);
-              }}
-              onTouchMove={(e) => {
-                if (!aimTouchRef.current) return;
-                let touch: React.Touch | null = null;
-                for (let i = 0; i < e.touches.length; i++) {
-                  if (e.touches[i].identifier === aimTouchRef.current.id) { touch = e.touches[i]; break; }
-                }
-                if (!touch) return;
-                const dx = touch.clientX - aimTouchRef.current.startX;
-                const dy = touch.clientY - aimTouchRef.current.startY;
-                const maxOffset = 150;
-                setAimOffset({
-                  x: Math.max(-maxOffset, Math.min(maxOffset, dx * 1.5)),
-                  y: Math.max(-maxOffset, Math.min(maxOffset, dy * 1.5))
-                });
-              }}
-              onTouchEnd={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
-              onTouchCancel={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
-              onMouseDown={() => setIsAiming(true)}
-              onMouseUp={() => { setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
-              className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all active:scale-90 ${
-                isAiming
-                  ? 'bg-red-500/60 border-red-400 shadow-lg shadow-red-500/50'
-                  : 'bg-white/10 border-white/30'
-              }`}>
-              <Crosshair className={`w-7 h-7 ${isAiming ? 'text-red-300' : 'text-white/60'}`} />
-            </div>
-          )}
-          {/* FIRE / ATTACK button */}
-          <button
-            onTouchStart={(e) => { e.preventDefault(); setAttackTrigger(prev => prev + 1); }}
-            onClick={() => setAttackTrigger(prev => prev + 1)}
-            className={`w-[72px] h-[72px] rounded-full border-4 flex items-center justify-center shadow-xl active:scale-90 transition-transform ${
-              hasGun
-                ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-400/80 shadow-red-500/50'
-                : 'bg-gradient-to-br from-orange-500 to-red-600 border-orange-400/80 shadow-orange-500/50'
-            }`}>
-            <span className="text-4xl">{weapon.icon}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Jump button */}
-      <div className="fixed bottom-[180px] left-[170px] z-40 pointer-events-auto">
+      {/* FIRE BUTTON - on opposite side of AIM (left side by default, right if flipped) */}
+      <div className={`fixed bottom-6 ${controlsFlipped ? 'right-4' : 'left-[180px]'} z-40 pointer-events-auto flex flex-col items-center gap-2`}>
+        {/* Jump button */}
         <button onTouchStart={() => { inputRef.current.jump = true; }} onTouchEnd={() => { inputRef.current.jump = false; }}
           className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 border-2 border-emerald-300 flex items-center justify-center shadow-lg shadow-emerald-500/30 active:scale-90">
           <ChevronUp className="w-6 h-6 text-white" />
+        </button>
+        {/* FIRE / ATTACK button */}
+        <button
+          onTouchStart={(e) => { e.preventDefault(); setAttackTrigger(prev => prev + 1); }}
+          onClick={() => setAttackTrigger(prev => prev + 1)}
+          className={`w-[72px] h-[72px] rounded-full border-4 flex items-center justify-center shadow-xl active:scale-90 transition-transform ${
+            hasGun
+              ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-400/80 shadow-red-500/50'
+              : 'bg-gradient-to-br from-orange-500 to-red-600 border-orange-400/80 shadow-orange-500/50'
+          }`}>
+          <span className="text-4xl">{weapon.icon}</span>
+        </button>
+      </div>
+
+      {/* AIM BUTTON - on opposite side of FIRE (right side by default, left if flipped) */}
+      <div className={`fixed bottom-6 ${controlsFlipped ? 'left-[180px]' : 'right-4'} z-40 pointer-events-auto flex flex-col items-center gap-2`}>
+        {/* Weapon switch */}
+        <button onClick={() => setShowWeaponWheel(true)}
+          className="bg-black/70 backdrop-blur-sm rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-1.5 active:scale-95">
+          <span className="text-lg">{weapon.icon}</span>
+          <div>
+            <div className="text-white text-[10px] font-bold capitalize">{equippedWeapon}</div>
+            <div className="text-gray-400 text-[8px]">{weapon.damage} DMG • {weapon.range}m</div>
+          </div>
+        </button>
+        {/* Garage */}
+        <button onClick={() => setShowGarage(true)}
+          className="w-10 h-10 rounded-full bg-cyan-600/40 border border-cyan-400/50 flex items-center justify-center active:scale-90">
+          <Car className="w-5 h-5 text-cyan-300" />
+        </button>
+        {/* Enter building */}
+        {nearbyBuilding && (
+          <button onClick={handleEnterBuilding}
+            className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
+            <span className="text-white font-black text-lg">E</span>
+          </button>
+        )}
+        {/* AIM button - touch & drag to move crosshair */}
+        {hasGun && (
+          <div
+            onTouchStart={(e) => {
+              e.preventDefault();
+              const t = e.touches[0];
+              aimTouchRef.current = { id: t.identifier, startX: t.clientX, startY: t.clientY };
+              setIsAiming(true);
+            }}
+            onTouchMove={(e) => {
+              if (!aimTouchRef.current) return;
+              let touch: React.Touch | null = null;
+              for (let i = 0; i < e.touches.length; i++) {
+                if (e.touches[i].identifier === aimTouchRef.current.id) { touch = e.touches[i]; break; }
+              }
+              if (!touch) return;
+              const dx = touch.clientX - aimTouchRef.current.startX;
+              const dy = touch.clientY - aimTouchRef.current.startY;
+              const maxOffset = 150;
+              setAimOffset({
+                x: Math.max(-maxOffset, Math.min(maxOffset, dx * 1.5)),
+                y: Math.max(-maxOffset, Math.min(maxOffset, dy * 1.5))
+              });
+            }}
+            onTouchEnd={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
+            onTouchCancel={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
+            onMouseDown={() => setIsAiming(true)}
+            onMouseUp={() => { setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
+            className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all active:scale-90 ${
+              isAiming
+                ? 'bg-red-500/60 border-red-400 shadow-lg shadow-red-500/50'
+                : 'bg-white/10 border-white/30'
+            }`}>
+            <Crosshair className={`w-7 h-7 ${isAiming ? 'text-red-300' : 'text-white/60'}`} />
+          </div>
+        )}
+      </div>
+
+      {/* Flip controls button - small toggle in top-left near menu */}
+      <div className="fixed top-14 left-2 z-40 pointer-events-auto">
+        <button onClick={() => setControlsFlipped(f => !f)}
+          className="w-8 h-8 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90"
+          title="Switch hands">
+          <span className="text-xs">🔄</span>
         </button>
       </div>
 
