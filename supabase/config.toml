@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.cf-blockchain-alerts]
 verify_jwt = false
+
+[functions.solana-wallet-create]
+verify_jwt = false
+
+[functions.helius-signals]
+verify_jwt = false
+
+[functions.solana-auto-trade]
+verify_jwt = false
