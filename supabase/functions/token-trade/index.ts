@@ -7,11 +7,28 @@ const corsHeaders = {
 
 const TOKEN_CREATION_COST = 25;
 const INITIAL_SUPPLY = 999000000;
-const INITIAL_CIRCULATING = 3000; // Start with 3K circulating for 3K market cap at price 1
+const INITIAL_CIRCULATING = 3000;
 const LARGE_TRADE_THRESHOLD = 10000;
-const MAX_OWNERSHIP_PERCENT = 0.25; // 25% max ownership per user
-const EARLY_WITHDRAWAL_FEE = 0.5; // 50% fee for selling before graduation
-const PRICE_IMPACT_FACTOR = 0.0001; // Price impact per trade (0.01% per 100 tokens)
+const MAX_OWNERSHIP_PERCENT = 0.25;
+const EARLY_WITHDRAWAL_FEE = 0.5;
+const PRICE_IMPACT_FACTOR = 0.0001;
+
+// Fire-and-forget Telegram alert
+async function sendTelegramAlert(supabaseUrl: string, alertType: string, data: Record<string, any>) {
+  try {
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    await fetch(`${supabaseUrl}/functions/v1/cf-blockchain-alerts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({ alert_type: alertType, data }),
+    });
+  } catch (e) {
+    console.error('Telegram alert failed (non-blocking):', e);
+  }
+}
 
 // Calculate new price based on trade impact
 function calculatePriceImpact(
@@ -173,6 +190,16 @@ Deno.serve(async (req) => {
         description: `${INITIAL_SUPPLY.toLocaleString()} ${symbol.toUpperCase()} tokens created! ${INITIAL_CIRCULATING.toLocaleString()} available for trading now. ${description || ''}`,
         impact: 'high',
         metadata: { creator_id: user.id, total_supply: INITIAL_SUPPLY, initial_circulating: INITIAL_CIRCULATING },
+      });
+
+      // Send Telegram alert for new token
+      sendTelegramAlert(supabaseUrl, 'new_token', {
+        name,
+        symbol: symbol.toUpperCase(),
+        logo_emoji: logoEmoji || '🪙',
+        price: 1,
+        description: description || '',
+        creator_name: user.email?.split('@')[0] || 'Anonymous',
       });
 
       return new Response(
@@ -397,6 +424,27 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Send Telegram alert for buy
+      sendTelegramAlert(supabaseUrl, 'token_buy', {
+        symbol: tokenData.symbol,
+        logo_emoji: tokenData.logo_emoji,
+        token_name: tokenData.name,
+        amount,
+        total: totalCost,
+        price: pricePerToken,
+        buyer_name: user.email?.split('@')[0] || 'Anonymous',
+      });
+
+      // Alert for status upgrade
+      if (newStatus !== tokenData.status) {
+        sendTelegramAlert(supabaseUrl, 'token_graduated', {
+          name: tokenData.name,
+          symbol: tokenData.symbol,
+          logo_emoji: tokenData.logo_emoji,
+          market_cap: newMarketCap,
+        });
+      }
+
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -548,6 +596,17 @@ Deno.serve(async (req) => {
           metadata: { holder_count: newHolderCount },
         });
       }
+
+      // Send Telegram alert for sell
+      sendTelegramAlert(supabaseUrl, 'token_sell', {
+        symbol: tokenData.symbol,
+        logo_emoji: tokenData.logo_emoji,
+        token_name: tokenData.name,
+        amount,
+        total: totalValue + earlyWithdrawalPenalty,
+        price: pricePerToken,
+        seller_name: user.email?.split('@')[0] || 'Anonymous',
+      });
 
       return new Response(
         JSON.stringify({ 
