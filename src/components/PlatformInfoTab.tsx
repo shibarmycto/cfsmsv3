@@ -160,12 +160,12 @@ export default function PlatformInfoTab() {
           Join the Revolution
         </h3>
         <div className="grid sm:grid-cols-2 gap-3">
-          <a href="https://t.me/cfsmsblockchain" target="_blank" rel="noopener noreferrer" 
+          <a href="https://t.me/cfblockchain" target="_blank" rel="noopener noreferrer" 
              className="flex items-center gap-3 bg-secondary/30 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
             <span className="text-2xl">📱</span>
             <div>
               <p className="font-semibold text-sm">Telegram</p>
-              <p className="text-xs text-muted-foreground">t.me/cfsmsblockchain</p>
+              <p className="text-xs text-muted-foreground">t.me/cfblockchain</p>
             </div>
           </a>
           <div className="flex items-center gap-3 bg-secondary/30 rounded-lg p-4 border border-border">
