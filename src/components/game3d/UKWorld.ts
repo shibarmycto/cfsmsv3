@@ -73,25 +73,27 @@ export function createUKWorld(scene: THREE.Scene): GameBuilding[] {
 
 // ─── Ground ───
 function createGround(scene: THREE.Scene) {
-  const grassTex = noiseTexture('#3a6b2a', 30);
-  grassTex.repeat.set(60, 60);
+  // Realistic grass with color variation
+  const grassTex = noiseTexture('#2d5a1e', 25, 512);
+  grassTex.repeat.set(80, 80);
   const grass = new THREE.Mesh(
     new THREE.PlaneGeometry(2000, 2000),
-    new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 })
+    new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.92, color: 0x3a6b2a })
   );
   grass.rotation.x = -Math.PI / 2;
   grass.receiveShadow = true;
   scene.add(grass);
 
-  // Concrete pavement near roads
-  const paveTex = noiseTexture('#888888', 12);
-  paveTex.repeat.set(60, 60);
+  // Concrete pavement - realistic grey with micro detail
+  const paveTex = noiseTexture('#7a7a7a', 10, 512);
+  paveTex.repeat.set(80, 80);
   const pave = new THREE.Mesh(
     new THREE.PlaneGeometry(2000, 2000),
-    new THREE.MeshStandardMaterial({ map: paveTex, roughness: 0.85 })
+    new THREE.MeshStandardMaterial({ map: paveTex, roughness: 0.82, color: 0x999999 })
   );
   pave.rotation.x = -Math.PI / 2;
   pave.position.y = 0.005;
+  pave.receiveShadow = true;
   scene.add(pave);
 }
 
@@ -539,15 +541,30 @@ function createParkedCar(scene: THREE.Scene, x: number, z: number, rotation: num
 
 // ─── Atmosphere ───
 function createAtmosphere(scene: THREE.Scene) {
-  const silhouetteMat = mat('skyline', { color: 0x334455, roughness: 1, metalness: 0 });
-  for (let i = 0; i < 16; i++) {
-    const angle = (i / 16) * Math.PI * 2;
-    const dist = 600 + Math.random() * 150;
-    const h = 30 + Math.random() * 60;
-    const w = 15 + Math.random() * 20;
-    const sil = new THREE.Mesh(new THREE.BoxGeometry(w, h, 10), silhouetteMat);
+  // City skyline silhouettes - more realistic with varied heights
+  const silhouetteMat = mat('skyline', { color: 0x2a3544, roughness: 1, metalness: 0 });
+  const darkSilMat = mat('skyline-dark', { color: 0x1a2530, roughness: 1, metalness: 0 });
+  
+  for (let i = 0; i < 24; i++) {
+    const angle = (i / 24) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
+    const dist = 550 + Math.random() * 200;
+    const h = 20 + Math.random() * 80;
+    const w = 12 + Math.random() * 25;
+    const useMat = Math.random() > 0.5 ? silhouetteMat : darkSilMat;
+    const sil = new THREE.Mesh(new THREE.BoxGeometry(w, h, 8), useMat);
     sil.position.set(Math.sin(angle) * dist, h / 2, Math.cos(angle) * dist);
     sil.lookAt(0, h / 2, 0);
     scene.add(sil);
   }
+
+  // Add distant haze plane for depth
+  const hazeMat = new THREE.MeshBasicMaterial({
+    color: 0x8bafc4,
+    transparent: true,
+    opacity: 0.3,
+    side: THREE.DoubleSide,
+  });
+  const haze = new THREE.Mesh(new THREE.PlaneGeometry(2000, 100), hazeMat);
+  haze.position.set(0, 50, -800);
+  scene.add(haze);
 }
