@@ -298,7 +298,12 @@ export default function GameCombat({
 
     if (hitTarget) {
       const damage = Math.max(1, weapon.damage + Math.floor(Math.random() * 10) - 5);
-      const isKill = hitTarget.health <= damage;
+      // Calculate actual remaining HP after armor absorption
+      const targetArmor = (hitTarget as any).armor || 0;
+      const armorAbsorb = Math.min(targetArmor, damage);
+      const healthDamage = damage - armorAbsorb;
+      const remainingHealth = Math.max(0, hitTarget.health - healthDamage);
+      const isKill = remainingHealth <= 0;
       setShowHitMarker(true);
       setTimeout(() => setShowHitMarker(false), 150);
       addDamageNumber(damage, 'yellow');
@@ -311,6 +316,12 @@ export default function GameCombat({
       if (isKill) {
         addKillBanner(characterName, hitTarget.name, equippedWeapon);
         toast.success(`☠️ Knocked out ${hitTarget.name}!`);
+        // Force kill via DB in case broadcast is missed
+        await supabase.from('game_characters').update({
+          health: 0, is_knocked_out: true,
+          knocked_out_until: new Date(Date.now() + 30000).toISOString(),
+          knocked_out_by: characterId
+        }).eq('id', hitTarget.id);
       }
     } else if (weapon.type === 'melee' && isNearBuildingWall()) {
       const selfDamage = Math.floor(weapon.damage * 0.6);
