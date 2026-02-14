@@ -9,406 +9,385 @@ interface CharacterOptions {
   isPlayer?: boolean;
 }
 
+// Highly detailed human character using anatomical proportions
 export function createRealisticCharacter(options: CharacterOptions = {}): THREE.Group {
   const {
-    skinTone = 0xd4a574,
+    skinTone = 0xc68642,
     hairColor = 0x1a1a1a,
-    shirtColor = 0x2c3e50,
-    pantsColor = 0x1a3a5c,
+    shirtColor = 0x1a1a2e,
+    pantsColor = 0x16213e,
     name = '',
     isPlayer = true
   } = options;
 
   const group = new THREE.Group();
-  
-  // Materials
-  const skinMat = new THREE.MeshStandardMaterial({ 
-    color: skinTone, 
-    roughness: 0.5,
-    metalness: 0.1
-  });
-  const clothMat = new THREE.MeshStandardMaterial({ 
-    color: shirtColor, 
-    roughness: 0.7 
-  });
-  const pantsMat = new THREE.MeshStandardMaterial({ 
-    color: pantsColor, 
-    roughness: 0.8 
-  });
-  const hairMat = new THREE.MeshStandardMaterial({ 
-    color: hairColor, 
-    roughness: 0.9 
-  });
-  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x2d1b0e });
-  const eyeIrisMat = new THREE.MeshStandardMaterial({ color: 0x4a7c59 });
 
-  // === HEAD GROUP ===
+  // PBR Materials
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: skinTone,
+    roughness: 0.55,
+    metalness: 0.05,
+    envMapIntensity: 0.8,
+  });
+
+  const clothMat = new THREE.MeshStandardMaterial({
+    color: shirtColor,
+    roughness: 0.65,
+    metalness: 0.0,
+  });
+
+  const pantsMat = new THREE.MeshStandardMaterial({
+    color: pantsColor,
+    roughness: 0.75,
+    metalness: 0.0,
+  });
+
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: hairColor,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+
+  const shoeMat = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.4,
+    metalness: 0.15,
+  });
+
+  // === HEAD (anatomically proportioned) ===
   const headGroup = new THREE.Group();
   headGroup.name = 'head';
 
-  // Head shape - more realistic oval
-  const headGeo = new THREE.SphereGeometry(0.4, 32, 32);
-  const head = new THREE.Mesh(headGeo, skinMat);
-  head.scale.set(0.9, 1.1, 0.95);
-  head.castShadow = true;
-  headGroup.add(head);
+  // Skull - slightly elongated sphere
+  const skull = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 24, 24),
+    skinMat
+  );
+  skull.scale.set(0.92, 1.05, 0.95);
+  skull.castShadow = true;
+  headGroup.add(skull);
 
-  // Face structure - chin and jaw
-  const jawGeo = new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-  const jaw = new THREE.Mesh(jawGeo, skinMat.clone());
-  jaw.position.y = -0.15;
-  jaw.scale.set(0.85, 0.6, 0.9);
+  // Jaw / chin
+  const jaw = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6),
+    skinMat.clone()
+  );
+  jaw.position.set(0, -0.12, 0.02);
+  jaw.scale.set(0.88, 0.55, 0.85);
   headGroup.add(jaw);
 
-  // Cheekbones
-  const cheekGeo = new THREE.SphereGeometry(0.1, 12, 12);
-  const leftCheek = new THREE.Mesh(cheekGeo, skinMat.clone());
-  leftCheek.position.set(-0.25, -0.05, 0.28);
-  leftCheek.scale.set(1.2, 0.8, 0.6);
-  headGroup.add(leftCheek);
-  
-  const rightCheek = new THREE.Mesh(cheekGeo, skinMat.clone());
-  rightCheek.position.set(0.25, -0.05, 0.28);
-  rightCheek.scale.set(1.2, 0.8, 0.6);
-  headGroup.add(rightCheek);
+  // Eyes
+  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f0, roughness: 0.2 });
+  const irisMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.3 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
 
-  // === EYES ===
-  // Eye sockets (slightly darker skin)
-  const socketMat = skinMat.clone();
-  socketMat.color.setHex(skinTone - 0x101010);
-  
-  // Left eye
-  const leftEyeGroup = new THREE.Group();
-  leftEyeGroup.name = 'leftEye';
-  
-  const leftEyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), eyeWhiteMat);
-  leftEyeWhite.scale.set(1.3, 1, 0.8);
-  leftEyeGroup.add(leftEyeWhite);
-  
-  const leftIris = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), eyeIrisMat);
-  leftIris.position.z = 0.045;
-  leftEyeGroup.add(leftIris);
-  
-  const leftPupil = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), eyePupilMat);
-  leftPupil.position.z = 0.06;
-  leftEyeGroup.add(leftPupil);
-  
-  // Eye highlight
-  const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const leftHighlight = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 8), highlightMat);
-  leftHighlight.position.set(0.015, 0.015, 0.065);
-  leftEyeGroup.add(leftHighlight);
-  
-  leftEyeGroup.position.set(-0.12, 0.08, 0.32);
-  headGroup.add(leftEyeGroup);
+  [-1, 1].forEach(side => {
+    const eyeGroup = new THREE.Group();
+    eyeGroup.name = side < 0 ? 'leftEye' : 'rightEye';
 
-  // Right eye
-  const rightEyeGroup = new THREE.Group();
-  rightEyeGroup.name = 'rightEye';
-  
-  const rightEyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 16), eyeWhiteMat.clone());
-  rightEyeWhite.scale.set(1.3, 1, 0.8);
-  rightEyeGroup.add(rightEyeWhite);
-  
-  const rightIris = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), eyeIrisMat.clone());
-  rightIris.position.z = 0.045;
-  rightEyeGroup.add(rightIris);
-  
-  const rightPupil = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), eyePupilMat.clone());
-  rightPupil.position.z = 0.06;
-  rightEyeGroup.add(rightPupil);
-  
-  const rightHighlight = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 8), highlightMat.clone());
-  rightHighlight.position.set(0.015, 0.015, 0.065);
-  rightEyeGroup.add(rightHighlight);
-  
-  rightEyeGroup.position.set(0.12, 0.08, 0.32);
-  headGroup.add(rightEyeGroup);
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.042, 12, 12), eyeWhiteMat);
+    white.scale.set(1.2, 1, 0.7);
+    eyeGroup.add(white);
 
-  // === EYEBROWS ===
-  const eyebrowGeo = new THREE.BoxGeometry(0.12, 0.025, 0.03);
-  const eyebrowMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.9 });
-  
-  const leftBrow = new THREE.Mesh(eyebrowGeo, eyebrowMat);
-  leftBrow.position.set(-0.12, 0.18, 0.35);
-  leftBrow.rotation.z = 0.1;
-  headGroup.add(leftBrow);
-  
-  const rightBrow = new THREE.Mesh(eyebrowGeo, eyebrowMat.clone());
-  rightBrow.position.set(0.12, 0.18, 0.35);
-  rightBrow.rotation.z = -0.1;
-  headGroup.add(rightBrow);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 10), irisMat);
+    iris.position.z = 0.032;
+    eyeGroup.add(iris);
 
-  // === NOSE ===
-  const noseGroup = new THREE.Group();
-  
-  // Nose bridge
-  const bridgeGeo = new THREE.BoxGeometry(0.06, 0.15, 0.08);
-  const bridge = new THREE.Mesh(bridgeGeo, skinMat.clone());
-  bridge.position.set(0, 0, 0.35);
-  noseGroup.add(bridge);
-  
-  // Nose tip
-  const tipGeo = new THREE.SphereGeometry(0.045, 12, 12);
-  const tip = new THREE.Mesh(tipGeo, skinMat.clone());
-  tip.position.set(0, -0.06, 0.4);
-  tip.scale.set(1.2, 0.8, 1);
-  noseGroup.add(tip);
-  
-  // Nostrils
-  const nostrilGeo = new THREE.SphereGeometry(0.02, 8, 8);
-  const nostrilMat = skinMat.clone();
-  nostrilMat.color.setHex(skinTone - 0x202020);
-  
-  const leftNostril = new THREE.Mesh(nostrilGeo, nostrilMat);
-  leftNostril.position.set(-0.025, -0.08, 0.38);
-  noseGroup.add(leftNostril);
-  
-  const rightNostril = new THREE.Mesh(nostrilGeo, nostrilMat.clone());
-  rightNostril.position.set(0.025, -0.08, 0.38);
-  noseGroup.add(rightNostril);
-  
-  headGroup.add(noseGroup);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), pupilMat);
+    pupil.position.z = 0.038;
+    eyeGroup.add(pupil);
 
-  // === MOUTH ===
-  const mouthGroup = new THREE.Group();
-  
-  // Lips
-  const upperLipGeo = new THREE.BoxGeometry(0.14, 0.025, 0.04);
-  const lipMat = new THREE.MeshStandardMaterial({ color: skinTone - 0x151010, roughness: 0.4 });
-  const upperLip = new THREE.Mesh(upperLipGeo, lipMat);
-  upperLip.position.set(0, -0.18, 0.35);
-  mouthGroup.add(upperLip);
-  
-  const lowerLipGeo = new THREE.BoxGeometry(0.12, 0.03, 0.04);
-  const lowerLip = new THREE.Mesh(lowerLipGeo, lipMat.clone());
-  lowerLip.position.set(0, -0.21, 0.34);
-  mouthGroup.add(lowerLip);
-  
-  headGroup.add(mouthGroup);
+    // Specular highlight
+    const highlight = new THREE.Mesh(
+      new THREE.SphereGeometry(0.005, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    highlight.position.set(0.008, 0.008, 0.042);
+    eyeGroup.add(highlight);
 
-  // === EARS ===
-  const earGeo = new THREE.SphereGeometry(0.08, 12, 12);
-  
-  const leftEar = new THREE.Mesh(earGeo, skinMat.clone());
-  leftEar.position.set(-0.38, 0.02, 0);
-  leftEar.scale.set(0.4, 1, 0.7);
-  headGroup.add(leftEar);
-  
-  const rightEar = new THREE.Mesh(earGeo, skinMat.clone());
-  rightEar.position.set(0.38, 0.02, 0);
-  rightEar.scale.set(0.4, 1, 0.7);
-  headGroup.add(rightEar);
+    eyeGroup.position.set(side * 0.085, 0.045, 0.22);
+    headGroup.add(eyeGroup);
+  });
 
-  // === HAIR ===
-  // Main hair
-  const hairGeo = new THREE.SphereGeometry(0.42, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55);
-  const hair = new THREE.Mesh(hairGeo, hairMat);
-  hair.position.y = 0.1;
-  hair.scale.set(0.95, 0.95, 0.95);
-  headGroup.add(hair);
-  
-  // Hair sides (fade style)
-  const sideHairGeo = new THREE.CylinderGeometry(0.38, 0.35, 0.2, 32, 1, true);
-  const sideHair = new THREE.Mesh(sideHairGeo, hairMat.clone());
-  sideHair.position.y = 0;
-  headGroup.add(sideHair);
+  // Eyebrows
+  [-1, 1].forEach(side => {
+    const brow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.015, 0.02),
+      hairMat
+    );
+    brow.position.set(side * 0.085, 0.1, 0.24);
+    brow.rotation.z = side * 0.08;
+    headGroup.add(brow);
+  });
 
-  headGroup.position.y = 1.85;
+  // Nose
+  const noseBridge = new THREE.Mesh(
+    new THREE.BoxGeometry(0.035, 0.08, 0.05),
+    skinMat.clone()
+  );
+  noseBridge.position.set(0, -0.01, 0.26);
+  headGroup.add(noseBridge);
+
+  const noseTip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.028, 10, 10),
+    skinMat.clone()
+  );
+  noseTip.position.set(0, -0.045, 0.28);
+  noseTip.scale.set(1.1, 0.7, 0.9);
+  headGroup.add(noseTip);
+
+  // Mouth
+  const lipMat = skinMat.clone();
+  lipMat.color.offsetHSL(0, 0.05, -0.08);
+  const upperLip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.012, 0.025),
+    lipMat
+  );
+  upperLip.position.set(0, -0.11, 0.24);
+  headGroup.add(upperLip);
+
+  const lowerLip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.07, 0.014, 0.025),
+    lipMat.clone()
+  );
+  lowerLip.position.set(0, -0.13, 0.235);
+  headGroup.add(lowerLip);
+
+  // Ears
+  [-1, 1].forEach(side => {
+    const ear = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 10, 10),
+      skinMat.clone()
+    );
+    ear.position.set(side * 0.27, 0.01, -0.02);
+    ear.scale.set(0.3, 0.8, 0.55);
+    headGroup.add(ear);
+  });
+
+  // Hair - short fade style
+  const hairMain = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    hairMat
+  );
+  hairMain.position.y = 0.06;
+  hairMain.scale.set(0.96, 0.85, 0.96);
+  headGroup.add(hairMain);
+
+  // Fade sides
+  const sideFade = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.27, 0.25, 0.12, 20, 1, true),
+    hairMat.clone()
+  );
+  sideFade.position.y = -0.02;
+  headGroup.add(sideFade);
+
+  headGroup.position.y = 1.62;
   group.add(headGroup);
 
   // === NECK ===
-  const neckGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.2, 16);
-  const neck = new THREE.Mesh(neckGeo, skinMat.clone());
-  neck.position.y = 1.55;
+  const neck = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.1, 0.14, 12),
+    skinMat.clone()
+  );
+  neck.position.y = 1.4;
   neck.castShadow = true;
   group.add(neck);
 
   // === TORSO ===
-  const torsoGroup = new THREE.Group();
-  
-  // Main torso
-  const torsoGeo = new THREE.CylinderGeometry(0.35, 0.32, 0.9, 16);
-  const torso = new THREE.Mesh(torsoGeo, clothMat);
-  torso.position.y = 1.0;
-  torso.castShadow = true;
-  torsoGroup.add(torso);
-  
-  // Shoulders
-  const shoulderGeo = new THREE.SphereGeometry(0.15, 12, 12);
-  
-  const leftShoulder = new THREE.Mesh(shoulderGeo, clothMat.clone());
-  leftShoulder.position.set(-0.35, 1.35, 0);
-  leftShoulder.scale.set(1.2, 0.8, 1);
-  torsoGroup.add(leftShoulder);
-  
-  const rightShoulder = new THREE.Mesh(shoulderGeo, clothMat.clone());
-  rightShoulder.position.set(0.35, 1.35, 0);
-  rightShoulder.scale.set(1.2, 0.8, 1);
-  torsoGroup.add(rightShoulder);
-  
-  group.add(torsoGroup);
+  // Chest - tapered
+  const chest = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.24, 0.55, 14),
+    clothMat
+  );
+  chest.position.y = 1.08;
+  chest.castShadow = true;
+  group.add(chest);
+
+  // Shoulders - give breadth
+  [-1, 1].forEach(side => {
+    const shoulder = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 10, 10),
+      clothMat.clone()
+    );
+    shoulder.position.set(side * 0.28, 1.28, 0);
+    shoulder.scale.set(1.1, 0.7, 0.9);
+    shoulder.castShadow = true;
+    group.add(shoulder);
+  });
+
+  // Abdomen
+  const abdomen = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.24, 0.22, 0.3, 12),
+    clothMat.clone()
+  );
+  abdomen.position.y = 0.73;
+  abdomen.castShadow = true;
+  group.add(abdomen);
 
   // === ARMS ===
-  // Upper arms
-  const upperArmGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.4, 12);
-  
-  const leftUpperArm = new THREE.Mesh(upperArmGeo, clothMat.clone());
-  leftUpperArm.position.set(-0.42, 1.15, 0);
-  leftUpperArm.rotation.z = -0.15;
-  leftUpperArm.name = 'leftUpperArm';
-  leftUpperArm.castShadow = true;
-  group.add(leftUpperArm);
-  
-  const rightUpperArm = new THREE.Mesh(upperArmGeo, clothMat.clone());
-  rightUpperArm.position.set(0.42, 1.15, 0);
-  rightUpperArm.rotation.z = 0.15;
-  rightUpperArm.name = 'rightUpperArm';
-  rightUpperArm.castShadow = true;
-  group.add(rightUpperArm);
+  [-1, 1].forEach(side => {
+    // Upper arm
+    const upperArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.065, 0.055, 0.32, 10),
+      clothMat.clone()
+    );
+    upperArm.position.set(side * 0.34, 1.12, 0);
+    upperArm.rotation.z = side * -0.12;
+    upperArm.name = side < 0 ? 'leftUpperArm' : 'rightUpperArm';
+    upperArm.castShadow = true;
+    group.add(upperArm);
 
-  // Lower arms (forearms - skin visible)
-  const forearmGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.35, 12);
-  
-  const leftForearm = new THREE.Mesh(forearmGeo, skinMat.clone());
-  leftForearm.position.set(-0.48, 0.78, 0);
-  leftForearm.name = 'leftArm';
-  leftForearm.castShadow = true;
-  group.add(leftForearm);
-  
-  const rightForearm = new THREE.Mesh(forearmGeo, skinMat.clone());
-  rightForearm.position.set(0.48, 0.78, 0);
-  rightForearm.name = 'rightArm';
-  rightForearm.castShadow = true;
-  group.add(rightForearm);
+    // Forearm
+    const forearm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.04, 0.28, 10),
+      skinMat.clone()
+    );
+    forearm.position.set(side * 0.38, 0.85, 0);
+    forearm.name = side < 0 ? 'leftArm' : 'rightArm';
+    forearm.castShadow = true;
+    group.add(forearm);
 
-  // Hands
-  const handGeo = new THREE.SphereGeometry(0.06, 12, 12);
-  
-  const leftHand = new THREE.Mesh(handGeo, skinMat.clone());
-  leftHand.position.set(-0.48, 0.58, 0);
-  leftHand.scale.set(1, 1.2, 0.7);
-  group.add(leftHand);
-  
-  const rightHand = new THREE.Mesh(handGeo, skinMat.clone());
-  rightHand.position.set(0.48, 0.58, 0);
-  rightHand.scale.set(1, 1.2, 0.7);
-  group.add(rightHand);
+    // Hand
+    const hand = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 8),
+      skinMat.clone()
+    );
+    hand.position.set(side * 0.38, 0.68, 0);
+    hand.scale.set(0.9, 1.2, 0.6);
+    group.add(hand);
+  });
 
-  // === LEGS ===
-  // Hips
-  const hipGeo = new THREE.CylinderGeometry(0.32, 0.25, 0.2, 16);
-  const hips = new THREE.Mesh(hipGeo, pantsMat);
+  // === HIPS ===
+  const hips = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.2, 0.14, 12),
+    pantsMat
+  );
   hips.position.y = 0.55;
   hips.castShadow = true;
   group.add(hips);
 
-  // Upper legs (thighs)
-  const thighGeo = new THREE.CylinderGeometry(0.13, 0.11, 0.45, 12);
-  
-  const leftThigh = new THREE.Mesh(thighGeo, pantsMat.clone());
-  leftThigh.position.set(-0.12, 0.3, 0);
-  leftThigh.name = 'leftThigh';
-  leftThigh.castShadow = true;
-  group.add(leftThigh);
-  
-  const rightThigh = new THREE.Mesh(thighGeo, pantsMat.clone());
-  rightThigh.position.set(0.12, 0.3, 0);
-  rightThigh.name = 'rightThigh';
-  rightThigh.castShadow = true;
-  group.add(rightThigh);
+  // === LEGS ===
+  [-1, 1].forEach(side => {
+    // Thigh
+    const thigh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.075, 0.38, 10),
+      pantsMat.clone()
+    );
+    thigh.position.set(side * 0.1, 0.32, 0);
+    thigh.name = side < 0 ? 'leftThigh' : 'rightThigh';
+    thigh.castShadow = true;
+    group.add(thigh);
 
-  // Lower legs (calves)
-  const calfGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.4, 12);
-  
-  const leftCalf = new THREE.Mesh(calfGeo, pantsMat.clone());
-  leftCalf.position.set(-0.12, -0.1, 0);
-  leftCalf.name = 'leftLeg';
-  leftCalf.castShadow = true;
-  group.add(leftCalf);
-  
-  const rightCalf = new THREE.Mesh(calfGeo, pantsMat.clone());
-  rightCalf.position.set(0.12, -0.1, 0);
-  rightCalf.name = 'rightLeg';
-  rightCalf.castShadow = true;
-  group.add(rightCalf);
+    // Calf
+    const calf = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.055, 0.34, 10),
+      pantsMat.clone()
+    );
+    calf.position.set(side * 0.1, -0.02, 0);
+    calf.name = side < 0 ? 'leftLeg' : 'rightLeg';
+    calf.castShadow = true;
+    group.add(calf);
 
-  // === SHOES ===
-  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
-  const shoeGeo = new THREE.BoxGeometry(0.12, 0.08, 0.22);
-  
-  const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
-  leftShoe.position.set(-0.12, -0.32, 0.03);
-  group.add(leftShoe);
-  
-  const rightShoe = new THREE.Mesh(shoeGeo, shoeMat.clone());
-  rightShoe.position.set(0.12, -0.32, 0.03);
-  group.add(rightShoe);
+    // Shoe
+    const shoe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.06, 0.17),
+      shoeMat.clone()
+    );
+    shoe.position.set(side * 0.1, -0.21, 0.02);
+    shoe.castShadow = true;
+    group.add(shoe);
+  });
 
-  // === NAME TAG (for other players) ===
+  // === NAME TAG ===
   if (name && !isPlayer) {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
-    canvas.height = 64;
+    canvas.height = 48;
     const ctx = canvas.getContext('2d')!;
-    
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.roundRect(8, 8, 240, 48, 12);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.beginPath();
+    ctx.roundRect(4, 4, 248, 40, 8);
     ctx.fill();
-    
+
     ctx.fillStyle = '#00d4ff';
-    ctx.font = 'Bold 24px Arial';
+    ctx.font = 'Bold 20px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(name, 128, 32);
-    
+    ctx.fillText(name, 128, 24);
+
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.position.y = 2.4;
-    sprite.scale.set(2, 0.5, 1);
+    sprite.position.y = 2.1;
+    sprite.scale.set(1.6, 0.3, 1);
     group.add(sprite);
   }
+
+  // Scale overall for better world proportions
+  group.scale.setScalar(1.15);
 
   return group;
 }
 
 export function animateCharacter(
-  character: THREE.Group, 
-  isMoving: boolean, 
+  character: THREE.Group,
+  isMoving: boolean,
   isSprinting: boolean,
   deltaTime: number
 ) {
-  const speed = isSprinting ? 15 : 10;
-  const swingAmount = isSprinting ? 0.6 : 0.4;
+  const speed = isSprinting ? 14 : 8;
+  const swing = isSprinting ? 0.55 : 0.35;
   const time = Date.now() * 0.001 * speed;
 
   const leftArm = character.getObjectByName('leftArm') as THREE.Mesh;
   const rightArm = character.getObjectByName('rightArm') as THREE.Mesh;
+  const leftUpperArm = character.getObjectByName('leftUpperArm') as THREE.Mesh;
+  const rightUpperArm = character.getObjectByName('rightUpperArm') as THREE.Mesh;
   const leftLeg = character.getObjectByName('leftLeg') as THREE.Mesh;
   const rightLeg = character.getObjectByName('rightLeg') as THREE.Mesh;
   const leftThigh = character.getObjectByName('leftThigh') as THREE.Mesh;
   const rightThigh = character.getObjectByName('rightThigh') as THREE.Mesh;
+  const head = character.getObjectByName('head') as THREE.Group;
 
   if (isMoving) {
-    // Walking/running animation
     const cycle = Math.sin(time);
-    
-    if (leftArm) leftArm.rotation.x = cycle * swingAmount;
-    if (rightArm) rightArm.rotation.x = -cycle * swingAmount;
-    if (leftLeg) leftLeg.rotation.x = -cycle * swingAmount * 0.7;
-    if (rightLeg) rightLeg.rotation.x = cycle * swingAmount * 0.7;
-    if (leftThigh) leftThigh.rotation.x = -cycle * swingAmount * 0.5;
-    if (rightThigh) rightThigh.rotation.x = cycle * swingAmount * 0.5;
+    const halfCycle = Math.sin(time * 0.5);
+
+    // Arms swing opposite to legs
+    if (leftArm) leftArm.rotation.x = cycle * swing;
+    if (rightArm) rightArm.rotation.x = -cycle * swing;
+    if (leftUpperArm) leftUpperArm.rotation.x = cycle * swing * 0.7;
+    if (rightUpperArm) rightUpperArm.rotation.x = -cycle * swing * 0.7;
+
+    // Legs
+    if (leftThigh) leftThigh.rotation.x = -cycle * swing * 0.6;
+    if (rightThigh) rightThigh.rotation.x = cycle * swing * 0.6;
+    if (leftLeg) leftLeg.rotation.x = -cycle * swing * 0.5;
+    if (rightLeg) rightLeg.rotation.x = cycle * swing * 0.5;
+
+    // Subtle head bob
+    if (head) {
+      head.rotation.z = halfCycle * 0.02;
+      head.position.y = 1.62 + Math.abs(cycle) * 0.015;
+    }
   } else {
-    // Idle - smooth return to neutral
-    const lerp = 0.1;
+    // Idle breathing
+    const breathe = Math.sin(Date.now() * 0.002) * 0.01;
+    const lerp = 0.12;
+
     if (leftArm) leftArm.rotation.x *= (1 - lerp);
     if (rightArm) rightArm.rotation.x *= (1 - lerp);
-    if (leftLeg) leftLeg.rotation.x *= (1 - lerp);
-    if (rightLeg) rightLeg.rotation.x *= (1 - lerp);
+    if (leftUpperArm) leftUpperArm.rotation.x *= (1 - lerp);
+    if (rightUpperArm) rightUpperArm.rotation.x *= (1 - lerp);
     if (leftThigh) leftThigh.rotation.x *= (1 - lerp);
     if (rightThigh) rightThigh.rotation.x *= (1 - lerp);
+    if (leftLeg) leftLeg.rotation.x *= (1 - lerp);
+    if (rightLeg) rightLeg.rotation.x *= (1 - lerp);
+
+    if (head) {
+      head.rotation.z *= (1 - lerp);
+      head.position.y = 1.62 + breathe;
+    }
   }
 }
