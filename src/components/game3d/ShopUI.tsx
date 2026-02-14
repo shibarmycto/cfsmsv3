@@ -44,12 +44,15 @@ const shopItems: ShopItem[] = [
   { id: 'cloth-4', name: 'Sunglasses', price: 350, category: 'clothing', description: 'Cool shades', icon: '🕶️' },
   { id: 'cloth-5', name: 'Cap', price: 150, category: 'clothing', description: 'Baseball cap', icon: '🧢' },
   
-  // Food
+  // Food & Supplies
   { id: 'food-1', name: 'Burger', price: 15, category: 'food', description: '+20 hunger', icon: '🍔' },
   { id: 'food-2', name: 'Pizza', price: 20, category: 'food', description: '+30 hunger', icon: '🍕' },
   { id: 'food-3', name: 'Energy Drink', price: 8, category: 'food', description: '+25 energy', icon: '🥤' },
   { id: 'food-4', name: 'Coffee', price: 5, category: 'food', description: '+15 energy', icon: '☕' },
   { id: 'food-5', name: 'First Aid Kit', price: 100, category: 'food', description: '+50 health', icon: '🩹' },
+  { id: 'ammo-1', name: 'Pistol Ammo (30)', price: 100, category: 'food', description: '+30 bullets', icon: '🔫' },
+  { id: 'ammo-2', name: 'Rifle Ammo (30)', price: 200, category: 'food', description: '+30 bullets', icon: '🎯' },
+  { id: 'ammo-3', name: 'Ammo Crate (90)', price: 500, category: 'food', description: '+90 bullets', icon: '📦' },
   
   // Properties
   { id: 'prop-1', name: 'Small Apartment', price: 150000, category: 'properties', description: 'Starter home', icon: '🏠' },

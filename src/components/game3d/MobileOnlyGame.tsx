@@ -79,6 +79,9 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [isInVehicle, setIsInVehicle] = useState(false);
   const [currentVehicle, setCurrentVehicle] = useState<OwnedVehicle | null>(null);
   const [showGarage, setShowGarage] = useState(false);
+  const [ammo, setAmmo] = useState(30);
+  const [aimOffset, setAimOffset] = useState({ x: 0, y: 0 });
+  const aimTouchRef = useRef<{ id: number; startX: number; startY: number } | null>(null);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
   const hasGun = weapon.type === 'ranged';
@@ -410,14 +413,15 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
             </div>
           </div>
         </div>
-        {/* Weapon info */}
+        {/* Weapon info + ammo */}
         <div className="flex items-center gap-2 bg-gray-800/70 backdrop-blur-sm rounded-lg p-1.5 border border-gray-700/50">
           <div className="w-12 h-8 bg-gray-700/60 rounded flex items-center justify-center">
             <span className="text-lg">{weapon.icon}</span>
           </div>
           <div className="flex flex-col items-end">
-            <span className="text-white font-bold text-sm">{weapon.ammo === Infinity ? '∞' : weapon.ammo}</span>
-            <div className="w-0.5 h-4 bg-yellow-500 rounded-full" />
+            <span className="text-white font-bold text-sm">{weapon.type === 'ranged' ? ammo : '∞'}</span>
+            {weapon.type === 'ranged' && ammo <= 5 && ammo > 0 && <span className="text-red-400 text-[8px]">LOW</span>}
+            {weapon.type === 'ranged' && ammo === 0 && <span className="text-red-500 text-[8px] font-bold animate-pulse">EMPTY</span>}
           </div>
         </div>
       </div>
@@ -497,29 +501,49 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
 
         {/* Right column: Aim (if gun) + Fire/Attack */}
         <div className="flex flex-col items-center gap-3">
-          {/* AIM button - hold to aim, only for guns */}
+          {/* AIM button - touch & drag to move crosshair */}
           {hasGun && (
-            <button
-              onTouchStart={(e) => { e.preventDefault(); setIsAiming(true); }}
-              onTouchEnd={() => setIsAiming(false)}
-              onTouchCancel={() => setIsAiming(false)}
+            <div
+              onTouchStart={(e) => {
+                e.preventDefault();
+                const t = e.touches[0];
+                aimTouchRef.current = { id: t.identifier, startX: t.clientX, startY: t.clientY };
+                setIsAiming(true);
+              }}
+              onTouchMove={(e) => {
+                if (!aimTouchRef.current) return;
+                let touch: React.Touch | null = null;
+                for (let i = 0; i < e.touches.length; i++) {
+                  if (e.touches[i].identifier === aimTouchRef.current.id) { touch = e.touches[i]; break; }
+                }
+                if (!touch) return;
+                const dx = touch.clientX - aimTouchRef.current.startX;
+                const dy = touch.clientY - aimTouchRef.current.startY;
+                const maxOffset = 150;
+                setAimOffset({
+                  x: Math.max(-maxOffset, Math.min(maxOffset, dx * 1.5)),
+                  y: Math.max(-maxOffset, Math.min(maxOffset, dy * 1.5))
+                });
+              }}
+              onTouchEnd={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
+              onTouchCancel={() => { aimTouchRef.current = null; setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
               onMouseDown={() => setIsAiming(true)}
-              onMouseUp={() => setIsAiming(false)}
+              onMouseUp={() => { setIsAiming(false); setAimOffset({ x: 0, y: 0 }); }}
               className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all active:scale-90 ${
-                isAiming 
-                  ? 'bg-red-500/60 border-red-400 shadow-lg shadow-red-500/50' 
+                isAiming
+                  ? 'bg-red-500/60 border-red-400 shadow-lg shadow-red-500/50'
                   : 'bg-white/10 border-white/30'
               }`}>
               <Crosshair className={`w-7 h-7 ${isAiming ? 'text-red-300' : 'text-white/60'}`} />
-            </button>
+            </div>
           )}
           {/* FIRE / ATTACK button */}
           <button
             onTouchStart={(e) => { e.preventDefault(); setAttackTrigger(prev => prev + 1); }}
             onClick={() => setAttackTrigger(prev => prev + 1)}
             className={`w-[72px] h-[72px] rounded-full border-4 flex items-center justify-center shadow-xl active:scale-90 transition-transform ${
-              hasGun 
-                ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-400/80 shadow-red-500/50' 
+              hasGun
+                ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-400/80 shadow-red-500/50'
                 : 'bg-gradient-to-br from-orange-500 to-red-600 border-orange-400/80 shadow-orange-500/50'
             }`}>
             <span className="text-4xl">{weapon.icon}</span>
@@ -537,8 +561,10 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
 
       {/* Crosshair - ONLY visible when aiming with a gun */}
       {hasGun && isAiming && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
-          <Crosshair className="w-8 h-8 text-red-400 drop-shadow-lg" />
+        <div className="fixed pointer-events-none z-20"
+          style={{ left: window.innerWidth / 2 + aimOffset.x, top: window.innerHeight / 2 + aimOffset.y, transform: 'translate(-50%, -50%)' }}>
+          <Crosshair className="w-10 h-10 text-red-400 drop-shadow-lg" />
+          <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-red-500 rounded-full -translate-x-1/2 -translate-y-1/2" />
         </div>
       )}
 
@@ -584,9 +610,8 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         health={stats.health} onHealthChange={(h) => setStats(prev => ({ ...prev, health: h }))}
         multiplayer={multiplayerRef.current} equippedWeapon={equippedWeapon}
         nearbyBuilding={nearbyBuilding} attackTrigger={attackTrigger}
+        aimOffset={aimOffset} ammo={ammo} onAmmoChange={setAmmo}
       />
-
-      {/* CF Credits Exchange */}
       <CFCreditsExchangeMenu
         isOpen={showCreditsExchange}
         onClose={() => setShowCreditsExchange(false)}
@@ -634,8 +659,16 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
               setOwnedWeapons(prev => prev.includes(SHOP_TO_WEAPON[item.id]) ? prev : [...prev, SHOP_TO_WEAPON[item.id]]);
               toast.success(`${item.name} added to armory!`);
             } else if (item.category === 'food') {
+              // Ammo purchases
+              if (item.id === 'ammo-1' || item.id === 'ammo-2') {
+                setAmmo(prev => prev + 30);
+                toast.success(`+30 ammo loaded!`);
+              } else if (item.id === 'ammo-3') {
+                setAmmo(prev => prev + 90);
+                toast.success(`+90 ammo loaded!`);
+              }
               // Apply food effects
-              if (item.id === 'food-5') setStats(prev => ({ ...prev, health: Math.min(100, prev.health + 50) }));
+              else if (item.id === 'food-5') setStats(prev => ({ ...prev, health: Math.min(100, prev.health + 50) }));
               else if (item.id === 'food-3' || item.id === 'food-4') setStats(prev => ({ ...prev, energy: Math.min(100, prev.energy + (item.id === 'food-3' ? 25 : 15)) }));
               else setStats(prev => ({ ...prev, hunger: Math.min(100, prev.hunger + (item.id === 'food-2' ? 30 : 20)) }));
               toast.success(`Used ${item.name}!`);

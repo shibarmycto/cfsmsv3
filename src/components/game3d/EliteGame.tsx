@@ -423,6 +423,8 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
         multiplayer={multiplayerRef.current}
         equippedWeapon={equippedWeapon}
         nearbyBuilding={nearbyBuilding}
+        ammo={999}
+        onAmmoChange={() => {}}
       />
 
       {/* Side menu panel */}

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Crosshair, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { PlayerData, CombatEvent, RealtimeMultiplayer } from './RealtimeMultiplayer';
 import { GameBuilding } from './UKWorld';
 import * as THREE from 'three';
@@ -16,8 +16,12 @@ interface GameCombatProps {
   multiplayer: RealtimeMultiplayer | null;
   equippedWeapon: string;
   nearbyBuilding?: GameBuilding | null;
-  /** Increment this number to trigger an attack from parent */
   attackTrigger?: number;
+  /** Crosshair offset from center, in pixels */
+  aimOffset?: { x: number; y: number };
+  /** Current ammo count */
+  ammo: number;
+  onAmmoChange: (ammo: number) => void;
 }
 
 interface DamageNumber {
@@ -27,6 +31,23 @@ interface DamageNumber {
   y: number;
   timestamp: number;
   color: string;
+}
+
+interface BulletTracer {
+  id: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  timestamp: number;
+}
+
+interface KillBanner {
+  id: string;
+  killerName: string;
+  victimName: string;
+  weapon: string;
+  timestamp: number;
 }
 
 export const WEAPONS: Record<string, { damage: number; range: number; cooldown: number; type: string; icon: string; ammo: number }> = {
@@ -48,22 +69,27 @@ export default function GameCombat({
   equippedWeapon = 'fists',
   nearbyBuilding,
   attackTrigger = 0,
+  aimOffset = { x: 0, y: 0 },
+  ammo,
+  onAmmoChange,
 }: GameCombatProps) {
   const [isAttacking, setIsAttacking] = useState(false);
   const [nearbyPlayers, setNearbyPlayers] = useState<PlayerData[]>([]);
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
   const [showHitMarker, setShowHitMarker] = useState(false);
   const [screenFlash, setScreenFlash] = useState<string | null>(null);
+  const [bulletTracers, setBulletTracers] = useState<BulletTracer[]>([]);
+  const [killBanners, setKillBanners] = useState<KillBanner[]>([]);
   const lastAttackRef = useRef(0);
   const prevTriggerRef = useRef(0);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
 
-  // Update nearby players
+  // Update nearby players - wider range to allow aiming at distant targets
   useEffect(() => {
     if (!multiplayer) return;
     const interval = setInterval(() => {
-      setNearbyPlayers(multiplayer.getNearbyPlayers(playerPosition, weapon.range + 5));
+      setNearbyPlayers(multiplayer.getNearbyPlayers(playerPosition, weapon.range + 10));
     }, 100);
     return () => clearInterval(interval);
   }, [multiplayer, playerPosition, weapon.range]);
@@ -78,17 +104,20 @@ export default function GameCombat({
         addDamageNumber(event.damage, 'red');
         flashScreen('red');
         if (event.isKill) {
-          toast.error(`Knocked out by ${event.attackerName}!`);
+          addKillBanner(event.attackerName || 'Unknown', characterName, event.weaponType || 'fists');
           handleDeath();
         }
       }
     });
   }, [multiplayer, characterId, health, onHealthChange]);
 
-  // Cleanup damage numbers
+  // Cleanup damage numbers & tracers & kill banners
   useEffect(() => {
     const interval = setInterval(() => {
-      setDamageNumbers(prev => prev.filter(d => Date.now() - d.timestamp < 1200));
+      const now = Date.now();
+      setDamageNumbers(prev => prev.filter(d => now - d.timestamp < 1200));
+      setBulletTracers(prev => prev.filter(b => now - b.timestamp < 300));
+      setKillBanners(prev => prev.filter(k => now - k.timestamp < 4000));
     }, 100);
     return () => clearInterval(interval);
   }, []);
@@ -102,10 +131,37 @@ export default function GameCombat({
   }, [attackTrigger]);
 
   const addDamageNumber = (damage: number, color: string) => {
+    const cx = window.innerWidth / 2 + aimOffset.x;
+    const cy = window.innerHeight / 2 + aimOffset.y;
     setDamageNumbers(prev => [...prev, {
       id: Math.random().toString(36), damage, color,
-      x: window.innerWidth / 2 + (Math.random() - 0.5) * 120,
-      y: window.innerHeight / 2 - 40,
+      x: cx + (Math.random() - 0.5) * 80,
+      y: cy - 20,
+      timestamp: Date.now()
+    }]);
+  };
+
+  const addBulletTracer = () => {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const endX = cx + aimOffset.x;
+    const endY = cy + aimOffset.y;
+    setBulletTracers(prev => [...prev, {
+      id: Math.random().toString(36),
+      startX: cx + (Math.random() - 0.5) * 10,
+      startY: cy + 60,
+      endX: endX + (Math.random() - 0.5) * 15,
+      endY: endY + (Math.random() - 0.5) * 15,
+      timestamp: Date.now()
+    }]);
+  };
+
+  const addKillBanner = (killer: string, victim: string, weaponUsed: string) => {
+    setKillBanners(prev => [...prev, {
+      id: Math.random().toString(36),
+      killerName: killer,
+      victimName: victim,
+      weapon: weaponUsed,
       timestamp: Date.now()
     }]);
   };
@@ -138,22 +194,45 @@ export default function GameCombat({
     return dist < buildingRadius;
   }, [nearbyBuilding, playerPosition]);
 
+  // Compute aim direction from screen-space offset
+  const getAimDirection = useCallback(() => {
+    // Convert pixel offset to a normalized aim angle shift
+    const aimAngleX = (aimOffset.x / (window.innerWidth * 0.3));
+    const aimAngleY = (aimOffset.y / (window.innerHeight * 0.3));
+    // Rotate the forward direction by the aim offset
+    const baseAngle = playerRotation + aimAngleX * 1.2;
+    return new THREE.Vector3(Math.sin(baseAngle), 0, Math.cos(baseAngle));
+  }, [playerRotation, aimOffset]);
+
   const doAttack = useCallback(async () => {
     const now = Date.now();
     if (now - lastAttackRef.current < weapon.cooldown) return;
+
+    // Check ammo for ranged weapons
+    if (weapon.type === 'ranged') {
+      if (ammo <= 0) {
+        toast.error('No ammo! Buy ammo from the Store.');
+        return;
+      }
+      onAmmoChange(ammo - 1);
+      addBulletTracer();
+    }
+
     lastAttackRef.current = now;
     setIsAttacking(true);
 
-    // Find target player
+    // Find target player using aim direction
     let hitTarget: PlayerData | undefined;
     if (nearbyPlayers.length > 0) {
-      const forward = new THREE.Vector3(Math.sin(playerRotation), 0, Math.cos(playerRotation));
+      const aimDir = getAimDirection();
       let closestDist = weapon.range;
+      // Wider cone for ranged (use aim offset), tighter for melee
+      const dotThreshold = weapon.type === 'ranged' ? 0.3 : 0.4;
       for (const player of nearbyPlayers) {
         const toPlayer = new THREE.Vector3(player.position.x - playerPosition.x, 0, player.position.z - playerPosition.z);
         const dist = toPlayer.length();
         toPlayer.normalize();
-        if (dist <= weapon.range && forward.dot(toPlayer) > 0.4 && dist < closestDist) {
+        if (dist <= weapon.range && aimDir.dot(toPlayer) > dotThreshold && dist < closestDist) {
           closestDist = dist;
           hitTarget = player;
         }
@@ -166,14 +245,17 @@ export default function GameCombat({
       setShowHitMarker(true);
       setTimeout(() => setShowHitMarker(false), 150);
       addDamageNumber(damage, 'yellow');
+      flashScreen('white');
       multiplayer?.broadcastCombat(hitTarget.id, damage, equippedWeapon, isKill);
       await supabase.from('game_combat_logs').insert({
         attacker_id: characterId, victim_id: hitTarget.id,
         weapon_used: equippedWeapon, damage_dealt: damage, is_kill: isKill
       });
-      if (isKill) toast.success(`Knocked out ${hitTarget.name}!`);
+      if (isKill) {
+        addKillBanner(characterName, hitTarget.name, equippedWeapon);
+        toast.success(`Knocked out ${hitTarget.name}!`);
+      }
     } else if (weapon.type === 'melee' && isNearBuildingWall()) {
-      // Punch wall = self damage
       const selfDamage = Math.floor(weapon.damage * 0.6);
       const newHealth = Math.max(0, health - selfDamage);
       onHealthChange(newHealth);
@@ -187,27 +269,71 @@ export default function GameCombat({
     }
 
     setTimeout(() => setIsAttacking(false), 200);
-  }, [characterId, equippedWeapon, multiplayer, nearbyPlayers, playerPosition, playerRotation, weapon, health, onHealthChange, isNearBuildingWall]);
+  }, [characterId, characterName, equippedWeapon, multiplayer, nearbyPlayers, playerPosition, weapon, health, onHealthChange, isNearBuildingWall, ammo, onAmmoChange, getAimDirection, aimOffset]);
 
   return (
     <>
+      {/* Screen flash */}
       {screenFlash && (
         <div className="fixed inset-0 pointer-events-none z-50"
           style={{ backgroundColor: screenFlash === 'red' ? 'rgba(239,68,68,0.3)' : screenFlash === 'orange' ? 'rgba(251,146,60,0.25)' : 'rgba(255,255,255,0.15)' }} />
       )}
 
+      {/* Hit marker (X) at crosshair position */}
       {showHitMarker && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
-          <div className="text-red-500 font-bold text-5xl">×</div>
+        <div className="fixed z-50 pointer-events-none"
+          style={{ left: window.innerWidth / 2 + aimOffset.x, top: window.innerHeight / 2 + aimOffset.y, transform: 'translate(-50%, -50%)' }}>
+          <div className="text-red-500 font-bold text-5xl" style={{ textShadow: '0 0 10px rgba(239,68,68,0.8)' }}>×</div>
         </div>
       )}
 
-      {isAttacking && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
-          <Crosshair className="w-12 h-12 text-red-500 animate-ping" />
+      {/* Muzzle flash on fire */}
+      {isAttacking && weapon.type === 'ranged' && (
+        <div className="fixed z-45 pointer-events-none"
+          style={{ left: window.innerWidth / 2, top: window.innerHeight / 2 + 50, transform: 'translate(-50%, -50%)' }}>
+          <div className="w-6 h-6 bg-yellow-400 rounded-full animate-ping opacity-80" style={{ boxShadow: '0 0 30px 10px rgba(250,204,21,0.6)' }} />
         </div>
       )}
 
+      {/* Bullet tracers */}
+      <svg className="fixed inset-0 w-full h-full pointer-events-none z-45" style={{ zIndex: 45 }}>
+        {bulletTracers.map(bt => {
+          const age = Date.now() - bt.timestamp;
+          const progress = Math.min(1, age / 150);
+          const opacity = Math.max(0, 1 - age / 300);
+          const curX = bt.startX + (bt.endX - bt.startX) * progress;
+          const curY = bt.startY + (bt.endY - bt.startY) * progress;
+          return (
+            <line key={bt.id}
+              x1={bt.startX} y1={bt.startY}
+              x2={curX} y2={curY}
+              stroke={`rgba(255,200,50,${opacity})`}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          );
+        })}
+      </svg>
+
+      {/* Kill banners - top of screen */}
+      <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-1 items-center">
+        {killBanners.map(kb => {
+          const age = Date.now() - kb.timestamp;
+          const opacity = age > 3000 ? Math.max(0, 1 - (age - 3000) / 1000) : 1;
+          const weaponIcon = WEAPONS[kb.weapon]?.icon || '💀';
+          return (
+            <div key={kb.id} className="flex items-center gap-2 bg-black/80 backdrop-blur-sm rounded-lg px-4 py-2 border border-red-500/50"
+              style={{ opacity, transform: `translateY(${Math.min(0, -10 + age * 0.01)}px)` }}>
+              <span className="text-red-400 font-bold text-sm">{kb.killerName}</span>
+              <span className="text-gray-500 text-xs">[{weaponIcon} {kb.weapon}]</span>
+              <span className="text-gray-400 text-sm">☠️</span>
+              <span className="text-white font-bold text-sm">{kb.victimName}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Damage numbers */}
       {damageNumbers.map(dn => {
         const age = Date.now() - dn.timestamp;
         return (
@@ -224,6 +350,7 @@ export default function GameCombat({
         );
       })}
 
+      {/* Low health warning */}
       {health <= 25 && health > 0 && (
         <div className="fixed inset-0 pointer-events-none z-30">
           <div className="absolute inset-0 border-[6px] border-red-500/60 animate-pulse rounded-sm" />
@@ -234,6 +361,7 @@ export default function GameCombat({
         </div>
       )}
 
+      {/* Wasted screen */}
       {health <= 0 && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 pointer-events-none">
           <div className="text-center">
@@ -243,6 +371,7 @@ export default function GameCombat({
         </div>
       )}
 
+      {/* Nearby players indicator */}
       {nearbyPlayers.length > 0 && (
         <div className="fixed bottom-32 left-3 z-40 pointer-events-none">
           <div className="bg-black/70 backdrop-blur-sm rounded-xl p-2 border border-white/10 max-w-[160px]">
