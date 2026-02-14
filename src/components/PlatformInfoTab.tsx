@@ -172,7 +172,7 @@ export default function PlatformInfoTab() {
             <span className="text-2xl">🌐</span>
             <div>
               <p className="font-semibold text-sm">Website</p>
-              <p className="text-xs text-muted-foreground">cfblockchain.network (launching soon)</p>
+              <a href="https://cfblockchains.com" target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">cfblockchains.com — Live Now 🟢</a>
             </div>
           </div>
         </div>
