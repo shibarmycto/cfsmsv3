@@ -241,7 +241,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     if (distance > maxDist) { dx = (dx / distance) * maxDist; dy = (dy / distance) * maxDist; }
     setJoystickPos({ x: dx, y: dy });
     inputRef.current.right = dx / maxDist;
-    inputRef.current.forward = dy / maxDist;
+    inputRef.current.forward = -dy / maxDist;
     const shouldSprint = distance >= 50;
     if (shouldSprint !== autoSprintRef.current) { autoSprintRef.current = shouldSprint; inputRef.current.sprint = shouldSprint; setIsSprinting(shouldSprint); }
   }, [joystickOrigin]);
