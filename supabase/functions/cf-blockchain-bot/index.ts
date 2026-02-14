@@ -8,6 +8,8 @@ const corsHeaders = {
 const BOT_TOKEN = Deno.env.get('CF_BLOCKCHAIN_BOT_TOKEN')!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
+const LOGO_URL = 'https://www.cfblockchains.com/cf-blockchain-logo.png';
+
 async function sendTelegramMessage(chatId: number | string, text: string, parseMode = 'HTML') {
   const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: 'POST',
@@ -16,7 +18,21 @@ async function sendTelegramMessage(chatId: number | string, text: string, parseM
       chat_id: chatId,
       text,
       parse_mode: parseMode,
-      disable_web_page_preview: false,
+      disable_web_page_preview: true,
+    }),
+  });
+  return res.json();
+}
+
+async function sendTelegramPhoto(chatId: number | string, caption: string, parseMode = 'HTML') {
+  const res = await fetch(`${TELEGRAM_API}/sendPhoto`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: LOGO_URL,
+      caption,
+      parse_mode: parseMode,
     }),
   });
   return res.json();
@@ -149,7 +165,7 @@ Deno.serve(async (req) => {
           added_at: new Date().toISOString(),
         }, { onConflict: 'chat_id' });
 
-        await sendTelegramMessage(chat.id, `
+        await sendTelegramPhoto(chat.id, `
 🔗 <b>CF BLOCKCHAIN BOT ACTIVATED!</b> 🔗
 
 This group will now receive <b>real-time alerts</b> from the CF Exchange:
@@ -161,7 +177,7 @@ This group will now receive <b>real-time alerts</b> from the CF Exchange:
 
 Type /help for all commands.
 
-💎 <a href="https://www.cfblockchains.com/exchange">Trade on CF Exchange</a>
+💎 Trade on CF Exchange: www.cfblockchains.com/exchange
 `);
       } else if (newStatus === 'left' || newStatus === 'kicked') {
         await supabase.from('telegram_bot_groups')
@@ -188,7 +204,7 @@ Type /help for all commands.
 
       switch (command) {
         case '/start':
-          await sendTelegramMessage(chatId, getStartMessage());
+          await sendTelegramPhoto(chatId, getStartMessage());
           break;
 
         case '/help':
