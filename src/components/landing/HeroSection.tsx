@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Zap, Link2 } from 'lucide-react';
+import cfLogo from '@/assets/cf-blockchain-logo.png';
 
 interface HeroSectionProps {
   onGetStarted: () => void;
@@ -12,20 +13,22 @@ export default function HeroSection({ onGetStarted, onViewPricing }: HeroSection
       <div className="max-w-5xl mx-auto animate-fade-in">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-8">
           <Link2 className="w-4 h-4" />
-          🚀 CFSMS Blockchain Network Now Live!
+          🚀 CF Blockchain Network Now Live!
         </div>
+
+        <img src={cfLogo} alt="CF Blockchain" className="w-32 h-32 md:w-40 md:h-40 mx-auto rounded-2xl shadow-2xl shadow-primary/20 mb-8 object-cover" />
         
         <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-          <span className="text-gradient">CF SMS Network</span>
+          <span className="text-gradient">CF Blockchain</span>
           <br />
           <span className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground font-medium">
-            Where Social Meets Blockchain
+            Powered by CFGPT AI
           </span>
         </h1>
         
         <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-3xl mx-auto">
-          The revolutionary blockchain network built for everyone. Mine directly, send instant transfers, 
-          earn real crypto rewards, and grow with our AI-powered ecosystem — all in one seamless platform.
+          The decentralized crypto ecosystem built for everyone. Mine directly, trade tokens, 
+          earn real crypto rewards, and grow with AI-powered tools — all in one seamless platform.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mb-12">
@@ -48,7 +51,7 @@ export default function HeroSection({ onGetStarted, onViewPricing }: HeroSection
         </div>
 
         <p className="mt-8 text-sm text-muted-foreground">
-          ⛏️ Mining active until 2028 • No expensive hardware required
+          ⛏️ Mining active until 2028 • Powered by CFGPT AI
         </p>
       </div>
     </section>

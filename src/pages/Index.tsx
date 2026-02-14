@@ -5,6 +5,7 @@ import HeroSection from '@/components/landing/HeroSection';
 import BlockchainSection from '@/components/landing/BlockchainSection';
 import FeaturesGrid from '@/components/landing/FeaturesGrid';
 import AISection from '@/components/landing/AISection';
+import TelegramBotSection from '@/components/landing/TelegramBotSection';
 import WhySection from '@/components/landing/WhySection';
 import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
@@ -34,6 +35,7 @@ export default function Index() {
       <BlockchainSection />
       <FeaturesGrid />
       <AISection />
+      <TelegramBotSection />
       <WhySection />
       <CTASection onGetStarted={handleGetStarted} />
       <Footer />

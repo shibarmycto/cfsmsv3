@@ -10,11 +10,11 @@ export default function Footer() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <span className="text-2xl font-black text-gradient">CF</span>
-            <span className="text-xl font-bold text-muted-foreground">SMS</span>
+            <span className="text-xl font-bold text-muted-foreground">Blockchain</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            CRYPTO FUND SMS Network — Where Social Meets Blockchain. 
-            Mine. Chat. Earn. Grow.
+            CF Blockchain Network — Powered by CFGPT AI. 
+            Mine. Trade. Earn. Grow.
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export default function Footer() {
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <MessageSquare className="w-4 h-4 text-primary" />
           </div>
-          <span className="font-semibold">CFSMS Network</span>
+          <span className="font-semibold">CF Blockchain</span>
         </div>
         <a 
           href="https://t.me/cfsmsbulkofficialchat" 
@@ -82,7 +82,7 @@ export default function Footer() {
           <span className="text-[#0088cc] font-medium">@cfsmsbulkofficialchat</span>
         </a>
         <p className="text-muted-foreground text-sm">
-          © 2025 CFSMS Network. All rights reserved.
+          © 2026 CF Blockchain. All rights reserved.
         </p>
       </div>
     </footer>

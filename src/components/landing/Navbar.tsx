@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ArrowRight, Send, Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import cfLogo from '@/assets/cf-blockchain-logo.png';
 
 export default function Navbar() {
   const { user } = useAuth();
@@ -22,11 +23,14 @@ export default function Navbar() {
     <nav className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
       <div className="flex items-center justify-between">
         <div 
-          className="flex items-center gap-1 sm:gap-2 cursor-pointer" 
+          className="flex items-center gap-2 cursor-pointer" 
           onClick={() => navigate('/')}
         >
-          <span className="text-xl sm:text-2xl font-black text-gradient">CF</span>
-          <span className="text-lg sm:text-xl font-bold text-muted-foreground">SMS</span>
+          <img src={cfLogo} alt="CF Blockchain" className="h-8 sm:h-10 w-auto rounded-lg" />
+          <div className="flex flex-col leading-none">
+            <span className="text-sm sm:text-base font-black text-gradient">CF Blockchain</span>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground">Powered by CFGPT AI</span>
+          </div>
         </div>
 
         {/* Desktop Navigation */}
