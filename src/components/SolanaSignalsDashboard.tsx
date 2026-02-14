@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
 import { 
   Zap, Wallet, TrendingUp, RefreshCw, Play, Square, 
   Eye, EyeOff, Copy, ExternalLink, Shield, Clock, Coins,
   Bell, Activity, BarChart3, History, AlertTriangle, 
-  ChevronRight, Wifi, WifiOff, DollarSign
+  ChevronRight, Wifi, WifiOff, DollarSign, ShoppingCart, ArrowRightLeft
 } from 'lucide-react';
 
 interface Signal {
@@ -73,6 +74,10 @@ export default function SolanaSignalsDashboard() {
   const [tokenBalance, setTokenBalance] = useState(0);
   const [trades, setTrades] = useState<TradeEntry[]>([]);
   const [totalProfit, setTotalProfit] = useState(0);
+
+  // Manual trade state
+  const [tradeAmountSol, setTradeAmountSol] = useState('0.01');
+  const [isExecutingTrade, setIsExecutingTrade] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const balanceInterval = useRef<NodeJS.Timeout | null>(null);
@@ -213,7 +218,57 @@ export default function SolanaSignalsDashboard() {
     }
   };
 
-  const copyToClipboard = (text: string, label: string) => {
+  const executeTrade = async (mintAddress: string, tokenName: string, tradeType: 'buy' | 'sell') => {
+    if (!wallet) {
+      toast.error('Create a wallet first');
+      return;
+    }
+    const amount = parseFloat(tradeAmountSol);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid SOL amount');
+      return;
+    }
+    setIsExecutingTrade(mintAddress);
+    try {
+      const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
+        body: { action: 'execute_trade', mint_address: mintAddress, amount_sol: amount, trade_type: tradeType },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(data.message);
+
+      // Add to trade log
+      const newTrade: TradeEntry = {
+        id: data.signature || Date.now().toString(),
+        token_name: tokenName,
+        mint: mintAddress,
+        entry_price: data.input_amount || amount,
+        current_price: data.output_amount || 0,
+        amount_sol: amount,
+        timestamp: new Date().toISOString(),
+        status: 'active',
+        pnl_percent: 0,
+      };
+      setTrades(prev => [newTrade, ...prev]);
+
+      // Refresh balance
+      refreshBalance();
+
+      if (data.explorer_url) {
+        toast.info(`View on Solscan`, {
+          action: { label: 'Open', onClick: () => window.open(data.explorer_url, '_blank') },
+          duration: 10000,
+        });
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Trade execution failed');
+    } finally {
+      setIsExecutingTrade(null);
+    }
+  };
+
+
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
   };
@@ -456,19 +511,33 @@ export default function SolanaSignalsDashboard() {
               <RefreshCw className={`w-3 h-3 mr-1 ${isFetchingSignals ? 'animate-spin' : ''}`} />Scan
             </Button>
           </div>
+
+          {/* Trade Amount Input */}
+          <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <DollarSign className="w-4 h-4 text-[#00ff88]" />
+            <span className="text-xs text-[#8899aa]">Trade amount:</span>
+            <Input
+              type="number"
+              value={tradeAmountSol}
+              onChange={(e) => setTradeAmountSol(e.target.value)}
+              className="w-24 h-8 text-xs bg-transparent border-white/20"
+              step="0.01"
+              min="0.001"
+            />
+            <span className="text-xs text-[#8899aa]">SOL</span>
+          </div>
           
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
             {signals.map((signal) => (
               <div
                 key={signal.id}
-                className="p-3 rounded-xl cursor-pointer transition-all hover:scale-[1.01]"
+                className="p-3 rounded-xl transition-all"
                 style={{
                   background: signal.type === 'SNIPE_OPPORTUNITY' ? 'rgba(0,255,136,0.08)' :
                     signal.type === 'WHALE_BUY' ? 'rgba(255,200,0,0.08)' : 'rgba(255,255,255,0.05)',
                   border: `1px solid ${signal.type === 'SNIPE_OPPORTUNITY' ? 'rgba(0,255,136,0.3)' :
                     signal.type === 'WHALE_BUY' ? 'rgba(255,200,0,0.3)' : 'rgba(255,255,255,0.1)'}`,
                 }}
-                onClick={() => window.open(`https://dexscreener.com/solana/${signal.mint_address}`, '_blank')}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -489,9 +558,29 @@ export default function SolanaSignalsDashboard() {
                     {signal.sol_amount && <p className="text-xs text-amber-400">{signal.sol_amount.toFixed(2)} SOL</p>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <ExternalLink className="w-3 h-3 text-[#8899aa]" />
-                  <span className="text-[10px] text-[#8899aa]">View on Dexscreener</span>
+                {/* Trade Buttons */}
+                <div className="flex items-center gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={!wallet || isExecutingTrade === signal.mint_address}
+                    onClick={(e) => { e.stopPropagation(); executeTrade(signal.mint_address, signal.token_name, 'buy'); }}
+                  >
+                    {isExecutingTrade === signal.mint_address ? (
+                      <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="w-3 h-3 mr-1" />
+                    )}
+                    Buy {tradeAmountSol} SOL
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={(e) => { e.stopPropagation(); window.open(`https://dexscreener.com/solana/${signal.mint_address}`, '_blank'); }}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
             ))}
