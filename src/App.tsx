@@ -21,6 +21,7 @@ import Forum from "./pages/Forum";
 import Promo from "./pages/Promo";
 import Exchange from "./pages/Exchange";
 import Roleplay from "./pages/Roleplay";
+import CRM from "./pages/CRM";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,7 @@ const App = () => {
               <Route path="/promo" element={<Promo />} />
               <Route path="/exchange" element={<Exchange />} />
               <Route path="/roleplay" element={<Roleplay />} />
+              <Route path="/crm" element={<CRM />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
