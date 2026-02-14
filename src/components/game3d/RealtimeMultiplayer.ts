@@ -11,6 +11,10 @@ export interface PlayerData {
   state: 'idle' | 'walking' | 'running' | 'attacking';
   equippedWeapon: string;
   lastUpdate: number;
+  skinColor?: string;
+  hairColor?: string;
+  shirtColor?: string;
+  pantsColor?: string;
 }
 
 export interface CombatEvent {
@@ -104,7 +108,7 @@ export class RealtimeMultiplayer {
       try {
         const { data } = await supabase
           .from('game_characters')
-          .select('id, name, position_x, position_y, health, equipped_weapon, is_online, last_seen_at')
+          .select('id, name, position_x, position_y, health, equipped_weapon, is_online, last_seen_at, skin_color, hair_color, shirt_color, pants_color')
           .eq('is_online', true)
           .neq('id', this.playerId);
 
@@ -128,7 +132,11 @@ export class RealtimeMultiplayer {
                 health: char.health || 100,
                 state: existing?.state || 'idle',
                 equippedWeapon: char.equipped_weapon || 'fists',
-                lastUpdate: lastSeen
+                lastUpdate: lastSeen,
+                skinColor: char.skin_color || undefined,
+                hairColor: char.hair_color || undefined,
+                shirtColor: char.shirt_color || undefined,
+                pantsColor: char.pants_color || undefined,
               });
             }
           }
@@ -254,13 +262,14 @@ export class RealtimeMultiplayer {
   }
 
   private createPlayerMesh(player: PlayerData): void {
+    const hexToNum = (hex: string) => parseInt(hex.replace('#', ''), 16);
     const group = createRealisticCharacter({
       name: player.name,
       isPlayer: false,
-      skinTone: this.getSkintoneFromId(player.id),
-      shirtColor: this.getRandomPlayerColor(player.id),
-      pantsColor: this.getDarkerColor(this.getRandomPlayerColor(player.id)),
-      hairColor: this.getHairColorFromId(player.id),
+      skinTone: player.skinColor ? hexToNum(player.skinColor) : this.getSkintoneFromId(player.id),
+      shirtColor: player.shirtColor ? hexToNum(player.shirtColor) : this.getRandomPlayerColor(player.id),
+      pantsColor: player.pantsColor ? hexToNum(player.pantsColor) : this.getDarkerColor(this.getRandomPlayerColor(player.id)),
+      hairColor: player.hairColor ? hexToNum(player.hairColor) : this.getHairColorFromId(player.id),
     });
 
     group.userData.animState = player.state;

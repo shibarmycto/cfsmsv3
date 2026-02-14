@@ -137,11 +137,18 @@ export class EnhancedGameEngine {
     this.scene.add(hemi);
   }
 
-  initWorld(characterName: string, startPos?: { x: number; z: number }) {
+  initWorld(characterName: string, startPos?: { x: number; z: number }, characterColors?: { skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number }) {
     this.buildings = createUKWorld(this.scene);
     this.buildingBoxes = buildBuildingBoxes(this.buildings, 0.8);
 
-    this.player = createRealisticCharacter({ name: characterName, isPlayer: true });
+    this.player = createRealisticCharacter({
+      name: characterName,
+      isPlayer: true,
+      skinTone: characterColors?.skinTone,
+      hairColor: characterColors?.hairColor,
+      shirtColor: characterColors?.shirtColor,
+      pantsColor: characterColors?.pantsColor,
+    });
 
     const spawn = startPos || { x: 0, z: 0 };
     const safeSpawn = this.findSafeSpawn(spawn.x, spawn.z);

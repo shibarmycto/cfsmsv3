@@ -94,22 +94,31 @@ export default function GameCombat({
     return () => clearInterval(interval);
   }, [multiplayer, playerPosition, weapon.range]);
 
-  // Listen for incoming combat
+  // Listen for incoming combat - use ref to avoid stale closure
+  const healthRef = useRef(health);
+  healthRef.current = health;
+  const onHealthChangeRef = useRef(onHealthChange);
+  onHealthChangeRef.current = onHealthChange;
+
   useEffect(() => {
     if (!multiplayer) return;
     multiplayer.setCombatEventHandler((event: CombatEvent) => {
       if (event.targetId === characterId) {
-        const newHealth = Math.max(0, health - event.damage);
-        onHealthChange(newHealth);
+        const currentHealth = healthRef.current;
+        const newHealth = Math.max(0, currentHealth - event.damage);
+        onHealthChangeRef.current(newHealth);
         addDamageNumber(event.damage, 'red');
         flashScreen('red');
-        if (event.isKill) {
+        toast.error(`Hit by ${event.attackerName} for ${event.damage} damage!`);
+        // Update DB immediately
+        supabase.from('game_characters').update({ health: newHealth }).eq('id', characterId).then();
+        if (event.isKill || newHealth <= 0) {
           addKillBanner(event.attackerName || 'Unknown', characterName, event.weaponType || 'fists');
           handleDeath();
         }
       }
     });
-  }, [multiplayer, characterId, health, onHealthChange]);
+  }, [multiplayer, characterId, characterName]);
 
   // Cleanup damage numbers & tracers & kill banners
   useEffect(() => {
@@ -194,13 +203,10 @@ export default function GameCombat({
     return dist < buildingRadius;
   }, [nearbyBuilding, playerPosition]);
 
-  // Compute aim direction from screen-space offset
+  // Compute aim direction from screen-space offset - wider sensitivity for mobile
   const getAimDirection = useCallback(() => {
-    // Convert pixel offset to a normalized aim angle shift
-    const aimAngleX = (aimOffset.x / (window.innerWidth * 0.3));
-    const aimAngleY = (aimOffset.y / (window.innerHeight * 0.3));
-    // Rotate the forward direction by the aim offset
-    const baseAngle = playerRotation + aimAngleX * 1.2;
+    const aimAngleX = (aimOffset.x / (window.innerWidth * 0.15));
+    const baseAngle = playerRotation + aimAngleX * 1.5;
     return new THREE.Vector3(Math.sin(baseAngle), 0, Math.cos(baseAngle));
   }, [playerRotation, aimOffset]);
 
@@ -227,7 +233,7 @@ export default function GameCombat({
       const aimDir = getAimDirection();
       let closestDist = weapon.range;
       // Wider cone for ranged (use aim offset), tighter for melee
-      const dotThreshold = weapon.type === 'ranged' ? 0.3 : 0.4;
+      const dotThreshold = weapon.type === 'ranged' ? 0.15 : 0.3;
       for (const player of nearbyPlayers) {
         const toPlayer = new THREE.Vector3(player.position.x - playerPosition.x, 0, player.position.z - playerPosition.z);
         const dist = toPlayer.length();
