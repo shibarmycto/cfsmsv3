@@ -16,7 +16,9 @@ import TryYourLuckPanel, { type LuckPrize } from './TryYourLuckPanel';
 import MobileInfoModal from './MobileInfoModal';
 import CFCreditsExchangeMenu from './CFCreditsExchangeMenu';
 import PropertyInterior from './PropertyInterior';
-import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp, Map, Star, Users, Heart, Zap, DollarSign, ShoppingCart } from 'lucide-react';
+import WeaponWheel from './WeaponWheel';
+import VehicleSystem, { addVehicleToInventory, addWeaponToInventory, SHOP_TO_WEAPON, type OwnedVehicle } from './VehicleSystem';
+import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp, Map, Star, Users, Heart, Zap, DollarSign, ShoppingCart, Swords, Car } from 'lucide-react';
 
 interface MobileOnlyGameProps {
   characterId: string;
@@ -72,6 +74,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [showMinimap, setShowMinimap] = useState(true);
   const [attackTrigger, setAttackTrigger] = useState(0);
   const [isAiming, setIsAiming] = useState(false);
+  const [showWeaponWheel, setShowWeaponWheel] = useState(false);
+  const [ownedWeapons, setOwnedWeapons] = useState<string[]>(['fists']);
+  const [isInVehicle, setIsInVehicle] = useState(false);
+  const [currentVehicle, setCurrentVehicle] = useState<OwnedVehicle | null>(null);
+  const [showGarage, setShowGarage] = useState(false);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
   const hasGun = weapon.type === 'ranged';
@@ -87,6 +94,9 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       }
     };
     loadCharacter();
+    // Load owned weapons from localStorage
+    const raw = localStorage.getItem(`cf_weapons_${characterId}`);
+    if (raw) { try { setOwnedWeapons(['fists', ...JSON.parse(raw).filter((w: string) => w !== 'fists')]); } catch {} }
   }, [characterId]);
 
   useEffect(() => {
@@ -239,14 +249,16 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const handleMenuAction = useCallback((action: string) => {
     const openInfo = (t: string, m: string) => { setInfoModal({ title: t, message: m }); setShowSideMenu(false); };
     switch(action) {
-      case 'garage': case 'armory': case 'business': setShowShop(true); setShowSideMenu(false); break;
+      case 'garage': setShowGarage(true); setShowSideMenu(false); break;
+      case 'armory': case 'business': setShowShop(true); setShowSideMenu(false); break;
+      case 'parking': setShowGarage(true); setShowSideMenu(false); break;
       case 'jobs': setShowJobs(true); setShowSideMenu(false); break;
       case 'gangs': setShowGangs(true); setShowSideMenu(false); break;
       case 'luck': setShowLuck(true); setShowSideMenu(false); break;
       case 'events': openInfo('Events', 'No live events right now. Check back soon for double XP weekends and heist events!'); break;
       case 'tasks': openInfo('Daily Tasks', '1. ✅ Login today\n2. ⬜ Complete 3 jobs\n3. ⬜ Win a fight\n4. ⬜ Earn $5,000\n\nRewards reset at midnight.'); break;
       case 'friends': openInfo('Friends', 'Add friends by tapping on nearby players. Friends list coming in next update!'); break;
-      case 'parking': openInfo('Parking', 'Visit CF Motors dealership to buy your first vehicle. Owned cars spawn at your property.'); break;
+      // parking handled above
       case 'factions': openInfo('Factions', 'Join a gang first to unlock faction wars! Visit the Gangs menu.'); break;
       case 'profile': openInfo('Profile', `Name: ${characterName}\nWeapon: ${equippedWeapon}\nCash: $${stats.cash.toLocaleString()}\nBank: $${stats.bank.toLocaleString()}\nWanted: ${'⭐'.repeat(stats.wantedLevel)}${'☆'.repeat(5 - stats.wantedLevel)}`); break;
       case 'main-menu': handleExit(); break;
@@ -465,15 +477,23 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         </div>
       </div>
 
-      {/* BOTTOM RIGHT - Weapon info + Interact + Attack */}
+      {/* BOTTOM RIGHT - Weapon info + Interact + Attack + Weapon Wheel */}
       <div className="fixed bottom-4 right-4 flex flex-col items-end gap-2 z-40 pointer-events-auto">
-        <div className="bg-black/70 backdrop-blur-sm rounded-xl px-3 py-1.5 border border-white/10 flex items-center gap-2">
+        {/* Weapon switch button */}
+        <button onClick={() => setShowWeaponWheel(true)}
+          className="bg-black/70 backdrop-blur-sm rounded-xl px-3 py-1.5 border border-white/10 flex items-center gap-2 active:scale-95">
           <span className="text-xl">{weapon.icon}</span>
           <div>
             <div className="text-white text-xs font-bold capitalize">{equippedWeapon}</div>
             <div className="text-gray-400 text-[10px]">{weapon.damage} DMG • {weapon.range}m</div>
           </div>
-        </div>
+          <Swords className="w-3.5 h-3.5 text-yellow-400 ml-1" />
+        </button>
+        {/* Garage button */}
+        <button onClick={() => setShowGarage(true)}
+          className="w-10 h-10 rounded-full bg-cyan-600/40 border border-cyan-400/50 flex items-center justify-center active:scale-90">
+          <Car className="w-5 h-5 text-cyan-300" />
+        </button>
         {nearbyBuilding && (
           <button onClick={handleEnterBuilding}
             className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
@@ -556,10 +576,56 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         onCashChange={(newCash) => setStats(prev => ({ ...prev, cash: newCash }))}
       />
 
+      {/* Weapon Wheel */}
+      <WeaponWheel
+        isOpen={showWeaponWheel}
+        onClose={() => setShowWeaponWheel(false)}
+        equippedWeapon={equippedWeapon}
+        ownedWeapons={ownedWeapons}
+        onSelectWeapon={(w) => {
+          setEquippedWeapon(w);
+          void supabase.from('game_characters').update({ equipped_weapon: w }).eq('id', characterId);
+          toast.success(`Equipped ${w}!`);
+        }}
+      />
+
+      {/* Vehicle Garage */}
+      <VehicleSystem
+        characterId={characterId}
+        playerPosition={playerPosition}
+        playerRotation={playerRotation}
+        isInVehicle={isInVehicle}
+        onEnterVehicle={(v) => { setIsInVehicle(true); setCurrentVehicle(v); }}
+        onExitVehicle={() => { setIsInVehicle(false); setCurrentVehicle(null); }}
+        onPositionUpdate={() => {}}
+      />
+
       {/* Overlays */}
       <GameSideMenu isOpen={showSideMenu} onClose={() => setShowSideMenu(false)} gameTime={gameTime} onlinePlayers={onlinePlayers} onMenuAction={handleMenuAction} />
       <ShopUI isOpen={showShop} onClose={() => setShowShop(false)} playerCash={stats.cash}
-        onPurchase={(item) => { if (stats.cash >= item.price) { setStats(prev => ({ ...prev, cash: prev.cash - item.price })); toast.success(`Purchased ${item.name}!`); } }} />
+        onPurchase={(item) => {
+          if (stats.cash >= item.price) {
+            setStats(prev => ({ ...prev, cash: prev.cash - item.price }));
+            // Save vehicle or weapon to inventory
+            if (item.category === 'vehicles') {
+              addVehicleToInventory(characterId, item.id, item.name);
+              toast.success(`${item.name} added to garage!`);
+            } else if (item.category === 'weapons' && SHOP_TO_WEAPON[item.id]) {
+              addWeaponToInventory(characterId, SHOP_TO_WEAPON[item.id]);
+              setOwnedWeapons(prev => prev.includes(SHOP_TO_WEAPON[item.id]) ? prev : [...prev, SHOP_TO_WEAPON[item.id]]);
+              toast.success(`${item.name} added to armory!`);
+            } else if (item.category === 'food') {
+              // Apply food effects
+              if (item.id === 'food-5') setStats(prev => ({ ...prev, health: Math.min(100, prev.health + 50) }));
+              else if (item.id === 'food-3' || item.id === 'food-4') setStats(prev => ({ ...prev, energy: Math.min(100, prev.energy + (item.id === 'food-3' ? 25 : 15)) }));
+              else setStats(prev => ({ ...prev, hunger: Math.min(100, prev.hunger + (item.id === 'food-2' ? 30 : 20)) }));
+              toast.success(`Used ${item.name}!`);
+            } else {
+              toast.success(`Purchased ${item.name}!`);
+            }
+            void supabase.from('game_characters').update({ cash: stats.cash - item.price }).eq('id', characterId);
+          }
+        }} />
       {showJobs && <CriminalJobsSystem characterId={characterId} characterName={characterName} cash={stats.cash} energy={stats.energy} wantedLevel={stats.wantedLevel}
         onCashChange={(d) => setStats(prev => ({ ...prev, cash: prev.cash + d }))} onEnergyChange={(d) => setStats(prev => ({ ...prev, energy: Math.max(0, Math.min(100, prev.energy + d)) }))}
         onWantedLevelChange={(l) => setStats(prev => ({ ...prev, wantedLevel: Math.max(0, Math.min(5, l)) }))} onClose={() => setShowJobs(false)} />}
