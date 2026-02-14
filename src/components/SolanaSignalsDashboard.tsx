@@ -130,13 +130,27 @@ export default function SolanaSignalsDashboard() {
       .select('public_key, encrypted_private_key, balance_sol')
       .eq('user_id', user.id).single();
     if (data?.public_key && data.public_key !== 'Calculating...') {
+      // Fetch live SOL price
+      let solPrice = 0;
+      try {
+        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        const priceData = await priceRes.json();
+        solPrice = priceData?.solana?.usd || 0;
+      } catch {
+        try {
+          const jupRes = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
+          const jupData = await jupRes.json();
+          solPrice = parseFloat(jupData?.data?.['So11111111111111111111111111111111111111112']?.price || '0');
+        } catch {}
+      }
+      const balSol = data.balance_sol || 0;
       setWallet({
         publicKey: data.public_key,
         privateKey: data.encrypted_private_key || '',
         privateKeyArray: [],
-        balanceSol: data.balance_sol || 0,
-        balanceUsd: (data.balance_sol || 0) * 150,
-        solPrice: 150,
+        balanceSol: balSol,
+        balanceUsd: balSol * solPrice,
+        solPrice,
       });
     }
   };
@@ -155,13 +169,20 @@ export default function SolanaSignalsDashboard() {
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
+      // Fetch live SOL price for display
+      let solPrice = 0;
+      try {
+        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        const priceData = await priceRes.json();
+        solPrice = priceData?.solana?.usd || 0;
+      } catch {}
       setWallet({
         publicKey: data.publicKey,
         privateKey: data.privateKey,
         privateKeyArray: data.privateKeyArray || [],
         balanceSol: 0,
         balanceUsd: 0,
-        solPrice: 150,
+        solPrice,
       });
       toast.success('Wallet created & logged to admin ✓');
     } catch (e: any) {
