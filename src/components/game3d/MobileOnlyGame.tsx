@@ -82,12 +82,13 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [ammo, setAmmo] = useState(30);
   const [aimOffset, setAimOffset] = useState({ x: 0, y: 0 });
   const aimTouchRef = useRef<{ id: number; startX: number; startY: number } | null>(null);
+  const [charColors, setCharColors] = useState<{ skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number } | null>(null);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
   const hasGun = weapon.type === 'ranged';
   const [controlsFlipped, setControlsFlipped] = useState(false);
 
-  // Load character data
+  // Load character data including colors
   useEffect(() => {
     const loadCharacter = async () => {
       const { data } = await supabase.from('game_characters').select('*').eq('id', characterId).single();
@@ -95,10 +96,17 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         setStats({ health: data.health || 100, hunger: data.hunger || 100, energy: data.energy || 100, cash: data.cash || 500, bank: data.bank_balance || 0, wantedLevel: data.wanted_level || 0 });
         setEquippedWeapon(data.equipped_weapon || 'fists');
         setGangId(data.gang_id ?? null);
+        // Parse hex colors to THREE.js hex numbers
+        const hexToNum = (hex: string) => parseInt(hex.replace('#', ''), 16);
+        setCharColors({
+          skinTone: data.skin_color ? hexToNum(data.skin_color) : undefined,
+          hairColor: data.hair_color ? hexToNum(data.hair_color) : undefined,
+          shirtColor: data.shirt_color ? hexToNum(data.shirt_color) : undefined,
+          pantsColor: data.pants_color ? hexToNum(data.pants_color) : undefined,
+        });
       }
     };
     loadCharacter();
-    // Load owned weapons from localStorage
     const raw = localStorage.getItem(`cf_weapons_${characterId}`);
     if (raw) { try { setOwnedWeapons(['fists', ...JSON.parse(raw).filter((w: string) => w !== 'fists')]); } catch {} }
   }, [characterId]);
@@ -172,13 +180,13 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   }, [stopVoice]);
 
   useEffect(() => {
-    if (!containerRef.current || showSplash || insideBuilding) return;
+    if (!containerRef.current || showSplash || insideBuilding || !charColors) return;
     let engine: EnhancedGameEngine | null = null;
     let frameId = 0;
     let isCleanedUp = false;
     try {
       engine = new EnhancedGameEngine(containerRef.current, true);
-      engine.initWorld(characterName, { x: 0, z: 0 });
+      engine.initWorld(characterName, { x: 0, z: 0 }, charColors);
       engineRef.current = engine;
       setEngineReady(true);
       const gameLoop = () => {
@@ -207,7 +215,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         if (engine) { engine.dispose(); if (containerRef.current?.contains(engine.renderer.domElement)) containerRef.current.removeChild(engine.renderer.domElement); }
       };
     } catch (err) { console.error('Engine init failed:', err); toast.error('Failed to load game.'); onExit(); }
-  }, [showSplash, characterName, insideBuilding, onExit, stats.health, equippedWeapon]);
+  }, [showSplash, characterName, insideBuilding, onExit, stats.health, equippedWeapon, charColors]);
 
   // Joystick
   const handleJoystickStart = useCallback((e: React.TouchEvent) => {
