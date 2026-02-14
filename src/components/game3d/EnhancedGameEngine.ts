@@ -137,7 +137,7 @@ export class EnhancedGameEngine {
     this.scene.add(hemi);
   }
 
-  initWorld(characterName: string, startPos?: { x: number; z: number }, characterColors?: { skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number }) {
+  initWorld(characterName: string, startPos?: { x: number; z: number }, characterColors?: { skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number; characterPreset?: string }) {
     this.buildings = createUKWorld(this.scene);
     this.buildingBoxes = buildBuildingBoxes(this.buildings, 0.8);
 
@@ -148,6 +148,7 @@ export class EnhancedGameEngine {
       hairColor: characterColors?.hairColor,
       shirtColor: characterColors?.shirtColor,
       pantsColor: characterColors?.pantsColor,
+      characterPreset: characterColors?.characterPreset,
     });
 
     const spawn = startPos || { x: 0, z: 0 };
