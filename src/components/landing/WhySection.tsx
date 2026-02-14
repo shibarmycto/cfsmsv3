@@ -5,10 +5,10 @@ export default function WhySection() {
     <section className="container mx-auto px-6 py-20">
       <div className="text-center mb-12">
         <h2 className="text-3xl md:text-4xl font-bold mb-4">
-          💡 Why <span className="text-gradient">CFSMS</span> Matters
+          💡 Why <span className="text-gradient">CF Blockchain</span> Matters
         </h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          Many blockchains are powerful but difficult to use. CFSMS focuses on speed, simplicity, 
+          Many blockchains are powerful but difficult to use. CF Blockchain focuses on speed, simplicity, 
           and usability — making crypto friendly for beginners while delivering real blockchain value.
         </p>
       </div>

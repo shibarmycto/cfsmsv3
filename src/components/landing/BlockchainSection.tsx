@@ -12,11 +12,11 @@ export default function BlockchainSection() {
     <section className="container mx-auto px-6 py-20">
       <div className="text-center mb-12">
         <h2 className="text-3xl md:text-4xl font-bold mb-4">
-          🔗 The <span className="text-gradient">CFSMS Blockchain</span>
+          🔗 The <span className="text-gradient">CF Blockchain</span>
         </h2>
         <p className="text-muted-foreground max-w-2xl mx-auto">
-          A decentralized digital network that combines blockchain technology with social-style interaction. 
-          Unlike traditional blockchains that demand expensive hardware and technical expertise, CFSMS is built for everyone.
+          A decentralized digital network that combines blockchain technology with AI-powered tools. 
+          Unlike traditional blockchains that demand expensive hardware and technical expertise, CF Blockchain is built for everyone.
         </p>
       </div>
 

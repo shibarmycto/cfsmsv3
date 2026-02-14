@@ -26,7 +26,7 @@ export default function CTASection({ onGetStarted }: CTASectionProps) {
           </div>
 
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Ready to Join the <span className="text-gradient">CFSMS Network</span>?
+            Ready to Join <span className="text-gradient">CF Blockchain</span>?
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             Start mining, connect with the community, and earn real crypto rewards. 
@@ -39,7 +39,7 @@ export default function CTASection({ onGetStarted }: CTASectionProps) {
           </Button>
           
           <p className="mt-6 text-sm text-muted-foreground">
-            🌍 CFSMS — Where Social Meets Blockchain
+            🌍 CF Blockchain — Powered by CFGPT AI
           </p>
         </div>
       </div>
