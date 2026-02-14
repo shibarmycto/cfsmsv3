@@ -261,8 +261,20 @@ export class RealtimeMultiplayer {
     }
   }
 
+  private detectPreset(skinColor?: string, shirtColor?: string): string {
+    if (!skinColor || !shirtColor) return '';
+    const map: Record<string, string> = {
+      '#8d5524_#1e3a5f': 'boss', '#e8beac_#1a1a1a': 'enforcer',
+      '#d4a98c_#1a1a1a': 'hitman', '#d4a98c_#1e40af': 'executive',
+      '#c68c6a_#065f46': 'soldier', '#c68c6a_#1a1a1a': 'rebel',
+      '#f5d0c5_#1a1a1a': 'agent', '#e8beac_#374151': 'hunter',
+    };
+    return map[`${skinColor}_${shirtColor}`] || '';
+  }
+
   private createPlayerMesh(player: PlayerData): void {
     const hexToNum = (hex: string) => parseInt(hex.replace('#', ''), 16);
+    const preset = this.detectPreset(player.skinColor, player.shirtColor);
     const group = createRealisticCharacter({
       name: player.name,
       isPlayer: false,
@@ -270,6 +282,7 @@ export class RealtimeMultiplayer {
       shirtColor: player.shirtColor ? hexToNum(player.shirtColor) : this.getRandomPlayerColor(player.id),
       pantsColor: player.pantsColor ? hexToNum(player.pantsColor) : this.getDarkerColor(this.getRandomPlayerColor(player.id)),
       hairColor: player.hairColor ? hexToNum(player.hairColor) : this.getHairColorFromId(player.id),
+      characterPreset: preset,
     });
 
     group.userData.animState = player.state;

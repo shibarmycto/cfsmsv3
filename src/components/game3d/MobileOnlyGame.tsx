@@ -83,7 +83,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [ammo, setAmmo] = useState(30);
   const [aimOffset, setAimOffset] = useState({ x: 0, y: 0 });
   const aimTouchRef = useRef<{ id: number; startX: number; startY: number } | null>(null);
-  const [charColors, setCharColors] = useState<{ skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number } | null>(null);
+  const [charColors, setCharColors] = useState<{ skinTone?: number; hairColor?: number; shirtColor?: number; pantsColor?: number; characterPreset?: string } | null>(null);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
   const hasGun = weapon.type === 'ranged';
@@ -98,13 +98,27 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         setArmor((data as any).armor || 0);
         setEquippedWeapon(data.equipped_weapon || 'fists');
         setGangId(data.gang_id ?? null);
-        // Parse hex colors to THREE.js hex numbers
+        // Parse hex colors to THREE.js hex numbers and detect preset
         const hexToNum = (hex: string) => parseInt(hex.replace('#', ''), 16);
+        // Detect preset from skin+shirt colors
+        const presetMap: Record<string, string> = {
+          '#8d5524_#1e3a5f': 'boss',
+          '#e8beac_#1a1a1a': 'enforcer',
+          '#d4a98c_#1a1a1a': 'hitman',
+          '#d4a98c_#1e40af': 'executive',
+          '#c68c6a_#065f46': 'soldier',
+          '#c68c6a_#1a1a1a': 'rebel',
+          '#f5d0c5_#1a1a1a': 'agent',
+          '#e8beac_#374151': 'hunter',
+        };
+        const presetKey = `${data.skin_color || ''}_${data.shirt_color || ''}`;
+        const detectedPreset = presetMap[presetKey] || '';
         setCharColors({
           skinTone: data.skin_color ? hexToNum(data.skin_color) : undefined,
           hairColor: data.hair_color ? hexToNum(data.hair_color) : undefined,
           shirtColor: data.shirt_color ? hexToNum(data.shirt_color) : undefined,
           pantsColor: data.pants_color ? hexToNum(data.pants_color) : undefined,
+          characterPreset: detectedPreset,
         });
       }
     };
