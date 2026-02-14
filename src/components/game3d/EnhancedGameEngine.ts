@@ -228,20 +228,18 @@ export class EnhancedGameEngine {
     if (hasInput) {
       const inputMagnitude = Math.min(Math.sqrt(forward * forward + right * right), 1);
 
-      const cosYaw = Math.cos(this.cameraYaw);
-      const sinYaw = Math.sin(this.cameraYaw);
-      const worldForward = forward * cosYaw + right * sinYaw;
-      const worldRight = -forward * sinYaw + right * cosYaw;
+      // Body-direction movement: joystick directly sets the target facing angle
+      const inputAngle = Math.atan2(right, forward);
 
-      const targetAngle = Math.atan2(worldRight, worldForward);
-
-      let angleDiff = targetAngle - this.playerState.rotation;
+      // Smoothly rotate the character body to the joystick direction
+      let angleDiff = inputAngle - this.playerState.rotation;
       while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
       while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
       this.playerState.rotation += angleDiff * Math.min(1, this.ROTATION_SPEED * delta);
 
-      const targetVelX = Math.sin(targetAngle) * targetSpeed * inputMagnitude;
-      const targetVelZ = Math.cos(targetAngle) * targetSpeed * inputMagnitude;
+      // Move in the direction the body is facing
+      const targetVelX = Math.sin(this.playerState.rotation) * targetSpeed * inputMagnitude;
+      const targetVelZ = Math.cos(this.playerState.rotation) * targetSpeed * inputMagnitude;
 
       this.playerState.velocity.x += (targetVelX - this.playerState.velocity.x) * this.ACCELERATION * delta * control;
       this.playerState.velocity.z += (targetVelZ - this.playerState.velocity.z) * this.ACCELERATION * delta * control;
