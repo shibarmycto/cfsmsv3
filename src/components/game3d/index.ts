@@ -27,3 +27,5 @@ export { RealtimeMultiplayer } from './RealtimeMultiplayer';
 export { default as OneStateHUD } from './OneStateHUD';
 export { default as GameSideMenu } from './GameSideMenu';
 export { default as ShopUI } from './ShopUI';
+export { default as WeaponWheel } from './WeaponWheel';
+export { default as VehicleSystem } from './VehicleSystem';
