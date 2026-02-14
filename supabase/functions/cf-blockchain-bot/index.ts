@@ -45,7 +45,7 @@ Welcome to the official <b>CF Exchange</b> alert bot!
 
 💎 Add me to any group for <b>real-time market alerts!</b>
 
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Visit CF Exchange</a>
+🌐 <a href="https://www.cfblockchains.com/exchange">Visit CF Exchange</a>
 `;
 }
 
@@ -161,7 +161,7 @@ This group will now receive <b>real-time alerts</b> from the CF Exchange:
 
 Type /help for all commands.
 
-💎 <a href="https://cfsmsv3.lovable.app/exchange">Trade on CF Exchange</a>
+💎 <a href="https://www.cfblockchains.com/exchange">Trade on CF Exchange</a>
 `);
       } else if (newStatus === 'left' || newStatus === 'kicked') {
         await supabase.from('telegram_bot_groups')
@@ -221,7 +221,7 @@ Type /help for all commands.
 🎓 <b>Graduated:</b> ${tokens.filter((t: any) => t.status === 'graduated').length}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade Now on CF Exchange</a>
+🌐 <a href="https://www.cfblockchains.com/exchange">Trade Now on CF Exchange</a>
 `);
           break;
         }
@@ -246,7 +246,7 @@ Type /help for all commands.
             msg += `   💰 $${t.price_per_token} | MCap: $${(t.market_cap || 0).toLocaleString()} | Vol: ${(t.total_volume || 0).toLocaleString()}\n\n`;
           });
 
-          msg += '━━━━━━━━━━━━━━━━━━━━━━\n🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade on CF Exchange</a>';
+          msg += '━━━━━━━━━━━━━━━━━━━━━━\n🌐 <a href="https://www.cfblockchains.com/exchange">Trade on CF Exchange</a>';
           await sendTelegramMessage(chatId, msg);
           break;
         }
@@ -283,7 +283,7 @@ ${token.logo_emoji} <b>${token.name} (${token.symbol})</b> ${statusEmoji}
 📌 <b>Status:</b> ${token.status}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade ${token.symbol} Now</a>
+🌐 <a href="https://www.cfblockchains.com/exchange">Trade ${token.symbol} Now</a>
 `);
           break;
         }
@@ -308,7 +308,7 @@ ${token.logo_emoji} <b>${token.name} (${token.symbol})</b> ${statusEmoji}
             msg += `   ⏰ ${age < 24 ? `${age}h ago` : `${Math.floor(age / 24)}d ago`}\n\n`;
           });
 
-          msg += '━━━━━━━━━━━━━━━━━━━━━━\n🌐 <a href="https://cfsmsv3.lovable.app/exchange">Launch Your Token</a>';
+          msg += '━━━━━━━━━━━━━━━━━━━━━━\n🌐 <a href="https://www.cfblockchains.com/exchange">Launch Your Token</a>';
           await sendTelegramMessage(chatId, msg);
           break;
         }

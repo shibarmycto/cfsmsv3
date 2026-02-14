@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const BOT_TOKEN = Deno.env.get('CF_BLOCKCHAIN_BOT_TOKEN')!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const SITE_URL = 'https://www.cfblockchains.com';
 
 async function broadcastToGroups(supabase: any, message: string, alertType: string) {
   const { data: groups } = await supabase
@@ -35,7 +36,6 @@ async function broadcastToGroups(supabase: any, message: string, alertType: stri
     }
   }
 
-  // Log the alert
   await supabase.from('telegram_bot_alerts').insert({
     alert_type: alertType,
     message,
@@ -76,7 +76,7 @@ ${logo_emoji || '🪙'} <b>${token_name || symbol}</b> ($${symbol})
 
 ━━━━━━━━━━━━━━━━━━━━━━
 📈 <i>Bullish momentum detected!</i>
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade Now on CF Exchange</a>
+🌐 <a href="${SITE_URL}/exchange">Trade Now on CF Exchange</a>
 
 #CFExchange #${symbol} #CryptoAlert
 `;
@@ -98,7 +98,7 @@ ${logo_emoji || '🪙'} <b>${token_name || symbol}</b> ($${symbol})
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ <i>Market movement — watch closely!</i>
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade Now on CF Exchange</a>
+🌐 <a href="${SITE_URL}/exchange">Trade Now on CF Exchange</a>
 
 #CFExchange #${symbol} #SellAlert
 `;
@@ -121,7 +121,7 @@ ${logo_emoji || '🆕'} <b>${name}</b> ($${symbol})
 
 ━━━━━━━━━━━━━━━━━━━━━━
 🔥 <i>Get in early! New opportunities await!</i>
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Buy ${symbol} Now</a>
+🌐 <a href="${SITE_URL}/exchange">Buy ${symbol} Now</a>
 
 #CFExchange #NewListing #${symbol} #GemAlert
 `;
@@ -138,11 +138,13 @@ ${logo_emoji || '🆕'} <b>${name}</b> ($${symbol})
 ${impactEmoji} Impact: <b>${(impact || 'low').toUpperCase()}</b>
 
 📢 <b>${title}</b>
-${description ? `\n📝 ${description}` : ''}
-${token_symbol ? `\n🪙 Related: $${token_symbol}` : ''}
+${description ? `
+📝 ${description}` : ''}
+${token_symbol ? `
+🪙 Related: $${token_symbol}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">View on CF Exchange</a>
+🌐 <a href="${SITE_URL}/exchange">View on CF Exchange</a>
 
 #CFExchange #MarketNews
 `;
@@ -163,7 +165,7 @@ ${logo_emoji || '🎓'} <b>${name}</b> ($${symbol})
 This token has proven itself on the market!
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade ${symbol} on CF Exchange</a>
+🌐 <a href="${SITE_URL}/exchange">Trade ${symbol} on CF Exchange</a>
 
 #CFExchange #Graduated #${symbol}
 `;
@@ -182,7 +184,7 @@ ${logo_emoji || '💎'} <b>${name}</b> ($${symbol})
 📊 Milestone: ${milestone}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Don't miss out! Trade now</a>
+🌐 <a href="${SITE_URL}/exchange">Don't miss out! Trade now</a>
 
 #CFExchange #PriceAlert #${symbol}
 `;
@@ -200,13 +202,12 @@ ${logo_emoji || '💎'} <b>${name}</b> ($${symbol})
 👤 By: ${author_name || 'Anonymous'}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-🌐 <a href="https://cfsmsv3.lovable.app/forum">Join the Discussion</a>
+🌐 <a href="${SITE_URL}/forum">Join the Discussion</a>
 `;
         break;
       }
 
       case 'market_summary': {
-        // Generate full market report
         const { data: tokens } = await supabase
           .from('user_tokens')
           .select('*')
@@ -238,7 +239,7 @@ ${top3.map((t: any, i: number) => {
 
 ━━━━━━━━━━━━━━━━━━━━━━
 💎 <b>CF Exchange — Where fortunes are made</b>
-🌐 <a href="https://cfsmsv3.lovable.app/exchange">Trade Now</a>
+🌐 <a href="${SITE_URL}/exchange">Trade Now</a>
 
 #CFExchange #DailyReport #Crypto
 `;
@@ -246,7 +247,9 @@ ${top3.map((t: any, i: number) => {
       }
 
       default:
-        message = `📢 <b>CF Exchange Alert</b>\n\n${JSON.stringify(data)}`;
+        message = `📢 <b>CF Exchange Alert</b>
+
+${JSON.stringify(data)}`;
     }
 
     const sent = await broadcastToGroups(supabase, message, alert_type);
