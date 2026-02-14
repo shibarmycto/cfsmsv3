@@ -1,0 +1,1 @@
+ALTER TABLE public.game_characters ADD COLUMN armor integer NOT NULL DEFAULT 0;
