@@ -422,53 +422,115 @@ function createTree(scene: THREE.Scene, x: number, z: number) {
 
 // ─── Parked Cars ───
 function createParkedCars(scene: THREE.Scene) {
+  // GTA-style muscle cars in various colors matching reference images
   const cars = [
-    { x: -5, z: -30, rot: 0, color: 0xcc0000 },
-    { x: -5, z: -50, rot: 0, color: 0x2244aa },
-    { x: 5, z: 30, rot: Math.PI, color: 0x444444 },
-    { x: 5, z: 50, rot: Math.PI, color: 0xffffff },
-    { x: 5, z: 70, rot: Math.PI, color: 0x228822 },
-    { x: -5, z: -80, rot: 0, color: 0xffcc00 },
-    { x: 195, z: 5, rot: Math.PI / 2, color: 0x882222 },
-    { x: -195, z: -5, rot: -Math.PI / 2, color: 0x3366cc },
+    // Main road - parked along curbs
+    { x: -5, z: -30, rot: 0, color: 0x1a1a1a },     // Black
+    { x: -5, z: -50, rot: 0, color: 0x1a3a8a },     // Navy blue
+    { x: 5, z: 30, rot: Math.PI, color: 0xdddddd },  // White/Silver
+    { x: 5, z: 50, rot: Math.PI, color: 0x3a5a2a },  // Military green
+    { x: 5, z: 70, rot: Math.PI, color: 0x8b0000 },  // Dark red
+    { x: -5, z: -80, rot: 0, color: 0xcccccc },      // Silver
+    { x: -5, z: -110, rot: 0, color: 0x2a2a6a },    // Deep blue
+    { x: 5, z: 100, rot: Math.PI, color: 0xe8e8e8 },// White graffiti
+    // Cross roads
+    { x: 195, z: 5, rot: Math.PI / 2, color: 0x8b0000 },
+    { x: -195, z: -5, rot: -Math.PI / 2, color: 0x1a1a1a },
+    { x: 195, z: -20, rot: Math.PI / 2, color: 0x3a5a2a },
+    { x: -195, z: 25, rot: -Math.PI / 2, color: 0x1a3a8a },
+    // Side streets
+    { x: -40, z: -200, rot: Math.PI * 0.3, color: 0xdddddd },
+    { x: 60, z: 180, rot: Math.PI * 1.2, color: 0x8b0000 },
+    { x: -120, z: 50, rot: Math.PI * 0.7, color: 0x1a1a1a },
+    { x: 150, z: -80, rot: Math.PI * 1.5, color: 0xcccccc },
   ];
   cars.forEach(cp => createParkedCar(scene, cp.x, cp.z, cp.rot, cp.color));
 }
 
 function createParkedCar(scene: THREE.Scene, x: number, z: number, rotation: number, color: number) {
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.7 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.25, metalness: 0.8 });
 
-  // Body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4.5), bodyMat);
-  body.position.y = 0.6;
+  // Muscle car body - wider, lower, more aggressive
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 5.2), bodyMat);
+  body.position.y = 0.55;
   body.castShadow = true;
   g.add(body);
 
-  // Cabin
+  // Hood scoop
+  const scoopMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.6 });
+  const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.25, 1.0), scoopMat);
+  scoop.position.set(0, 1.0, 1.2);
+  g.add(scoop);
+
+  // Widebody fenders
+  const fenderGeo = new THREE.BoxGeometry(0.2, 0.5, 1.2);
+  const leftFrontF = new THREE.Mesh(fenderGeo, bodyMat);
+  leftFrontF.position.set(-1.3, 0.5, 1.3);
+  g.add(leftFrontF);
+  const rightFrontF = new THREE.Mesh(fenderGeo, bodyMat);
+  rightFrontF.position.set(1.3, 0.5, 1.3);
+  g.add(rightFrontF);
+  const leftRearF = new THREE.Mesh(fenderGeo, bodyMat);
+  leftRearF.position.set(-1.3, 0.5, -1.3);
+  g.add(leftRearF);
+  const rightRearF = new THREE.Mesh(fenderGeo, bodyMat);
+  rightRearF.position.set(1.3, 0.5, -1.3);
+  g.add(rightRearF);
+
+  // Cabin - tinted windows
   const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.7, 2.5),
-    new THREE.MeshStandardMaterial({ color: 0x88bbdd, transparent: true, opacity: 0.5, metalness: 0.5 })
+    new THREE.BoxGeometry(2.0, 0.6, 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x222233, transparent: true, opacity: 0.7, metalness: 0.5, roughness: 0.2 })
   );
-  cabin.position.set(0, 1.3, -0.2);
+  cabin.position.set(0, 1.2, -0.3);
   g.add(cabin);
 
-  // Wheels
-  const wheelMat = mat('wheel', { color: 0x111111, roughness: 0.5 });
-  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
-  [[-0.9, 0.3, 1.3], [0.9, 0.3, 1.3], [-0.9, 0.3, -1.3], [0.9, 0.3, -1.3]].forEach(([wx, wy, wz]) => {
+  // Rear spoiler
+  const spoilerMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.7 });
+  const spoilerWing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.4), spoilerMat);
+  spoilerWing.position.set(0, 1.5, -2.3);
+  g.add(spoilerWing);
+  const spoilerL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1), spoilerMat);
+  spoilerL.position.set(-0.9, 1.3, -2.3);
+  g.add(spoilerL);
+  const spoilerR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1), spoilerMat);
+  spoilerR.position.set(0.9, 1.3, -2.3);
+  g.add(spoilerR);
+
+  // Wheels - larger, black alloy style
+  const wheelMat = mat('wheel', { color: 0x111111, roughness: 0.3, metalness: 0.5 });
+  const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 12);
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.2, metalness: 0.9 });
+  const rimGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.3, 8);
+  [[-1.1, 0.38, 1.6], [1.1, 0.38, 1.6], [-1.1, 0.38, -1.6], [1.1, 0.38, -1.6]].forEach(([wx, wy, wz]) => {
     const w = new THREE.Mesh(wheelGeo, wheelMat);
     w.position.set(wx, wy, wz);
     w.rotation.z = Math.PI / 2;
     g.add(w);
+    const rim = new THREE.Mesh(rimGeo, rimMat);
+    rim.position.set(wx, wy, wz);
+    rim.rotation.z = Math.PI / 2;
+    g.add(rim);
   });
 
-  // Headlights (emissive only)
-  const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffff88, emissiveIntensity: 0.3 });
-  const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), hlMat);
-  hl1.position.set(-0.6, 0.6, 2.26); g.add(hl1);
-  const hl2 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), hlMat);
-  hl2.position.set(0.6, 0.6, 2.26); g.add(hl2);
+  // Headlights - glowing
+  const hlMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffcc, emissiveIntensity: 0.5 });
+  const hlGeo = new THREE.SphereGeometry(0.15, 8, 8);
+  [[-0.7, 0.55, 2.6], [0.7, 0.55, 2.6]].forEach(([hx, hy, hz]) => {
+    const hl = new THREE.Mesh(hlGeo, hlMat);
+    hl.position.set(hx, hy, hz);
+    g.add(hl);
+  });
+
+  // Taillights - red glow
+  const tlMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.3 });
+  const tlGeo = new THREE.BoxGeometry(0.3, 0.1, 0.05);
+  [[-0.8, 0.6, -2.6], [0.8, 0.6, -2.6]].forEach(([tx, ty, tz]) => {
+    const tl = new THREE.Mesh(tlGeo, tlMat);
+    tl.position.set(tx, ty, tz);
+    g.add(tl);
+  });
 
   g.position.set(x, 0, z);
   g.rotation.y = rotation;
