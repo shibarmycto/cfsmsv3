@@ -12,7 +12,9 @@ interface GameCombatProps {
   playerPosition: THREE.Vector3;
   playerRotation: number;
   health: number;
+  armor: number;
   onHealthChange: (health: number) => void;
+  onArmorChange: (armor: number) => void;
   multiplayer: RealtimeMultiplayer | null;
   equippedWeapon: string;
   nearbyBuilding?: GameBuilding | null;
@@ -22,6 +24,8 @@ interface GameCombatProps {
   /** Current ammo count */
   ammo: number;
   onAmmoChange: (ammo: number) => void;
+  /** THREE.js camera for screen-space targeting */
+  camera?: THREE.Camera | null;
 }
 
 interface DamageNumber {
@@ -64,7 +68,9 @@ export default function GameCombat({
   playerPosition,
   playerRotation,
   health,
+  armor,
   onHealthChange,
+  onArmorChange,
   multiplayer,
   equippedWeapon = 'fists',
   nearbyBuilding,
@@ -72,6 +78,7 @@ export default function GameCombat({
   aimOffset = { x: 0, y: 0 },
   ammo,
   onAmmoChange,
+  camera,
 }: GameCombatProps) {
   const [isAttacking, setIsAttacking] = useState(false);
   const [nearbyPlayers, setNearbyPlayers] = useState<PlayerData[]>([]);
@@ -97,20 +104,33 @@ export default function GameCombat({
   // Listen for incoming combat - use ref to avoid stale closure
   const healthRef = useRef(health);
   healthRef.current = health;
+  const armorRef = useRef(armor);
+  armorRef.current = armor;
   const onHealthChangeRef = useRef(onHealthChange);
   onHealthChangeRef.current = onHealthChange;
+  const onArmorChangeRef = useRef(onArmorChange);
+  onArmorChangeRef.current = onArmorChange;
 
   useEffect(() => {
     if (!multiplayer) return;
     multiplayer.setCombatEventHandler((event: CombatEvent) => {
       if (event.targetId === characterId) {
-        const currentHealth = healthRef.current;
-        const newHealth = Math.max(0, currentHealth - event.damage);
+        let dmg = event.damage;
+        let currentArmor = armorRef.current;
+        let currentHealth = healthRef.current;
+        // Armor absorbs damage first
+        if (currentArmor > 0) {
+          const absorbed = Math.min(currentArmor, dmg);
+          currentArmor -= absorbed;
+          dmg -= absorbed;
+          onArmorChangeRef.current(currentArmor);
+          supabase.from('game_characters').update({ armor: currentArmor }).eq('id', characterId).then();
+        }
+        const newHealth = Math.max(0, currentHealth - dmg);
         onHealthChangeRef.current(newHealth);
-        addDamageNumber(event.damage, 'red');
+        addDamageNumber(event.damage, currentArmor > 0 ? 'blue' : 'red');
         flashScreen('red');
         toast.error(`Hit by ${event.attackerName} for ${event.damage} damage!`);
-        // Update DB immediately
         supabase.from('game_characters').update({ health: newHealth }).eq('id', characterId).then();
         if (event.isKill || newHealth <= 0) {
           addKillBanner(event.attackerName || 'Unknown', characterName, event.weaponType || 'fists');
@@ -203,7 +223,27 @@ export default function GameCombat({
     return dist < buildingRadius;
   }, [nearbyBuilding, playerPosition]);
 
-  // Compute aim direction from screen-space offset - wider sensitivity for mobile
+  // Screen-space hit test: project player world position to screen, check if crosshair is near
+  const isPlayerUnderCrosshair = useCallback((player: PlayerData): boolean => {
+    if (!camera) return false;
+    const worldPos = new THREE.Vector3(player.position.x, 1.0, player.position.z);
+    const screenPos = worldPos.clone().project(camera);
+    // Convert to pixel coords
+    const screenX = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+    const screenY = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+    // Crosshair position
+    const crossX = window.innerWidth / 2 + aimOffset.x;
+    const crossY = window.innerHeight / 2 + aimOffset.y;
+    const dx = screenX - crossX;
+    const dy = screenY - crossY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Hit radius scales with distance - closer = easier to hit
+    const worldDist = playerPosition.distanceTo(worldPos);
+    const hitRadius = Math.max(40, 120 - worldDist * 2); // px
+    return dist < hitRadius && screenPos.z > 0 && screenPos.z < 1;
+  }, [camera, aimOffset, playerPosition]);
+
+  // Fallback: old aim-direction method for melee / no camera
   const getAimDirection = useCallback(() => {
     const aimAngleX = (aimOffset.x / (window.innerWidth * 0.15));
     const baseAngle = playerRotation + aimAngleX * 1.5;
@@ -227,20 +267,31 @@ export default function GameCombat({
     lastAttackRef.current = now;
     setIsAttacking(true);
 
-    // Find target player using aim direction
+    // Find target player - prefer screen-space for ranged, fallback to direction for melee
     let hitTarget: PlayerData | undefined;
     if (nearbyPlayers.length > 0) {
-      const aimDir = getAimDirection();
-      let closestDist = weapon.range;
-      // Wider cone for ranged (use aim offset), tighter for melee
-      const dotThreshold = weapon.type === 'ranged' ? 0.15 : 0.3;
-      for (const player of nearbyPlayers) {
-        const toPlayer = new THREE.Vector3(player.position.x - playerPosition.x, 0, player.position.z - playerPosition.z);
-        const dist = toPlayer.length();
-        toPlayer.normalize();
-        if (dist <= weapon.range && aimDir.dot(toPlayer) > dotThreshold && dist < closestDist) {
-          closestDist = dist;
-          hitTarget = player;
+      if (weapon.type === 'ranged' && camera) {
+        // Screen-space: crosshair must be on the player
+        for (const player of nearbyPlayers) {
+          const worldDist = playerPosition.distanceTo(new THREE.Vector3(player.position.x, 0, player.position.z));
+          if (worldDist <= weapon.range && isPlayerUnderCrosshair(player)) {
+            hitTarget = player;
+            break;
+          }
+        }
+      } else {
+        // Melee fallback: direction-based
+        const aimDir = getAimDirection();
+        let closestDist = weapon.range;
+        const dotThreshold = 0.3;
+        for (const player of nearbyPlayers) {
+          const toPlayer = new THREE.Vector3(player.position.x - playerPosition.x, 0, player.position.z - playerPosition.z);
+          const dist = toPlayer.length();
+          toPlayer.normalize();
+          if (dist <= weapon.range && aimDir.dot(toPlayer) > dotThreshold && dist < closestDist) {
+            closestDist = dist;
+            hitTarget = player;
+          }
         }
       }
     }
@@ -259,7 +310,7 @@ export default function GameCombat({
       });
       if (isKill) {
         addKillBanner(characterName, hitTarget.name, equippedWeapon);
-        toast.success(`Knocked out ${hitTarget.name}!`);
+        toast.success(`☠️ Knocked out ${hitTarget.name}!`);
       }
     } else if (weapon.type === 'melee' && isNearBuildingWall()) {
       const selfDamage = Math.floor(weapon.damage * 0.6);
@@ -275,7 +326,7 @@ export default function GameCombat({
     }
 
     setTimeout(() => setIsAttacking(false), 200);
-  }, [characterId, characterName, equippedWeapon, multiplayer, nearbyPlayers, playerPosition, weapon, health, onHealthChange, isNearBuildingWall, ammo, onAmmoChange, getAimDirection, aimOffset]);
+  }, [characterId, characterName, equippedWeapon, multiplayer, nearbyPlayers, playerPosition, weapon, health, onHealthChange, isNearBuildingWall, ammo, onAmmoChange, getAimDirection, aimOffset, camera, isPlayerUnderCrosshair]);
 
   return (
     <>

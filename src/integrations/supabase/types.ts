@@ -1218,6 +1218,7 @@ export type Database = {
       }
       game_characters: {
         Row: {
+          armor: number
           arrests: number
           bank_balance: number
           cash: number
@@ -1256,6 +1257,7 @@ export type Database = {
           wanted_level: number
         }
         Insert: {
+          armor?: number
           arrests?: number
           bank_balance?: number
           cash?: number
@@ -1294,6 +1296,7 @@ export type Database = {
           wanted_level?: number
         }
         Update: {
+          armor?: number
           arrests?: number
           bank_balance?: number
           cash?: number

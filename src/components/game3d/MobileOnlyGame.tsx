@@ -18,7 +18,7 @@ import CFCreditsExchangeMenu from './CFCreditsExchangeMenu';
 import PropertyInterior from './PropertyInterior';
 import WeaponWheel from './WeaponWheel';
 import VehicleSystem, { addVehicleToInventory, addWeaponToInventory, SHOP_TO_WEAPON, type OwnedVehicle } from './VehicleSystem';
-import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp, Map, Star, Users, Heart, Zap, DollarSign, ShoppingCart, Swords, Car } from 'lucide-react';
+import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp, Map, Star, Users, Heart, Zap, DollarSign, ShoppingCart, Swords, Car, Shield } from 'lucide-react';
 
 interface MobileOnlyGameProps {
   characterId: string;
@@ -47,6 +47,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [showSplash, setShowSplash] = useState(true);
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight);
   const [stats, setStats] = useState<GameStats>({ health: 100, hunger: 100, energy: 100, cash: 500, bank: 0, wantedLevel: 0 });
+  const [armor, setArmor] = useState(0);
   const [gameTime, setGameTime] = useState('12:00');
   const [nearbyBuilding, setNearbyBuilding] = useState<GameBuilding | null>(null);
   const [onlinePlayers, setOnlinePlayers] = useState(1);
@@ -94,6 +95,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       const { data } = await supabase.from('game_characters').select('*').eq('id', characterId).single();
       if (data) {
         setStats({ health: data.health || 100, hunger: data.hunger || 100, energy: data.energy || 100, cash: data.cash || 500, bank: data.bank_balance || 0, wantedLevel: data.wanted_level || 0 });
+        setArmor((data as any).armor || 0);
         setEquippedWeapon(data.equipped_weapon || 'fists');
         setGangId(data.gang_id ?? null);
         // Parse hex colors to THREE.js hex numbers
@@ -426,6 +428,14 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
                 <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full transition-all" style={{ width: `${stats.health}%` }} />
               </div>
             </div>
+            {armor > 0 && (
+              <div className="flex items-center gap-1">
+                <Shield className="w-3 h-3 text-blue-400" />
+                <div className="w-16 h-1.5 bg-gray-700/80 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all" style={{ width: `${armor}%` }} />
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <Zap className="w-3 h-3 text-blue-400" />
               <div className="w-16 h-1.5 bg-gray-700/80 rounded-full overflow-hidden">
@@ -631,10 +641,13 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       <GameCombat
         characterId={characterId} characterName={characterName}
         playerPosition={playerPosition} playerRotation={playerRotation}
-        health={stats.health} onHealthChange={(h) => setStats(prev => ({ ...prev, health: h }))}
+        health={stats.health} armor={armor}
+        onHealthChange={(h) => setStats(prev => ({ ...prev, health: h }))}
+        onArmorChange={setArmor}
         multiplayer={multiplayerRef.current} equippedWeapon={equippedWeapon}
         nearbyBuilding={nearbyBuilding} attackTrigger={attackTrigger}
         aimOffset={aimOffset} ammo={ammo} onAmmoChange={setAmmo}
+        camera={engineRef.current?.camera ?? null}
       />
       <CFCreditsExchangeMenu
         isOpen={showCreditsExchange}
@@ -678,6 +691,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
             if (item.category === 'vehicles') {
               addVehicleToInventory(characterId, item.id, item.name);
               toast.success(`${item.name} added to garage!`);
+            } else if (item.id === 'weapon-6') {
+              // Body Armor purchase
+              setArmor(prev => Math.min(100, prev + 50));
+              void supabase.from('game_characters').update({ armor: Math.min(100, armor + 50) }).eq('id', characterId);
+              toast.success(`🛡️ +50 Armor equipped!`);
             } else if (item.category === 'weapons' && SHOP_TO_WEAPON[item.id]) {
               addWeaponToInventory(characterId, SHOP_TO_WEAPON[item.id]);
               setOwnedWeapons(prev => prev.includes(SHOP_TO_WEAPON[item.id]) ? prev : [...prev, SHOP_TO_WEAPON[item.id]]);

@@ -419,7 +419,9 @@ export default function EliteGame({ characterId, characterName, onExit }: EliteG
         playerPosition={playerPosition}
         playerRotation={playerRotation}
         health={stats.health}
+        armor={0}
         onHealthChange={(health) => setStats(prev => ({ ...prev, health }))}
+        onArmorChange={() => {}}
         multiplayer={multiplayerRef.current}
         equippedWeapon={equippedWeapon}
         nearbyBuilding={nearbyBuilding}
