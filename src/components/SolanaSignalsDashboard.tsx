@@ -268,7 +268,7 @@ export default function SolanaSignalsDashboard() {
     }
   };
 
-
+  const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
   };
