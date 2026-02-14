@@ -2921,6 +2921,63 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_bot_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          groups_sent_to: number | null
+          id: string
+          message: string
+          metadata: Json | null
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          groups_sent_to?: number | null
+          id?: string
+          message: string
+          metadata?: Json | null
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          groups_sent_to?: number | null
+          id?: string
+          message?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      telegram_bot_groups: {
+        Row: {
+          added_at: string | null
+          chat_id: number
+          chat_title: string | null
+          chat_type: string | null
+          id: string
+          is_active: boolean | null
+          last_alert_at: string | null
+        }
+        Insert: {
+          added_at?: string | null
+          chat_id: number
+          chat_title?: string | null
+          chat_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_alert_at?: string | null
+        }
+        Update: {
+          added_at?: string | null
+          chat_id?: number
+          chat_title?: string | null
+          chat_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_alert_at?: string | null
+        }
+        Relationships: []
+      }
       telnyx_phone_requests: {
         Row: {
           admin_notes: string | null
