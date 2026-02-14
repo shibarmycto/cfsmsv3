@@ -219,6 +219,21 @@ export default function AdminRPTab() {
     }
   };
 
+  const handleResetAllCharacters = async () => {
+    if (!window.confirm('⚠️ RESET ALL CHARACTERS?\n\nThis will delete ALL game characters. Every player will need to create a new character.\n\nThis cannot be undone!')) return;
+    if (!window.confirm('Are you ABSOLUTELY sure? Type OK to confirm.')) return;
+
+    try {
+      const { error } = await supabase.from('game_characters').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      toast.success('All game characters have been reset! Players will create new characters on next login.');
+      fetchData();
+    } catch (error) {
+      console.error('Reset error:', error);
+      toast.error('Failed to reset characters');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -229,6 +244,26 @@ export default function AdminRPTab() {
 
   return (
     <div className="space-y-6">
+      {/* Admin Actions */}
+      <Card className="glass-card border-red-500/30">
+        <CardHeader>
+          <CardTitle className="text-red-400 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            Game Management
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex gap-3">
+          <Button 
+            variant="destructive" 
+            onClick={handleResetAllCharacters}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            <Gamepad2 className="w-4 h-4 mr-2" />
+            Reset All Characters (New Update)
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="glass-card">
