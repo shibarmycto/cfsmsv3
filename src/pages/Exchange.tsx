@@ -239,7 +239,7 @@ export default function Exchange() {
     }
 
     if ((profile?.sms_credits || 0) < 25) {
-      toast.error('Need 25 credits to create a token');
+      toast.error('Need $25 to create a token');
       return;
     }
 
@@ -261,7 +261,7 @@ export default function Exchange() {
       }
       if (data?.error) throw new Error(data.error);
 
-      toast.success(`${tokenSymbol.toUpperCase()} token created! MCap starts at 3K`);
+      toast.success(`${tokenSymbol.toUpperCase()} token created! MCap starts at $3K`);
       
       // Reset form using functional updates
       setTokenName('');
@@ -294,7 +294,7 @@ export default function Exchange() {
     if (tradeType === 'buy') {
       const cost = amount * selectedToken.price_per_token;
       if ((profile?.sms_credits || 0) < cost) {
-        toast.error(`Need ${cost} credits to buy ${amount} tokens`);
+        toast.error(`Need $${cost} to buy ${amount} tokens`);
         return;
       }
     }
@@ -401,12 +401,12 @@ export default function Exchange() {
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Your Balance</p>
-                <p className="font-bold text-primary">{(profile?.sms_credits || 0).toLocaleString()} Credits</p>
+                <p className="text-xs text-muted-foreground">Balance</p>
+                <p className="font-bold text-primary">${(profile?.sms_credits || 0).toLocaleString()}</p>
               </div>
               <div className="text-right hidden sm:block">
                 <p className="text-xs text-muted-foreground">Portfolio Value</p>
-                <p className="font-bold text-green-400">{totalPortfolioValue.toLocaleString()} Credits</p>
+                <p className="font-bold text-green-400">${totalPortfolioValue.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -495,7 +495,7 @@ export default function Exchange() {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold">{token.price_per_token} Credits</p>
+                                <p className="font-bold">${token.price_per_token}</p>
                                 <p className="text-xs text-muted-foreground">
                                   MCap: {token.market_cap.toLocaleString()}
                                 </p>
@@ -512,7 +512,7 @@ export default function Exchange() {
                                     You own: {holding.amount.toLocaleString()}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    ≈ {(holding.amount * token.price_per_token).toLocaleString()} Credits
+                                    ≈ ${(holding.amount * token.price_per_token).toLocaleString()}
                                   </p>
                                 </div>
                               )}
@@ -531,7 +531,7 @@ export default function Exchange() {
                   <CardHeader>
                     <CardTitle>Your Holdings</CardTitle>
                     <CardDescription>
-                      Total value: {totalPortfolioValue.toLocaleString()} Credits
+                      Total value: ${totalPortfolioValue.toLocaleString()}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -567,7 +567,7 @@ export default function Exchange() {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold">{value.toLocaleString()} Credits</p>
+                                <p className="font-bold">${value.toLocaleString()}</p>
                                 <p className={`text-xs ${profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                   {profitLoss >= 0 ? '+' : ''}{profitLoss.toLocaleString()} P/L
                                 </p>
@@ -589,7 +589,7 @@ export default function Exchange() {
                       <Plus className="w-5 h-5" /> Create New Token
                     </CardTitle>
                     <CardDescription>
-                      Launch your own cryptocurrency on the CF Network. Costs 25 credits. 999M tokens will be created.
+                      Launch your own cryptocurrency on the CF Network. Costs $25. 999M tokens will be created.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -647,7 +647,7 @@ export default function Exchange() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                           <div>
                             <p className="text-xs text-muted-foreground">Creation Cost</p>
-                            <p className="font-bold text-primary">25 Credits</p>
+                            <p className="font-bold text-primary">$25</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Total Supply</p>
@@ -659,11 +659,11 @@ export default function Exchange() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Starting Price</p>
-                            <p className="font-bold">1 Credit</p>
+                            <p className="font-bold">$1</p>
                           </div>
                           <div>
-                            <p className="text-xs text-muted-foreground">Your Balance</p>
-                            <p className="font-bold">{(profile?.sms_credits || 0).toLocaleString()}</p>
+                             <p className="text-xs text-muted-foreground">Balance</p>
+                            <p className="font-bold">${(profile?.sms_credits || 0).toLocaleString()}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -707,7 +707,7 @@ export default function Exchange() {
                       ) : (
                         <Coins className="w-4 h-4 mr-2" />
                       )}
-                      Create Token (25 Credits)
+                      Create Token ($25)
                     </Button>
                   </CardContent>
                 </Card>
@@ -780,7 +780,7 @@ export default function Exchange() {
                       <p className="text-sm text-muted-foreground">{selectedToken.symbol}</p>
                       <div className="mt-2">{getStatusBadge(selectedToken.status)}</div>
                       <p className="text-2xl font-bold text-primary mt-2">
-                        {selectedToken.price_per_token} Credits
+                        ${selectedToken.price_per_token}
                       </p>
                     </div>
 
@@ -854,11 +854,11 @@ export default function Exchange() {
                       {tradeAmount && (
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">
-                            Total: {(parseInt(tradeAmount) * selectedToken.price_per_token).toLocaleString()} Credits
+                            Total: ${(parseInt(tradeAmount) * selectedToken.price_per_token).toLocaleString()}
                           </p>
                           {tradeType === 'sell' && selectedToken.status !== 'graduated' && (
                             <p className="text-sm text-red-400">
-                              You'll receive: {Math.floor(parseInt(tradeAmount) * selectedToken.price_per_token * 0.5).toLocaleString()} Credits (after 50% fee)
+                              You'll receive: ${Math.floor(parseInt(tradeAmount) * selectedToken.price_per_token * 0.5).toLocaleString()} (after 50% fee)
                             </p>
                           )}
                         </div>
