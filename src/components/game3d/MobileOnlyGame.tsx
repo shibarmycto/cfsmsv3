@@ -433,7 +433,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       </div>
 
       {/* RIGHT SIDE - Chat + Voice */}
-      <div className="fixed right-3 top-[55%] -translate-y-1/2 z-40 flex flex-col gap-2 pointer-events-auto">
+      <div className="fixed right-3 top-[40%] -translate-y-1/2 z-40 flex flex-col gap-3 pointer-events-auto">
         <button onClick={() => setShowChat(!showChat)} className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center active:scale-90">
           <MessageSquare className="w-5 h-5 text-white/70" />
         </button>
@@ -445,15 +445,6 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
           className={`w-11 h-11 rounded-full flex items-center justify-center border active:scale-90 ${voiceActive ? 'bg-green-500/70 border-green-400 animate-pulse' : 'bg-white/10 border-white/20'}`}>
           <Mic className={`w-5 h-5 ${voiceActive ? 'text-white' : 'text-white/70'}`} />
         </button>
-        {/* Aim button - only for guns */}
-        {hasGun && (
-          <button 
-            onTouchStart={() => setIsAiming(true)}
-            onTouchEnd={() => setIsAiming(false)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center border active:scale-90 ${isAiming ? 'bg-red-500/50 border-red-400' : 'bg-white/10 border-white/20'}`}>
-            <Crosshair className={`w-5 h-5 ${isAiming ? 'text-red-300' : 'text-white/70'}`} />
-          </button>
-        )}
       </div>
 
       {/* LEFT - Joystick zone */}
@@ -477,35 +468,63 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         </div>
       </div>
 
-      {/* BOTTOM RIGHT - Weapon info + Interact + Attack + Weapon Wheel */}
-      <div className="fixed bottom-4 right-4 flex flex-col items-end gap-2 z-40 pointer-events-auto">
-        {/* Weapon switch button */}
-        <button onClick={() => setShowWeaponWheel(true)}
-          className="bg-black/70 backdrop-blur-sm rounded-xl px-3 py-1.5 border border-white/10 flex items-center gap-2 active:scale-95">
-          <span className="text-xl">{weapon.icon}</span>
-          <div>
-            <div className="text-white text-xs font-bold capitalize">{equippedWeapon}</div>
-            <div className="text-gray-400 text-[10px]">{weapon.damage} DMG • {weapon.range}m</div>
-          </div>
-          <Swords className="w-3.5 h-3.5 text-yellow-400 ml-1" />
-        </button>
-        {/* Garage button */}
-        <button onClick={() => setShowGarage(true)}
-          className="w-10 h-10 rounded-full bg-cyan-600/40 border border-cyan-400/50 flex items-center justify-center active:scale-90">
-          <Car className="w-5 h-5 text-cyan-300" />
-        </button>
-        {nearbyBuilding && (
-          <button onClick={handleEnterBuilding}
-            className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
-            <span className="text-white font-black text-lg">E</span>
+      {/* BOTTOM RIGHT - Action buttons */}
+      <div className="fixed bottom-4 right-4 flex items-end gap-3 z-40 pointer-events-auto">
+        {/* Left column: weapon info + interact + garage */}
+        <div className="flex flex-col items-center gap-2 mb-2">
+          {/* Weapon switch */}
+          <button onClick={() => setShowWeaponWheel(true)}
+            className="bg-black/70 backdrop-blur-sm rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-1.5 active:scale-95">
+            <span className="text-lg">{weapon.icon}</span>
+            <div>
+              <div className="text-white text-[10px] font-bold capitalize">{equippedWeapon}</div>
+              <div className="text-gray-400 text-[8px]">{weapon.damage} DMG • {weapon.range}m</div>
+            </div>
           </button>
-        )}
-        <button
-          onTouchStart={(e) => { e.preventDefault(); setAttackTrigger(prev => prev + 1); }}
-          onClick={() => setAttackTrigger(prev => prev + 1)}
-          className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-red-500 to-red-700 border-4 border-red-400/80 flex items-center justify-center shadow-xl shadow-red-500/50 active:scale-90 transition-transform">
-          <span className="text-4xl">{weapon.icon}</span>
-        </button>
+          {/* Garage */}
+          <button onClick={() => setShowGarage(true)}
+            className="w-10 h-10 rounded-full bg-cyan-600/40 border border-cyan-400/50 flex items-center justify-center active:scale-90">
+            <Car className="w-5 h-5 text-cyan-300" />
+          </button>
+          {/* Enter building */}
+          {nearbyBuilding && (
+            <button onClick={handleEnterBuilding}
+              className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
+              <span className="text-white font-black text-lg">E</span>
+            </button>
+          )}
+        </div>
+
+        {/* Right column: Aim (if gun) + Fire/Attack */}
+        <div className="flex flex-col items-center gap-3">
+          {/* AIM button - hold to aim, only for guns */}
+          {hasGun && (
+            <button
+              onTouchStart={(e) => { e.preventDefault(); setIsAiming(true); }}
+              onTouchEnd={() => setIsAiming(false)}
+              onTouchCancel={() => setIsAiming(false)}
+              onMouseDown={() => setIsAiming(true)}
+              onMouseUp={() => setIsAiming(false)}
+              className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all active:scale-90 ${
+                isAiming 
+                  ? 'bg-red-500/60 border-red-400 shadow-lg shadow-red-500/50' 
+                  : 'bg-white/10 border-white/30'
+              }`}>
+              <Crosshair className={`w-7 h-7 ${isAiming ? 'text-red-300' : 'text-white/60'}`} />
+            </button>
+          )}
+          {/* FIRE / ATTACK button */}
+          <button
+            onTouchStart={(e) => { e.preventDefault(); setAttackTrigger(prev => prev + 1); }}
+            onClick={() => setAttackTrigger(prev => prev + 1)}
+            className={`w-[72px] h-[72px] rounded-full border-4 flex items-center justify-center shadow-xl active:scale-90 transition-transform ${
+              hasGun 
+                ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-400/80 shadow-red-500/50' 
+                : 'bg-gradient-to-br from-orange-500 to-red-600 border-orange-400/80 shadow-orange-500/50'
+            }`}>
+            <span className="text-4xl">{weapon.icon}</span>
+          </button>
+        </div>
       </div>
 
       {/* Jump button */}
