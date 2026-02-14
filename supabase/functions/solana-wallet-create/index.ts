@@ -79,13 +79,30 @@ serve(async (req) => {
       .eq('user_id', userId)
       .single();
 
+    // Check if wallet already exists
+    const { data: existingWallet } = await supabase
+      .from('solana_wallets')
+      .select('public_key, encrypted_private_key')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingWallet) {
+      return new Response(JSON.stringify({
+        success: true,
+        publicKey: existingWallet.public_key,
+        privateKey: existingWallet.encrypted_private_key,
+        privateKeyArray: [],
+        existing: true,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Generate keypair
     const keypair = await generateKeypair();
 
     // Store in database
-    const { error: upsertError } = await supabase
+    const { error: insertError } = await supabase
       .from('solana_wallets')
-      .upsert({
+      .insert({
         user_id: userId,
         public_key: keypair.publicKey,
         encrypted_private_key: keypair.privateKey,
@@ -93,8 +110,8 @@ serve(async (req) => {
         is_trading_enabled: false,
       });
 
-    if (upsertError) {
-      console.error('DB error:', upsertError);
+    if (insertError) {
+      console.error('DB error:', insertError);
       return new Response(JSON.stringify({ error: 'Failed to save wallet' }), { status: 500, headers: corsHeaders });
     }
 
