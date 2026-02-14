@@ -14,6 +14,8 @@ import CriminalJobsSystem from './CriminalJobsSystem';
 import GangSystem from './GangSystem';
 import TryYourLuckPanel, { type LuckPrize } from './TryYourLuckPanel';
 import MobileInfoModal from './MobileInfoModal';
+import CFCreditsExchangeMenu from './CFCreditsExchangeMenu';
+import PropertyInterior from './PropertyInterior';
 import { Maximize2, X, Menu, MessageSquare, Mic, Crosshair, ChevronUp, Map, Star, Users, Heart, Zap, DollarSign, ShoppingCart } from 'lucide-react';
 
 interface MobileOnlyGameProps {
@@ -38,6 +40,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const inputRef = useRef<GameInput>({ forward: 0, right: 0, jump: false, sprint: false });
   const touchIdRef = useRef<number | null>(null);
   const autoSprintRef = useRef(false);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
   
   const [showSplash, setShowSplash] = useState(true);
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight);
@@ -54,6 +57,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [showJobs, setShowJobs] = useState(false);
   const [showGangs, setShowGangs] = useState(false);
   const [showLuck, setShowLuck] = useState(false);
+  const [showCreditsExchange, setShowCreditsExchange] = useState(false);
   const [infoModal, setInfoModal] = useState<{ title: string; message: string } | null>(null);
   const [gangId, setGangId] = useState<string | null>(null);
   const [equippedWeapon, setEquippedWeapon] = useState('fists');
@@ -67,8 +71,10 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
   const [engineReady, setEngineReady] = useState(false);
   const [showMinimap, setShowMinimap] = useState(true);
   const [attackTrigger, setAttackTrigger] = useState(0);
+  const [isAiming, setIsAiming] = useState(false);
 
   const weapon = WEAPONS[equippedWeapon] || WEAPONS.fists;
+  const hasGun = weapon.type === 'ranged';
 
   // Load character data
   useEffect(() => {
@@ -126,6 +132,30 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     setChatMessages(prev => [...prev, { sender: characterName, message: chatInput.trim(), time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }]);
     setChatInput('');
   }, [chatInput, characterName]);
+
+  // Voice - real mic access for walkie-talkie
+  const startVoice = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      setVoiceActive(true);
+      toast.success('🎙️ Mic active - Push to talk');
+    } catch {
+      toast.error('Mic access denied');
+    }
+  }, []);
+
+  const stopVoice = useCallback(() => {
+    if (voiceStreamRef.current) {
+      voiceStreamRef.current.getTracks().forEach(t => t.stop());
+      voiceStreamRef.current = null;
+    }
+    setVoiceActive(false);
+  }, []);
+
+  useEffect(() => {
+    return () => { stopVoice(); };
+  }, [stopVoice]);
 
   useEffect(() => {
     if (!containerRef.current || showSplash || insideBuilding) return;
@@ -213,14 +243,14 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       case 'jobs': setShowJobs(true); setShowSideMenu(false); break;
       case 'gangs': setShowGangs(true); setShowSideMenu(false); break;
       case 'luck': setShowLuck(true); setShowSideMenu(false); break;
-      case 'events': openInfo('Events', 'No live events right now.'); break;
-      case 'tasks': openInfo('Tasks', 'Daily tasks refresh at midnight.'); break;
-      case 'friends': openInfo('Friends', 'Friends unlock after you own a Phone.'); break;
-      case 'parking': openInfo('Parking', 'Parking unlocks after your first vehicle.'); break;
-      case 'factions': openInfo('Factions', 'Factions unlock after reputation.'); break;
-      case 'profile': openInfo('Profile', `Name: ${characterName}\nWeapon: ${equippedWeapon}\nCash: $${stats.cash.toLocaleString()}\nBank: $${stats.bank.toLocaleString()}\nWanted: ${stats.wantedLevel}/5`); break;
+      case 'events': openInfo('Events', 'No live events right now. Check back soon for double XP weekends and heist events!'); break;
+      case 'tasks': openInfo('Daily Tasks', '1. ✅ Login today\n2. ⬜ Complete 3 jobs\n3. ⬜ Win a fight\n4. ⬜ Earn $5,000\n\nRewards reset at midnight.'); break;
+      case 'friends': openInfo('Friends', 'Add friends by tapping on nearby players. Friends list coming in next update!'); break;
+      case 'parking': openInfo('Parking', 'Visit CF Motors dealership to buy your first vehicle. Owned cars spawn at your property.'); break;
+      case 'factions': openInfo('Factions', 'Join a gang first to unlock faction wars! Visit the Gangs menu.'); break;
+      case 'profile': openInfo('Profile', `Name: ${characterName}\nWeapon: ${equippedWeapon}\nCash: $${stats.cash.toLocaleString()}\nBank: $${stats.bank.toLocaleString()}\nWanted: ${'⭐'.repeat(stats.wantedLevel)}${'☆'.repeat(5 - stats.wantedLevel)}`); break;
       case 'main-menu': handleExit(); break;
-      default: openInfo('Locked', 'This feature is locked right now.');
+      default: openInfo('Coming Soon', 'This feature is being developed.');
     }
   }, [characterName, equippedWeapon, handleExit, stats]);
 
@@ -229,8 +259,29 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
     else document.exitFullscreen?.();
   }, []);
 
+  // Handle entering buildings
+  const handleEnterBuilding = useCallback(() => {
+    if (!nearbyBuilding) return;
+    setInsideBuilding(nearbyBuilding);
+  }, [nearbyBuilding]);
+
   if (showSplash) return <SplashScreen characterName={characterName} onComplete={() => setShowSplash(false)} />;
 
+  // Property interior (houses)
+  if (insideBuilding && insideBuilding.type === 'property') {
+    return (
+      <PropertyInterior
+        building={insideBuilding}
+        characterId={characterId}
+        characterName={characterName}
+        stats={stats}
+        onExit={() => setInsideBuilding(null)}
+        onStatsChange={(newStats) => setStats(prev => ({ ...prev, ...newStats }))}
+      />
+    );
+  }
+
+  // Regular building interior
   if (insideBuilding) {
     return (
       <ShopInterior building={insideBuilding} characterId={characterId} stats={stats}
@@ -285,11 +336,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         <button onClick={() => setShowSideMenu(true)} className="w-9 h-9 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90">
           <div className="grid grid-cols-2 gap-0.5"><div className="w-1.5 h-1.5 bg-white/60 rounded-sm" /><div className="w-1.5 h-1.5 bg-white/60 rounded-sm" /><div className="w-1.5 h-1.5 bg-white/60 rounded-sm" /><div className="w-1.5 h-1.5 bg-white/60 rounded-sm" /></div>
         </button>
-        <button className="relative w-9 h-9 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90">
-          <Star className="w-4 h-4 text-white/60" />
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">2</span>
+        <button onClick={() => setShowLuck(true)} className="relative w-9 h-9 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90">
+          <Star className="w-4 h-4 text-yellow-400" />
+          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">!</span>
         </button>
-        <button className="w-9 h-9 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90">
+        <button onClick={() => setShowGangs(true)} className="w-9 h-9 rounded-lg bg-gray-700/50 border border-gray-600/50 flex items-center justify-center active:scale-90">
           <Users className="w-4 h-4 text-white/60" />
         </button>
         <button onClick={() => { const next = !isSprinting; setIsSprinting(next); inputRef.current.sprint = next; }}
@@ -309,8 +360,8 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
       {/* TOP RIGHT - Store + Currency + Stats + Weapon */}
       <div className="fixed top-2 right-2 z-40 pointer-events-auto flex flex-col items-end gap-1.5">
         <div className="flex items-center gap-1.5">
-          <button className="p-1.5 bg-gray-800/60 rounded-lg border border-gray-700/50"><span className="text-sm">📋</span></button>
-          <button className="relative p-1.5 bg-gray-800/60 rounded-lg border border-gray-700/50">
+          <button onClick={() => setShowJobs(true)} className="p-1.5 bg-gray-800/60 rounded-lg border border-gray-700/50"><span className="text-sm">💼</span></button>
+          <button onClick={() => setShowLuck(true)} className="relative p-1.5 bg-gray-800/60 rounded-lg border border-gray-700/50">
             <span className="text-sm">🎁</span>
             <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">3</span>
           </button>
@@ -322,10 +373,11 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
             <ShoppingCart className="w-4 h-4" /> STORE
           </button>
         </div>
+        {/* Cash display - tap + to open CF Credits Exchange */}
         <div className="flex items-center gap-1 bg-gray-800/60 backdrop-blur-sm rounded-lg px-2.5 py-1 border border-gray-700/50">
           <DollarSign className="w-4 h-4 text-green-400" />
           <span className="text-green-400 font-bold text-sm">{(stats.cash + stats.bank).toLocaleString()}</span>
-          <button className="ml-1 w-5 h-5 bg-yellow-500 rounded text-black font-bold text-xs flex items-center justify-center">+</button>
+          <button onClick={() => setShowCreditsExchange(true)} className="ml-1 w-5 h-5 bg-yellow-500 rounded text-black font-bold text-xs flex items-center justify-center active:scale-90">+</button>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-yellow-500 flex items-center justify-center border-2 border-yellow-300">
@@ -346,6 +398,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
             </div>
           </div>
         </div>
+        {/* Weapon info */}
         <div className="flex items-center gap-2 bg-gray-800/70 backdrop-blur-sm rounded-lg p-1.5 border border-gray-700/50">
           <div className="w-12 h-8 bg-gray-700/60 rounded flex items-center justify-center">
             <span className="text-lg">{weapon.icon}</span>
@@ -372,10 +425,23 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         <button onClick={() => setShowChat(!showChat)} className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center active:scale-90">
           <MessageSquare className="w-5 h-5 text-white/70" />
         </button>
-        <button onTouchStart={() => setVoiceActive(true)} onTouchEnd={() => setVoiceActive(false)}
-          className={`w-11 h-11 rounded-full flex items-center justify-center border active:scale-90 ${voiceActive ? 'bg-green-500/70 border-green-400' : 'bg-white/10 border-white/20'}`}>
+        <button 
+          onTouchStart={(e) => { e.preventDefault(); startVoice(); }} 
+          onTouchEnd={() => stopVoice()}
+          onMouseDown={() => startVoice()}
+          onMouseUp={() => stopVoice()}
+          className={`w-11 h-11 rounded-full flex items-center justify-center border active:scale-90 ${voiceActive ? 'bg-green-500/70 border-green-400 animate-pulse' : 'bg-white/10 border-white/20'}`}>
           <Mic className={`w-5 h-5 ${voiceActive ? 'text-white' : 'text-white/70'}`} />
         </button>
+        {/* Aim button - only for guns */}
+        {hasGun && (
+          <button 
+            onTouchStart={() => setIsAiming(true)}
+            onTouchEnd={() => setIsAiming(false)}
+            className={`w-11 h-11 rounded-full flex items-center justify-center border active:scale-90 ${isAiming ? 'bg-red-500/50 border-red-400' : 'bg-white/10 border-white/20'}`}>
+            <Crosshair className={`w-5 h-5 ${isAiming ? 'text-red-300' : 'text-white/70'}`} />
+          </button>
+        )}
       </div>
 
       {/* LEFT - Joystick zone */}
@@ -409,7 +475,7 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
           </div>
         </div>
         {nearbyBuilding && (
-          <button onClick={() => setInsideBuilding(nearbyBuilding)}
+          <button onClick={handleEnterBuilding}
             className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 animate-pulse">
             <span className="text-white font-black text-lg">E</span>
           </button>
@@ -430,16 +496,19 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         </button>
       </div>
 
-      {/* Crosshair */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-30 z-20">
-        <Crosshair className="w-5 h-5 text-white" />
-      </div>
+      {/* Crosshair - ONLY visible when aiming with a gun */}
+      {hasGun && isAiming && (
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
+          <Crosshair className="w-8 h-8 text-red-400 drop-shadow-lg" />
+        </div>
+      )}
 
       {/* Nearby building prompt */}
       {nearbyBuilding && (
         <div className="fixed bottom-[30%] left-1/2 -translate-x-1/2 pointer-events-none z-30">
           <div className="bg-black/80 backdrop-blur-sm rounded-xl px-4 py-2 border border-cyan-500/60">
             <span className="text-cyan-400 font-bold text-sm">📍 {nearbyBuilding.name}</span>
+            {nearbyBuilding.type === 'property' && <span className="text-yellow-400 text-xs ml-2">🏠 Enter</span>}
           </div>
         </div>
       )}
@@ -476,6 +545,15 @@ export default function MobileOnlyGame({ characterId, characterName, onExit }: M
         health={stats.health} onHealthChange={(h) => setStats(prev => ({ ...prev, health: h }))}
         multiplayer={multiplayerRef.current} equippedWeapon={equippedWeapon}
         nearbyBuilding={nearbyBuilding} attackTrigger={attackTrigger}
+      />
+
+      {/* CF Credits Exchange */}
+      <CFCreditsExchangeMenu
+        isOpen={showCreditsExchange}
+        onClose={() => setShowCreditsExchange(false)}
+        characterId={characterId}
+        currentCash={stats.cash}
+        onCashChange={(newCash) => setStats(prev => ({ ...prev, cash: newCash }))}
       />
 
       {/* Overlays */}
