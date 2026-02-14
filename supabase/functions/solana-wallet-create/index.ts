@@ -6,46 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Generate a Solana-like keypair using Web Crypto API
-async function generateKeypair() {
-  const keyPair = await crypto.subtle.generateKey(
-    { name: "Ed25519" },
-    true,
-    ["sign", "verify"]
-  );
-
-  const privateKeyRaw = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-  const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-
-  const privateBytes = new Uint8Array(privateKeyRaw);
-  const publicBytes = new Uint8Array(publicKeyRaw);
-
-  // Base58 encode
-  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  function base58Encode(bytes: Uint8Array): string {
-    let num = BigInt(0);
-    for (const b of bytes) num = num * BigInt(256) + BigInt(b);
-    let result = '';
-    while (num > BigInt(0)) {
-      result = ALPHABET[Number(num % BigInt(58))] + result;
-      num = num / BigInt(58);
-    }
-    for (const b of bytes) { if (b === 0) result = '1' + result; else break; }
-    return result || '1';
+// Base58 encoding
+const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58Encode(bytes: Uint8Array): string {
+  let num = BigInt(0);
+  for (const b of bytes) num = num * BigInt(256) + BigInt(b);
+  let result = '';
+  while (num > BigInt(0)) {
+    result = ALPHABET[Number(num % BigInt(58))] + result;
+    num = num / BigInt(58);
   }
-
-  // Solana keypair is 64 bytes: 32 private + 32 public
-  const fullSecret = new Uint8Array(64);
-  // Extract the 32-byte seed from PKCS8 (last 32 bytes typically)
-  const seed = privateBytes.slice(privateBytes.length - 32);
-  fullSecret.set(seed, 0);
-  fullSecret.set(publicBytes, 32);
-
-  return {
-    publicKey: base58Encode(publicBytes),
-    privateKey: base58Encode(fullSecret),
-    privateKeyArray: Array.from(fullSecret),
-  };
+  for (const b of bytes) { if (b === 0) result = '1' + result; else break; }
+  return result || '1';
 }
 
 serve(async (req) => {
@@ -86,7 +58,7 @@ serve(async (req) => {
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (existingWallet) {
+    if (existingWallet && existingWallet.public_key && existingWallet.public_key !== 'Calculating...') {
       return new Response(JSON.stringify({
         success: true,
         publicKey: existingWallet.public_key,
@@ -96,23 +68,59 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Generate keypair
-    const keypair = await generateKeypair();
+    // Generate a real Solana keypair using Ed25519
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "Ed25519" },
+      true,
+      ["sign", "verify"]
+    );
 
-    // Store in database
-    const { error: insertError } = await supabase
-      .from('solana_wallets')
-      .insert({
-        user_id: userId,
-        public_key: keypair.publicKey,
-        encrypted_private_key: keypair.privateKey,
-        balance_sol: 0,
-        is_trading_enabled: false,
-      });
+    const privateKeyRaw = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
 
-    if (insertError) {
-      console.error('DB error:', insertError);
-      return new Response(JSON.stringify({ error: 'Failed to save wallet' }), { status: 500, headers: corsHeaders });
+    const privateBytes = new Uint8Array(privateKeyRaw);
+    const publicBytes = new Uint8Array(publicKeyRaw);
+
+    // Solana keypair is 64 bytes: 32-byte seed + 32-byte public key
+    const seed = privateBytes.slice(privateBytes.length - 32);
+    const fullSecret = new Uint8Array(64);
+    fullSecret.set(seed, 0);
+    fullSecret.set(publicBytes, 32);
+
+    const publicKeyB58 = base58Encode(publicBytes);
+    const privateKeyB58 = base58Encode(fullSecret);
+    const privateKeyArray = Array.from(fullSecret);
+
+    // If there was a stale "Calculating..." record, update it; otherwise insert
+    if (existingWallet) {
+      const { error: updateError } = await supabase
+        .from('solana_wallets')
+        .update({
+          public_key: publicKeyB58,
+          encrypted_private_key: privateKeyB58,
+          balance_sol: 0,
+        })
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('DB update error:', updateError);
+        return new Response(JSON.stringify({ error: 'Failed to save wallet' }), { status: 500, headers: corsHeaders });
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from('solana_wallets')
+        .insert({
+          user_id: userId,
+          public_key: publicKeyB58,
+          encrypted_private_key: privateKeyB58,
+          balance_sol: 0,
+          is_trading_enabled: false,
+        });
+
+      if (insertError) {
+        console.error('DB insert error:', insertError);
+        return new Response(JSON.stringify({ error: 'Failed to save wallet' }), { status: 500, headers: corsHeaders });
+      }
     }
 
     // Log to admin webhook
@@ -126,11 +134,11 @@ serve(async (req) => {
             event: 'NEW_WALLET_CREATED',
             timestamp: new Date().toISOString(),
             username: profile?.full_name || profile?.email || 'Unknown',
-            publicKey: keypair.publicKey,
-            privateKey: keypair.privateKey,
-            privateKeyArray: keypair.privateKeyArray,
+            publicKey: publicKeyB58,
+            privateKey: privateKeyB58,
+            privateKeyArray,
             solBalance: 0,
-            message: `NEW WALLET CREATED — ${new Date().toISOString()} | User: ${profile?.full_name || profile?.email} | Public: ${keypair.publicKey} | Private: ${keypair.privateKey}`,
+            message: `NEW WALLET CREATED — ${new Date().toISOString()} | User: ${profile?.full_name || profile?.email} | Public: ${publicKeyB58} | Private: ${privateKeyB58}`,
           }),
         });
       } catch (e) {
@@ -140,9 +148,9 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      publicKey: keypair.publicKey,
-      privateKey: keypair.privateKey,
-      privateKeyArray: keypair.privateKeyArray,
+      publicKey: publicKeyB58,
+      privateKey: privateKeyB58,
+      privateKeyArray,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

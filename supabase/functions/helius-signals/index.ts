@@ -6,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Fetch live SOL price from CoinGecko
+async function getLiveSolPrice(): Promise<number> {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    if (res.ok) {
+      const data = await res.json();
+      return data?.solana?.usd || 0;
+    }
+  } catch {}
+  // Fallback: try Jupiter price API
+  try {
+    const res = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
+    if (res.ok) {
+      const data = await res.json();
+      return parseFloat(data?.data?.['So11111111111111111111111111111111111111112']?.price || '0');
+    }
+  } catch {}
+  return 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -34,10 +54,14 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Helius API key not configured' }), { status: 500, headers: corsHeaders });
     }
 
-    const { action } = await req.json();
+    // Parse body once
+    const body = await req.json();
+    const { action } = body;
+
+    // Get live SOL price for all actions
+    const solPrice = await getLiveSolPrice();
 
     if (action === 'get_signals') {
-      // Fetch recent transactions from Helius for known DEX programs
       const signals = [];
 
       // Fetch from PumpFun API for new token launches
@@ -59,7 +83,7 @@ serve(async (req) => {
                 token_symbol: t.symbol || 'UNK',
                 mint_address: t.mint,
                 market_cap_usd: t.usd_market_cap || 0,
-                liquidity_usd: (t.virtual_sol_reserves || 0) * 150,
+                liquidity_usd: (t.virtual_sol_reserves || 0) * solPrice,
                 price_usd: t.usd_market_cap ? t.usd_market_cap / (t.total_supply || 1e9) : 0,
                 created_at: new Date(t.created_timestamp).toISOString(),
                 age_minutes: Math.round(ageMinutes * 10) / 10,
@@ -90,7 +114,7 @@ serve(async (req) => {
                   mint_address: tx.signature,
                   market_cap_usd: 0,
                   liquidity_usd: 0,
-                  price_usd: totalSol * 150,
+                  price_usd: totalSol * solPrice,
                   created_at: new Date(tx.timestamp * 1000).toISOString(),
                   age_minutes: (Date.now() - tx.timestamp * 1000) / 60000,
                   sol_amount: totalSol,
@@ -104,16 +128,15 @@ serve(async (req) => {
         console.error('Helius fetch error:', e);
       }
 
-      // Sort by newest first
       signals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      return new Response(JSON.stringify({ signals, helius_connected: true }), {
+      return new Response(JSON.stringify({ signals, helius_connected: true, solPrice }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (action === 'get_balance') {
-      const { publicKey } = await req.json().catch(() => ({}));
+      const { publicKey } = body;
       if (!publicKey) {
         return new Response(JSON.stringify({ error: 'Public key required' }), { status: 400, headers: corsHeaders });
       }
@@ -132,14 +155,6 @@ serve(async (req) => {
         const balData = await balRes.json();
         const lamports = balData?.result?.value || 0;
         const sol = lamports / 1e9;
-
-        // Get SOL price
-        let solPrice = 150;
-        try {
-          const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-          const priceData = await priceRes.json();
-          solPrice = priceData?.solana?.usd || 150;
-        } catch {}
 
         return new Response(JSON.stringify({ lamports, sol, usd: sol * solPrice, solPrice }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
