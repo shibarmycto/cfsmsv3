@@ -27,6 +27,7 @@ import {
   PlusCircle,
   Gamepad2,
   Info,
+  Users,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -176,6 +177,7 @@ export default function Dashboard() {
                 { id: 'bank', icon: Coins, label: 'Bank', isLink: true, href: '/bank' },
                 { id: 'miner', icon: Pickaxe, label: 'Miner', isLink: true, href: '/miner' },
                 { id: 'roleplay', icon: Gamepad2, label: 'RP', isLink: true, href: '/roleplay' },
+                { id: 'crm', icon: Users, label: 'CRM', isLink: true, href: '/crm' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
