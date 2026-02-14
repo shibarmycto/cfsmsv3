@@ -8,7 +8,7 @@ const corsHeaders = {
 const BOT_TOKEN = Deno.env.get('CF_BLOCKCHAIN_BOT_TOKEN')!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-const LOGO_URL = 'https://www.cfblockchains.com/cf-blockchain-logo.png';
+const LOGO_URL = 'https://www.cfblockchains.com/cf-blockchain-logo.png?v=' + Date.now();
 
 async function sendTelegramMessage(chatId: number | string, text: string, parseMode = 'HTML') {
   const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
