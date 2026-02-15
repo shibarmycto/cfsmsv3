@@ -359,10 +359,25 @@ export default function SolanaSignalsDashboard() {
 
   const runScalperScan = async (executeMode = false) => {
     setIsScanning(true);
-    setScanStatus('Scanning fresh tokens (≤10 min old)...');
 
-    // Also check active positions for 2X exits
-    await checkActivePositions();
+    // Step 1: Always check active positions for TP/SL/time-stop exits
+    const activePositions = trades.filter(t => t.status === 'active');
+    const hasOpenPosition = activePositions.length > 0;
+    
+    if (hasOpenPosition) {
+      setScanStatus(`Monitoring ${activePositions.length} open position(s) for exit...`);
+      await checkActivePositions();
+      // Re-check after position check — may have closed
+      const stillActive = trades.filter(t => t.status === 'active');
+      if (stillActive.length > 0) {
+        setScanStatus(`Position open — monitoring for $2+ profit exit...`);
+        setIsScanning(false);
+        return; // Don't buy while holding — wait for exit
+      }
+    }
+
+    // Step 2: No open position — scan and execute immediately
+    setScanStatus('🔍 Scanning fresh tokens — ready to execute...');
 
     // Calculate trade amount from % of balance
     const currentTradeAmount = wallet
@@ -378,6 +393,12 @@ export default function SolanaSignalsDashboard() {
         },
       });
       if (error && !data) throw new Error(error.message);
+
+      if (data?.has_open_position) {
+        setScanStatus('Position still open — waiting for exit...');
+        setIsScanning(false);
+        return;
+      }
 
       if (data?.opportunities && data.opportunities.length > 0) {
         setOpportunities(data.opportunities);
@@ -397,7 +418,7 @@ export default function SolanaSignalsDashboard() {
         };
         setTrades(prev => [newTrade, ...prev]);
         await saveTradeToDB(newTrade, { token_symbol: data.token_symbol });
-        toast.success(data.message);
+        toast.success(`⚡ ${data.message}`);
         if (data.explorer_url) {
           toast.info('View on Solscan', {
             action: { label: 'Open', onClick: () => window.open(data.explorer_url, '_blank') },
@@ -405,7 +426,7 @@ export default function SolanaSignalsDashboard() {
           });
         }
         refreshBalance();
-        setScanStatus(`✅ Executed: ${data.token_name} (${data.match_pct}% match)`);
+        setScanStatus(`✅ BOUGHT: ${data.token_name} — monitoring for $2+ exit...`);
       } else {
         const oppCount = data?.opportunities?.length || opportunities.length;
         const bestName = data?.best_match?.name || '';
@@ -413,7 +434,7 @@ export default function SolanaSignalsDashboard() {
         setScanStatus(
           data?.message ||
           (oppCount > 0
-            ? `Found ${oppCount} opportunities — best: ${bestName} (${bestPct}% match)`
+            ? `Found ${oppCount} tokens — best: ${bestName} (${bestPct}% match) — executing next cycle...`
             : 'Scanning...')
         );
       }
@@ -428,10 +449,11 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     setIsAutoTradeActive(true);
-    // Initial scan first (no execute)
-    await runScalperScan(false);
-    // Then scan & execute every 20s for maximum freshness, 10 min per token cycle
-    autoTradeInterval.current = setInterval(() => runScalperScan(true), 20000);
+    toast.success('🤖 AI Smart Trader activated — scanning & executing every 15s');
+    // Immediately execute first trade
+    await runScalperScan(true);
+    // Then cycle every 15s: check positions → exit if profitable → buy next token
+    autoTradeInterval.current = setInterval(() => runScalperScan(true), 15000);
   };
 
   const stopAutoTrade = async () => {
