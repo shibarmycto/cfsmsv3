@@ -1449,6 +1449,19 @@ serve(async (req) => {
             const netProfitUsdFinal = grossProfitUsd - platformFeeUsd;
             const platformFee = platformFeeUsd / solPrice; // fee in SOL for compatibility
 
+            // ✅ CRITICAL: Update DB record to closed so frontend/CA scalper can proceed
+            await supabaseAdmin.from('signal_trades').update({
+              status: 'closed',
+              exit_sol: currentSol,
+              pnl_percent: pnlPct,
+              gross_profit_usd: grossProfitUsd,
+              net_profit_usd: netProfitUsdFinal,
+              exit_reason: reason,
+              exit_signature: sellResult.signature || '',
+              closed_at: new Date().toISOString(),
+            }).eq('user_id', userId).eq('mint_address', pos.mint).eq('status', 'open');
+            console.log(`[CHECK] ✅ DB updated: ${pos.mint.slice(0,8)} → closed (${reason})`);
+
             results.push({
               mint: pos.mint,
               action: 'sold',
