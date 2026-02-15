@@ -221,12 +221,14 @@ async function getSolPrice(): Promise<number> {
   return 150;
 }
 
-// ── Jupiter API URLs (use current working domains with fallbacks) ──
-const JUPITER_QUOTE_URLS = [
+// ── Jupiter API URLs — V6 (quote-api) as primary, V1 (swap) as fallback ──
+const JUPITER_QUOTE_ENDPOINTS = [
+  'https://quote-api.jup.ag/v6/quote',
   'https://api.jup.ag/swap/v1/quote',
   'https://lite-api.jup.ag/swap/v1/quote',
 ];
-const JUPITER_SWAP_URLS = [
+const JUPITER_SWAP_ENDPOINTS = [
+  'https://quote-api.jup.ag/v6/swap',
   'https://api.jup.ag/swap/v1/swap',
   'https://lite-api.jup.ag/swap/v1/swap',
 ];
@@ -236,7 +238,8 @@ async function fetchWithFallback(urls: string[], options?: RequestInit): Promise
   for (const url of urls) {
     try {
       const res = await fetch(url, options);
-      return res;
+      if (res.ok || res.status < 500) return res;
+      console.error(`[JUPITER] ${url} returned ${res.status}`);
     } catch (e) {
       console.error(`[JUPITER] Failed ${url}: ${e.message}`);
       lastError = e;
@@ -252,39 +255,78 @@ async function executeSwap(
   maxSlippageBps: number = SCALPER_CONFIG.MAX_SLIPPAGE_BPS
 ): Promise<{ success: boolean; signature?: string; outputAmount?: number; error?: string }> {
   try {
-    const quoteUrls = JUPITER_QUOTE_URLS.map(u => `${u}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${maxSlippageBps}`);
+    // ── STEP 1: Get quote from Jupiter (try V6 first, then V1) ──
+    const quoteUrls = JUPITER_QUOTE_ENDPOINTS.map(u => 
+      `${u}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${maxSlippageBps}`
+    );
+    console.log('[SWAP] Getting quote for', inputMint.slice(0,8), '→', outputMint.slice(0,8), 'amount:', amountLamports);
+    
     const quoteRes = await fetchWithFallback(quoteUrls);
     const quote = await quoteRes.json();
-    if (quote.error) return { success: false, error: `Quote: ${quote.error}` };
+    
+    if (quote.error) {
+      console.error('[SWAP] Quote error:', JSON.stringify(quote));
+      return { success: false, error: `Quote: ${quote.error}` };
+    }
+    if (!quote.outAmount || quote.outAmount === '0') {
+      console.error('[SWAP] Quote returned 0 output:', JSON.stringify(quote));
+      return { success: false, error: 'No route found for this token' };
+    }
 
     const priceImpact = parseFloat(quote.priceImpactPct || '0');
     if (priceImpact > 5) {
       return { success: false, error: `Price impact ${priceImpact.toFixed(2)}% exceeds 5% max` };
     }
+    console.log('[SWAP] Quote OK: outAmount=', quote.outAmount, 'priceImpact=', priceImpact);
 
-    const swapRes = await fetchWithFallback(JUPITER_SWAP_URLS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: publicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: Math.floor(SCALPER_CONFIG.PRIORITY_FEE_SOL * 1e9),
-      }),
-    });
-    const swapData = await swapRes.json();
-    if (swapData.error || !swapData.swapTransaction) {
-      return { success: false, error: `Swap build: ${swapData.error || 'No tx'}` };
+    // ── STEP 2: Get serialized transaction (try each swap endpoint) ──
+    let swapTransaction: string | null = null;
+    let swapError: string | null = null;
+    
+    for (const swapUrl of JUPITER_SWAP_ENDPOINTS) {
+      try {
+        console.log('[SWAP] Trying swap endpoint:', swapUrl);
+        const swapRes = await fetch(swapUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quoteResponse: quote,
+            userPublicKey: publicKey,
+            wrapAndUnwrapSol: true,
+            dynamicComputeUnitLimit: true,
+            prioritizationFeeLamports: Math.floor(SCALPER_CONFIG.PRIORITY_FEE_SOL * 1e9),
+          }),
+        });
+        const swapData = await swapRes.json();
+        console.log('[SWAP] Response from', swapUrl, '- has swapTransaction:', !!swapData.swapTransaction, 'error:', swapData.error || 'none');
+        
+        if (swapData.swapTransaction) {
+          swapTransaction = swapData.swapTransaction;
+          break;
+        }
+        swapError = swapData.error || 'No swapTransaction in response';
+      } catch (e) {
+        console.error('[SWAP] Endpoint failed:', swapUrl, e.message);
+        swapError = e.message;
+      }
+    }
+    
+    if (!swapTransaction) {
+      return { success: false, error: `All swap endpoints failed: ${swapError}` };
     }
 
-    const txBytes = Uint8Array.from(atob(swapData.swapTransaction), c => c.charCodeAt(0));
+    // ── STEP 3: Sign and send transaction ──
+    console.log('[SWAP] Signing transaction...');
+    const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
     const secretKeyBytes = base58Decode(privateKeyB58);
+    
+    // Determine transaction format — versioned transactions have different structure
     const messageBytes = txBytes.slice(65);
     const sig = await signTransaction(messageBytes, secretKeyBytes);
     const signedTx = new Uint8Array(txBytes);
     signedTx.set(sig, 1);
 
+    console.log('[SWAP] Sending transaction to Helius RPC...');
     const sendRes = await fetch(heliusRpc, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -295,8 +337,13 @@ async function executeSwap(
       }),
     });
     const sendResult = await sendRes.json();
-    if (sendResult.error) return { success: false, error: sendResult.error.message || JSON.stringify(sendResult.error) };
+    
+    if (sendResult.error) {
+      console.error('[SWAP] Send error:', JSON.stringify(sendResult.error));
+      return { success: false, error: sendResult.error.message || JSON.stringify(sendResult.error) };
+    }
 
+    console.log('[SWAP] ✅ Transaction sent:', sendResult.result);
     const outputAmount = parseInt(quote.outAmount) / (outputMint === SOL_MINT ? 1e9 : Math.pow(10, quote.outputDecimals || 6));
     return { success: true, signature: sendResult.result, outputAmount };
   } catch (e) {
@@ -364,7 +411,7 @@ async function getTokenSafetyInfo(mintAddress: string, heliusRpc: string): Promi
 // ── Honeypot check ──
 async function honeypotCheck(mintAddress: string): Promise<boolean> {
   try {
-    const urls = JUPITER_QUOTE_URLS.map(u => `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=500`);
+    const urls = JUPITER_QUOTE_ENDPOINTS.map(u => `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=500`);
     const quoteRes = await fetchWithFallback(urls);
     const quote = await quoteRes.json();
     return !quote.error && quote.outAmount && parseInt(quote.outAmount) > 0;
@@ -842,7 +889,7 @@ serve(async (req) => {
 
         // Check current value via Jupiter quote (token → SOL)
         try {
-          const quoteUrls = JUPITER_QUOTE_URLS.map(u =>
+          const quoteUrls = JUPITER_QUOTE_ENDPOINTS.map(u =>
             `${u}?inputMint=${pos.mint}&outputMint=${SOL_MINT}&amount=${Math.floor(pos.amount_tokens * 1e6)}&slippageBps=500`
           );
           const quoteRes = await fetchWithFallback(quoteUrls);
