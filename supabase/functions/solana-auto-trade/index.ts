@@ -53,7 +53,9 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 const SCALPER_CONFIG = {
   DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL per trade
   PLATFORM_FEE_USD: 0.99, // $0.99 fee per trade
-  TAKE_PROFIT_USD: 3.00, // $3 net profit target (after fee)
+  TAKE_PROFIT_USD: 3.00, // $3 net profit target (after fee) for trades under 2 min
+  QUICK_EXIT_MINUTES: 2, // After 2 min, lower the TP target
+  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 2 min (+ $0.99 fee = $1.99 gross)
   STOP_LOSS_PCT: -0.30,
   MAX_HOLD_MINUTES: 10, // 10 min per token then move on
   MAX_SLIPPAGE_BPS: 150,
@@ -427,7 +429,33 @@ async function honeypotCheck(mintAddress: string): Promise<boolean> {
     const quote = await quoteRes.json();
     return !quote.error && quote.outAmount && parseInt(quote.outAmount) > 0;
   } catch {
-    return true; // Optimistic — don't block on network errors
+    return false; // PESSIMISTIC — block trade if we can't verify sellability
+  }
+}
+
+// ── Pre-buy sell simulation — verify token can actually be sold back ──
+async function verifySellable(mintAddress: string): Promise<boolean> {
+  try {
+    // Simulate selling 1M token units back to SOL
+    const urls = JUPITER_QUOTE_ENDPOINTS.map(u =>
+      `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=1000`
+    );
+    const quoteRes = await fetchWithFallback(urls);
+    const quote = await quoteRes.json();
+    if (quote.error || !quote.outAmount || parseInt(quote.outAmount) === 0) {
+      console.warn(`[SAFETY] Token ${mintAddress.slice(0,8)} has NO sell route — BLOCKED`);
+      return false;
+    }
+    const priceImpact = parseFloat(quote.priceImpactPct || '0');
+    if (priceImpact > 10) {
+      console.warn(`[SAFETY] Token ${mintAddress.slice(0,8)} sell impact ${priceImpact.toFixed(1)}% — BLOCKED`);
+      return false;
+    }
+    console.log(`[SAFETY] Token ${mintAddress.slice(0,8)} sell route OK (impact: ${priceImpact.toFixed(1)}%)`);
+    return true;
+  } catch (e) {
+    console.warn(`[SAFETY] Sell verification failed for ${mintAddress.slice(0,8)}: ${e.message} — BLOCKED`);
+    return false;
   }
 }
 
@@ -799,22 +827,41 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Honeypot check on best candidate, fallback to alternates
+      // Honeypot check + SELL SIMULATION on best candidate, fallback to alternates
       let execTarget = bestOpp;
       const isHoneypotSafe = await honeypotCheck(bestOpp.mint);
-      if (!isHoneypotSafe) {
+      const isSellable = isHoneypotSafe ? await verifySellable(bestOpp.mint) : false;
+      
+      if (!isHoneypotSafe || !isSellable) {
         const hpFilter = bestOpp.filters.find((f: any) => f.name === 'Honeypot Check');
-        if (hpFilter) { hpFilter.passed = false; hpFilter.detail = 'Failed ⚠️'; }
+        if (hpFilter) { hpFilter.passed = false; hpFilter.detail = !isHoneypotSafe ? 'Honeypot ⚠️' : 'Unsellable ⚠️'; }
         bestOpp.match_pct = Math.max(0, bestOpp.match_pct - 10);
         
+        let foundAlt = false;
         for (let i = 1; i < Math.min(opportunities.length, 5); i++) {
           const alt = opportunities[i];
           const altSafe = await honeypotCheck(alt.mint);
-          if (altSafe) {
-            console.log(`[SCALPER] Honeypot on #1, switching to #${i+1}: ${alt.name} (${alt.match_pct}%)`);
+          if (!altSafe) continue;
+          const altSellable = await verifySellable(alt.mint);
+          if (altSellable) {
+            console.log(`[SCALPER] #1 blocked (${!isHoneypotSafe ? 'honeypot' : 'unsellable'}), switching to #${i+1}: ${alt.name} (${alt.match_pct}%)`);
             execTarget = alt;
+            foundAlt = true;
             break;
           }
+        }
+        if (!foundAlt) {
+          return new Response(JSON.stringify({
+            success: true,
+            trade_executed: false,
+            message: `All top candidates failed sell verification — skipping this cycle to protect funds.`,
+            tokens_scanned: freshTokens.length,
+            opportunities: opportunities.slice(0, 10),
+            best_match: bestOpp,
+            balance: solBalance,
+            sol_price: solPrice,
+            config: SCALPER_CONFIG,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
       }
 
@@ -852,6 +899,9 @@ serve(async (req) => {
         amount_sol: positionSol,
       });
 
+      // Get balance BEFORE using it
+      const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
       // Discord: Notify trade execution
       await notifyDiscord('⚡ AUTO-TRADE EXECUTED', 0x00ff88, [
         { name: '🪙 Token', value: `${execTarget.name} (${execTarget.symbol})`, inline: true },
@@ -873,8 +923,6 @@ serve(async (req) => {
         signature: tradeResult.signature,
       });
 
-      const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
-
       return new Response(JSON.stringify({
         success: true,
         trade_executed: true,
@@ -895,9 +943,10 @@ serve(async (req) => {
         balance: newBalance,
         sol_price: solPrice,
         exit_rules: {
-          take_profit: '2× (100% gain)',
+          take_profit: '$3 net (<2min) / $1 net (>2min)',
           stop_loss: '-30%',
-          time_stop: '15 minutes',
+          time_stop: '10 minutes',
+          fee: '$0.99',
         },
         config: SCALPER_CONFIG,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -1017,19 +1066,24 @@ serve(async (req) => {
           const profitSolRaw = currentSol - pos.entry_sol;
           const profitUsdRaw = profitSolRaw * solPrice;
           const netProfitUsd = profitUsdRaw - SCALPER_CONFIG.PLATFORM_FEE_USD;
-          const grossTargetUsd = SCALPER_CONFIG.TAKE_PROFIT_USD + SCALPER_CONFIG.PLATFORM_FEE_USD; // $3.99
 
-          // Take Profit: $3 net profit (after $0.99 fee)
-          if (profitUsdRaw >= grossTargetUsd) {
+          // Dynamic take-profit: full target < 2min, quick exit after 2min
+          const isQuickExit = ageMin >= SCALPER_CONFIG.QUICK_EXIT_MINUTES;
+          const activeNetTarget = isQuickExit ? SCALPER_CONFIG.QUICK_EXIT_PROFIT_USD : SCALPER_CONFIG.TAKE_PROFIT_USD;
+          const activeGrossTarget = activeNetTarget + SCALPER_CONFIG.PLATFORM_FEE_USD;
+
+          // Take Profit: dynamic based on time in trade
+          if (profitUsdRaw >= activeGrossTarget) {
             shouldSell = true;
-            reason = `🎯 Take Profit! +$${netProfitUsd.toFixed(2)} net (gross $${profitUsdRaw.toFixed(2)} - $${SCALPER_CONFIG.PLATFORM_FEE_USD} fee)`;
+            const label = isQuickExit ? '⚡ Quick Exit' : '🎯 Take Profit';
+            reason = `${label}! +$${netProfitUsd.toFixed(2)} net (gross $${profitUsdRaw.toFixed(2)} - $${SCALPER_CONFIG.PLATFORM_FEE_USD} fee) [${ageMin.toFixed(1)}m]`;
           }
           // Stop Loss: -30%
           else if (pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
             shouldSell = true;
             reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)})`;
           }
-          // Time Stop: 10 minutes
+          // Time Stop: 10 minutes — force exit regardless
           else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
             shouldSell = true;
             reason = `⏰ Time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} gross, $${netProfitUsd.toFixed(2)} net`;
@@ -1108,15 +1162,16 @@ serve(async (req) => {
           } else {
             const holdProfitUsd = profitSolRaw * solPrice;
             const holdNetUsd = holdProfitUsd - SCALPER_CONFIG.PLATFORM_FEE_USD;
+            const targetLabel = isQuickExit ? `$${activeGrossTarget.toFixed(2)} gross (quick)` : `$${activeGrossTarget.toFixed(2)} gross`;
             results.push({
               mint: pos.mint,
               action: 'hold',
-              reason: `Holding: $${holdProfitUsd.toFixed(2)} gross / $${holdNetUsd.toFixed(2)} net (${ageMin.toFixed(0)}m)`,
+              reason: `Holding: $${holdProfitUsd.toFixed(2)} gross / $${holdNetUsd.toFixed(2)} net (${ageMin.toFixed(1)}m) — target: ${targetLabel}`,
               current_sol: currentSol,
               pnl_percent: pnlPct,
               current_profit_usd: holdProfitUsd,
               net_profit_usd: holdNetUsd,
-              target_profit_usd: grossTargetUsd,
+              target_profit_usd: activeGrossTarget,
             });
           }
         } catch (e) {
