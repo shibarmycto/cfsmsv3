@@ -573,33 +573,11 @@ serve(async (req) => {
       .single();
 
     // ══════════════════════════════════════════════════════════════
-    // ACTION: ACTIVATE — Discover → Score → ALWAYS pick best → Execute
+    // ACTION: SCAN — Discover → Score → Return opportunities (NO execution)
     // ══════════════════════════════════════════════════════════════
-    if (action === 'activate') {
-      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
-        return new Response(JSON.stringify({ error: 'No wallet found. Create one first.' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
+    if (action === 'scan' || action === 'activate') {
+      const shouldExecute = action === 'activate';
       const solPrice = await getSolPrice();
-      const positionSol = SCALPER_CONFIG.POSITION_SIZE_USD / solPrice;
-      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.005;
-
-      const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
-      if (solBalance < positionSol + feesReserve) {
-        return new Response(JSON.stringify({
-          error: `Insufficient SOL. You have ${solBalance.toFixed(6)} SOL but need ~${(positionSol + feesReserve).toFixed(4)} SOL ($${SCALPER_CONFIG.POSITION_SIZE_USD} + fees).`,
-          balance: solBalance, sol_price: solPrice,
-        }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      // Deduct 20 platform tokens if available
-      const { data: tokenWallet } = await supabase
-        .from('wallets').select('balance').eq('user_id', userId).single();
-      if (tokenWallet && (tokenWallet.balance || 0) >= 20) {
-        await supabase.from('wallets').update({ balance: (tokenWallet.balance || 0) - 20 }).eq('user_id', userId);
-      }
 
       // ── STEP 1: Discover tokens from ALL sources ──
       const freshTokens = await discoverTokens(HELIUS_API_KEY, solPrice);
@@ -607,11 +585,10 @@ serve(async (req) => {
       if (freshTokens.length === 0) {
         return new Response(JSON.stringify({
           success: true,
-          message: `Discovery scan found 0 tokens — retrying with wider search. Scalper remains active.`,
+          message: 'Discovery scan found 0 tokens — retrying next cycle.',
           tokens_scanned: 0,
           trade_executed: false,
           opportunities: [],
-          balance: solBalance,
           sol_price: solPrice,
           config: SCALPER_CONFIG,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -619,16 +596,12 @@ serve(async (req) => {
 
       // ── STEP 2: Score ALL tokens with percentage-based system ──
       const opportunities: any[] = [];
-      // Check up to 20 tokens for safety info (parallelized in batches)
       const tokensToCheck = freshTokens.slice(0, 20);
       
       for (const t of tokensToCheck) {
         const now = Date.now();
         const ageSeconds = Math.max(1, (now - (t.created_timestamp || 0)) / 1000);
-
-        // Get safety info — with optimistic defaults on failure
         const safetyInfo = await getTokenSafetyInfo(t.mint, HELIUS_RPC);
-
         const lpSol = t.virtual_sol_reserves ? t.virtual_sol_reserves / 1e6 : (t.liquidity_usd || 0) / Math.max(solPrice, 1);
 
         const metrics: TokenMetrics = {
@@ -662,47 +635,47 @@ serve(async (req) => {
         });
       }
 
-      // Sort by match percentage descending — BEST match first
       opportunities.sort((a, b) => b.match_pct - a.match_pct);
       const bestOpp = opportunities[0];
-
       console.log(`[SCALPER] Scored ${opportunities.length} tokens. Best: ${bestOpp.name} (${bestOpp.match_pct}% match, ${bestOpp.recommendation})`);
 
-      // ── STEP 3: ALWAYS EXECUTE on the best match — no minimum threshold ──
-      // Run honeypot check on best candidate
-      const isHoneypotSafe = await honeypotCheck(bestOpp.mint);
-      if (!isHoneypotSafe) {
-        // Update honeypot filter result
-        const hpFilter = bestOpp.filters.find((f: any) => f.name === 'Honeypot Check');
-        if (hpFilter) { hpFilter.passed = false; hpFilter.detail = 'Failed ⚠️'; }
-        bestOpp.match_pct = Math.max(0, bestOpp.match_pct - 10);
-        
-        // Try next best that passes honeypot
-        for (let i = 1; i < Math.min(opportunities.length, 5); i++) {
-          const alt = opportunities[i];
-          const altSafe = await honeypotCheck(alt.mint);
-          if (altSafe) {
-            // Use this one instead
-            console.log(`[SCALPER] Honeypot on #1, switching to #${i+1}: ${alt.name} (${alt.match_pct}%)`);
-            Object.assign(bestOpp, alt);
-            break;
-          }
-        }
-      }
-
-      // Execute the trade
-      const amountLamports = Math.floor(positionSol * 1e9);
-      const tradeResult = await executeSwap(
-        SOL_MINT, bestOpp.mint, amountLamports,
-        solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC
-      );
-
-      if (!tradeResult.success) {
-        // Trade failed — return opportunities so user can see what was found
+      // If scan-only mode, return opportunities without executing
+      if (!shouldExecute) {
         return new Response(JSON.stringify({
           success: true,
           trade_executed: false,
-          message: `Found ${opportunities.length} opportunities (best: ${bestOpp.name} at ${bestOpp.match_pct}% match) — execution failed: ${tradeResult.error}. Retrying next scan...`,
+          message: `Found ${opportunities.length} opportunities — best: ${bestOpp.name} (${bestOpp.match_pct}% match). Ready to execute.`,
+          tokens_scanned: freshTokens.length,
+          opportunities: opportunities.slice(0, 10),
+          best_match: bestOpp,
+          sol_price: solPrice,
+          config: SCALPER_CONFIG,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ── STEP 3: EXECUTE on best match ──
+      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
+        return new Response(JSON.stringify({
+          success: true,
+          trade_executed: false,
+          error: 'No wallet found. Create one first.',
+          tokens_scanned: freshTokens.length,
+          opportunities: opportunities.slice(0, 10),
+          best_match: bestOpp,
+          sol_price: solPrice,
+          config: SCALPER_CONFIG,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const positionSol = SCALPER_CONFIG.POSITION_SIZE_USD / solPrice;
+      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.005;
+      const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
+      if (solBalance < positionSol + feesReserve) {
+        return new Response(JSON.stringify({
+          success: true,
+          trade_executed: false,
+          message: `Insufficient SOL: ${solBalance.toFixed(4)} SOL (need ~${(positionSol + feesReserve).toFixed(4)}). Found ${opportunities.length} opportunities.`,
           tokens_scanned: freshTokens.length,
           opportunities: opportunities.slice(0, 10),
           best_match: bestOpp,
@@ -712,7 +685,46 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Trade successful — log notification
+      // Honeypot check on best candidate, fallback to alternates
+      let execTarget = bestOpp;
+      const isHoneypotSafe = await honeypotCheck(bestOpp.mint);
+      if (!isHoneypotSafe) {
+        const hpFilter = bestOpp.filters.find((f: any) => f.name === 'Honeypot Check');
+        if (hpFilter) { hpFilter.passed = false; hpFilter.detail = 'Failed ⚠️'; }
+        bestOpp.match_pct = Math.max(0, bestOpp.match_pct - 10);
+        
+        for (let i = 1; i < Math.min(opportunities.length, 5); i++) {
+          const alt = opportunities[i];
+          const altSafe = await honeypotCheck(alt.mint);
+          if (altSafe) {
+            console.log(`[SCALPER] Honeypot on #1, switching to #${i+1}: ${alt.name} (${alt.match_pct}%)`);
+            execTarget = alt;
+            break;
+          }
+        }
+      }
+
+      const amountLamports = Math.floor(positionSol * 1e9);
+      const tradeResult = await executeSwap(
+        SOL_MINT, execTarget.mint, amountLamports,
+        solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC
+      );
+
+      if (!tradeResult.success) {
+        return new Response(JSON.stringify({
+          success: true,
+          trade_executed: false,
+          message: `Best: ${execTarget.name} (${execTarget.match_pct}%) — execution failed: ${tradeResult.error}. Retrying next scan.`,
+          tokens_scanned: freshTokens.length,
+          opportunities: opportunities.slice(0, 10),
+          best_match: execTarget,
+          balance: solBalance,
+          sol_price: solPrice,
+          config: SCALPER_CONFIG,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Trade successful
       const { data: profileData } = await supabaseAdmin
         .from('wallets').select('username').eq('user_id', userId).single();
       const displayName = profileData?.username || 'Trader';
@@ -720,9 +732,9 @@ serve(async (req) => {
       await supabaseAdmin.from('trade_notifications').insert({
         user_id: userId,
         username: displayName,
-        token_name: bestOpp.name,
-        token_symbol: bestOpp.symbol,
-        profit_percent: Math.round(bestOpp.match_pct * 1.5),
+        token_name: execTarget.name,
+        token_symbol: execTarget.symbol,
+        profit_percent: Math.round(execTarget.match_pct * 1.5),
         amount_sol: positionSol,
       });
 
@@ -731,13 +743,13 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         trade_executed: true,
-        message: `⚡ EXECUTED: ${bestOpp.name} (${bestOpp.symbol}) — ${bestOpp.match_pct}% filter match — $${SCALPER_CONFIG.POSITION_SIZE_USD} position`,
-        token_name: bestOpp.name,
-        token_symbol: bestOpp.symbol,
-        mint_address: bestOpp.mint,
-        match_pct: bestOpp.match_pct,
-        recommendation: bestOpp.recommendation,
-        filters: bestOpp.filters,
+        message: `⚡ EXECUTED: ${execTarget.name} (${execTarget.symbol}) — ${execTarget.match_pct}% match — $${SCALPER_CONFIG.POSITION_SIZE_USD} position`,
+        token_name: execTarget.name,
+        token_symbol: execTarget.symbol,
+        mint_address: execTarget.mint,
+        match_pct: execTarget.match_pct,
+        recommendation: execTarget.recommendation,
+        filters: execTarget.filters,
         position_usd: SCALPER_CONFIG.POSITION_SIZE_USD,
         position_sol: positionSol,
         output_tokens: tradeResult.outputAmount,
@@ -752,7 +764,6 @@ serve(async (req) => {
           stop_loss: '-30%',
           time_stop: '15 minutes',
         },
-        remaining_tokens: tokenWallet ? Math.max(0, (tokenWallet.balance || 0) - 20) : 0,
         config: SCALPER_CONFIG,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

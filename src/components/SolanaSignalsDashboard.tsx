@@ -228,18 +228,18 @@ export default function SolanaSignalsDashboard() {
     }
   };
 
-  const runScalperScan = async () => {
+  const runScalperScan = async (executeMode = false) => {
     setIsScanning(true);
     setScanStatus('Scanning all sources...');
     try {
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
-        body: { action: 'activate' },
+        body: { action: executeMode ? 'activate' : 'scan' },
       });
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      // Don't throw on error — still check for opportunities in response
+      if (error && !data) throw new Error(error.message);
 
-      // Store discovered opportunities
-      if (data?.opportunities) {
+      // Always store discovered opportunities
+      if (data?.opportunities && data.opportunities.length > 0) {
         setOpportunities(data.opportunities);
       }
 
@@ -266,13 +266,21 @@ export default function SolanaSignalsDashboard() {
         refreshBalance();
         setScanStatus(`✅ Executed: ${data.token_name} (${data.match_pct}% match)`);
       } else {
-        setScanStatus(data.message || `Found ${data?.opportunities?.length || 0} opportunities — retrying...`);
+        const oppCount = data?.opportunities?.length || opportunities.length;
+        const bestName = data?.best_match?.name || '';
+        const bestPct = data?.best_match?.match_pct || '';
+        setScanStatus(
+          data?.message || 
+          (oppCount > 0 
+            ? `Found ${oppCount} opportunities — best: ${bestName} (${bestPct}% match)`
+            : 'Scanning...')
+        );
       }
 
-      if (data.remaining_tokens !== undefined) setTokenBalance(data.remaining_tokens);
+      if (data?.remaining_tokens !== undefined) setTokenBalance(data.remaining_tokens);
     } catch (e: any) {
-      setScanStatus(`Error: ${e.message}`);
-      toast.error(e.message || 'Scan failed');
+      // Don't clear opportunities on error — keep showing what we found
+      setScanStatus(`Scan error: ${e.message} — retrying...`);
     } finally {
       setIsScanning(false);
     }
@@ -280,10 +288,10 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     setIsAutoTradeActive(true);
-    // Run immediately
-    await runScalperScan();
-    // Then auto-scan every 30 seconds
-    autoTradeInterval.current = setInterval(runScalperScan, 30000);
+    // First scan to discover opportunities
+    await runScalperScan(false);
+    // Then continuously scan and auto-execute every 30 seconds
+    autoTradeInterval.current = setInterval(() => runScalperScan(true), 30000);
   };
 
   const stopAutoTrade = () => {
