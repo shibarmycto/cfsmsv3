@@ -225,13 +225,8 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     try {
-      const amount = parseFloat(tradeAmountSol);
-      if (isNaN(amount) || amount <= 0) {
-        toast.error('Set a valid trade amount in SOL first');
-        return;
-      }
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
-        body: { action: 'activate', trade_amount_sol: amount },
+        body: { action: 'activate' },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
@@ -243,9 +238,9 @@ export default function SolanaSignalsDashboard() {
           id: data.signature || Date.now().toString(),
           token_name: data.token_name || 'Unknown',
           mint: data.mint_address || '',
-          entry_price: data.amount_sol || amount,
+          entry_price: data.position_sol || data.amount_sol || 0,
           current_price: data.output_tokens || 0,
-          amount_sol: amount,
+          amount_sol: data.position_sol || 0,
           timestamp: new Date().toISOString(),
           status: 'active',
           pnl_percent: 0,
@@ -667,17 +662,22 @@ export default function SolanaSignalsDashboard() {
             </div>
 
             {isAutoTradeActive ? (
-              <div className="space-y-3">
-                <Badge className="bg-emerald-500 text-sm px-4 py-1">⚡ AUTO-TRADING ACTIVE</Badge>
-                <p className="text-xs text-[#8899aa]">Scanning fresh tokens (≤60s old) with Poisson model...</p>
+            <div className="space-y-3">
+                <Badge className="bg-emerald-500 text-sm px-4 py-1">⚡ HELIUS PRO SCALPER ACTIVE</Badge>
+                <p className="text-xs text-[#8899aa]">Scanning tokens ≤10 min old with full filter stack...</p>
                 <div className="text-sm text-[#8899aa] space-y-1">
-                  <p>✓ Tokens launched ≤60 seconds ago</p>
+                  <p>✓ Position size: <strong className="text-white">$10 USD</strong> per trade</p>
+                  <p>✓ Take profit: <strong className="text-emerald-400">2× (100% gain)</strong></p>
+                  <p>✓ Stop loss: <strong className="text-red-400">−30% hard cut</strong></p>
+                  <p>✓ Max hold: <strong className="text-amber-400">15 minutes</strong></p>
+                  <p>✓ Max slippage: 1.5%</p>
+                  <p>✓ Mint authority: must be revoked</p>
+                  <p>✓ Freeze authority: must be disabled</p>
+                  <p>✓ Honeypot simulation check</p>
+                  <p>✓ LP ≥ 5 SOL minimum</p>
+                  <p>✓ Top 10 holders &lt; 30%</p>
                   <p>✓ Poisson buy-velocity scoring</p>
-                  <p>✓ Liquidity &amp; market cap analysis</p>
-                  <p>✓ Score threshold: 60/100</p>
-                  <p>✓ Trade amount: {tradeAmountSol} SOL</p>
-                  <p>✓ Take profit: 2x (100%)</p>
-                  <p>✓ Stop loss: -50%</p>
+                  <p>✓ Circuit breaker: 5 losses → 10 min pause</p>
                 </div>
                 <Button variant="destructive" onClick={() => setIsAutoTradeActive(false)} className="w-full">
                   <Square className="w-4 h-4 mr-2" />Stop Auto-Trade
@@ -706,12 +706,12 @@ export default function SolanaSignalsDashboard() {
 
                 <Button
                   onClick={activateAutoTrade}
-                  disabled={!wallet || (wallet?.balanceSol || 0) < parseFloat(tradeAmountSol || '0')}
+                  disabled={!wallet}
                   className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
                   size="lg"
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  Start Auto Trade — {tradeAmountSol} SOL
+                  Start Helius Pro Scalper — $10 Position
                 </Button>
                 {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
               </>
