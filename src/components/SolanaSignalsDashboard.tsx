@@ -92,11 +92,64 @@ export default function SolanaSignalsDashboard() {
   const balanceInterval = useRef<NodeJS.Timeout | null>(null);
   const signalInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // ── Load trades from DB ──
+  const loadTrades = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('signal_trades')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data && data.length > 0) {
+      const mapped: TradeEntry[] = data.map((t: any) => ({
+        id: t.tx_signature || t.id,
+        token_name: t.token_name || 'Unknown',
+        mint: t.mint_address,
+        entry_price: Number(t.entry_sol) || Number(t.amount_sol) || 0,
+        current_price: Number(t.output_tokens) || 0,
+        amount_sol: Number(t.amount_sol) || 0,
+        timestamp: t.created_at,
+        status: t.status === 'open' ? 'active' : t.status === 'closed' ? (Number(t.pnl_percent) >= 0 ? 'profit' : 'loss') : (t.status as any) || 'active',
+        pnl_percent: Number(t.pnl_percent) || 0,
+      }));
+      setTrades(mapped);
+      const totalNet = data.reduce((sum: number, t: any) => sum + (Number(t.net_profit_usd) || 0), 0);
+      setTotalProfit(totalNet);
+    }
+  }, [user]);
+
+  const saveTradeToDB = useCallback(async (trade: TradeEntry, extraFields?: Record<string, any>) => {
+    if (!user) return;
+    await supabase.from('signal_trades').insert({
+      user_id: user.id,
+      mint_address: trade.mint,
+      token_name: trade.token_name,
+      trade_type: 'buy',
+      amount_sol: trade.amount_sol,
+      entry_sol: trade.entry_price,
+      output_tokens: trade.current_price,
+      tx_signature: trade.id,
+      status: 'open',
+      ...extraFields,
+    });
+  }, [user]);
+
+  const updateTradeInDB = useCallback(async (mint: string, fields: Record<string, any>) => {
+    if (!user) return;
+    await supabase.from('signal_trades')
+      .update(fields)
+      .eq('user_id', user.id)
+      .eq('mint_address', mint)
+      .eq('status', 'open');
+  }, [user]);
+
   useEffect(() => {
     if (user) {
       checkAccess();
       loadWallet();
       loadTokenBalance();
+      loadTrades();
     }
     return () => {
       if (balanceInterval.current) clearInterval(balanceInterval.current);
@@ -264,6 +317,17 @@ export default function SolanaSignalsDashboard() {
             const profitUsd = result.profit_usd || 0;
             setTotalProfit(prev => prev + profitUsd);
 
+            // Persist to DB
+            await updateTradeInDB(result.mint, {
+              status: 'closed',
+              pnl_percent: result.pnl_percent || 0,
+              gross_profit_usd: result.gross_profit_usd || 0,
+              net_profit_usd: result.net_profit_usd || 0,
+              exit_reason: result.reason || '',
+              exit_signature: result.signature || '',
+              closed_at: new Date().toISOString(),
+            });
+
             if (result.pnl_percent >= 0) {
               toast.success(`💰 ${result.reason} — +$${profitUsd.toFixed(2)} profit returned to wallet`, { duration: 8000 });
             } else {
@@ -325,13 +389,14 @@ export default function SolanaSignalsDashboard() {
           token_name: data.token_name || 'Unknown',
           mint: data.mint_address || '',
           entry_price: data.position_sol || 0,
-          current_price: data.output_tokens || 0, // Store token amount received
+          current_price: data.output_tokens || 0,
           amount_sol: data.position_sol || 0,
           timestamp: new Date().toISOString(),
           status: 'active',
           pnl_percent: 0,
         };
         setTrades(prev => [newTrade, ...prev]);
+        await saveTradeToDB(newTrade, { token_symbol: data.token_symbol });
         toast.success(data.message);
         if (data.explorer_url) {
           toast.info('View on Solscan', {
@@ -395,11 +460,21 @@ export default function SolanaSignalsDashboard() {
 
         if (data?.results) {
           for (const result of data.results) {
+            const pnl = result.profit_sol ? ((result.returned_sol - (activePositions.find(p => p.mint === result.mint)?.entry_price || 0)) / (activePositions.find(p => p.mint === result.mint)?.entry_price || 1)) * 100 : 0;
             setTrades(prev => prev.map(t =>
               t.mint === result.mint && t.status === 'active'
-                ? { ...t, status: (result.profit_sol || 0) >= 0 ? 'profit' : 'loss', pnl_percent: result.profit_sol ? ((result.returned_sol - t.entry_price) / t.entry_price) * 100 : 0 }
+                ? { ...t, status: (result.profit_sol || 0) >= 0 ? 'profit' : 'loss', pnl_percent: pnl }
                 : t
             ));
+            // Persist close to DB
+            await updateTradeInDB(result.mint, {
+              status: 'closed',
+              pnl_percent: pnl,
+              net_profit_usd: result.profit_usd || 0,
+              exit_reason: 'Manual close',
+              exit_signature: result.signature || '',
+              closed_at: new Date().toISOString(),
+            });
           }
           setTotalProfit(prev => prev + (data.total_profit_usd || 0));
 
@@ -456,6 +531,7 @@ export default function SolanaSignalsDashboard() {
         pnl_percent: 0,
       };
       setTrades(prev => [newTrade, ...prev]);
+      await saveTradeToDB(newTrade);
 
       // Refresh balance
       refreshBalance();
