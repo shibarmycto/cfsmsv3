@@ -158,6 +158,37 @@ export default function SolanaSignalsDashboard() {
       .eq('status', 'open');
   }, [user]);
 
+  // ── Force close last open trade (manual override) ──
+  const forceCloseLastTrade = useCallback(async () => {
+    if (!user) return;
+    const activeTrades = tradesRef.current.filter(t => t.status === 'active');
+    if (activeTrades.length === 0) {
+      // Also check DB for any stuck open trades
+      const { data: dbOpen } = await supabase.from('signal_trades')
+        .select('mint_address, token_name')
+        .eq('user_id', user.id)
+        .eq('status', 'open')
+        .limit(5);
+      if (dbOpen && dbOpen.length > 0) {
+        await supabase.from('signal_trades')
+          .update({ status: 'closed', exit_reason: 'Manual force close', closed_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .eq('status', 'open');
+        toast.success(`🛑 Force-closed ${dbOpen.length} stuck DB trade(s)`);
+        return;
+      }
+      toast.info('No active trades to close');
+      return;
+    }
+    const last = activeTrades[activeTrades.length - 1];
+    setTrades(prev => prev.map(t => t.mint === last.mint && t.status === 'active' ? { ...t, status: 'loss' } : t));
+    await supabase.from('signal_trades')
+      .update({ status: 'closed', exit_reason: 'Manual force close', closed_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('status', 'open');
+    toast.success(`🛑 Force-closed trade: ${last.token_name}`);
+  }, [user]);
+
   // ── Load/check 24h access session ──
   const checkAccessSession = useCallback(async () => {
     if (!user) return;
@@ -1290,6 +1321,13 @@ export default function SolanaSignalsDashboard() {
                 </div>
                 <Button variant="destructive" onClick={stopAutoTrade} className="w-full">
                   <Square className="w-4 h-4 mr-2" />Stop Auto-Trade
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={forceCloseLastTrade}
+                  className="w-full border-red-500/50 text-red-400 hover:bg-red-500/20 hover:text-red-300 mt-2"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />Force Close Open Trade
                 </Button>
               </div>
             ) : (
