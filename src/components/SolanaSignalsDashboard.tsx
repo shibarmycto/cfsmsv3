@@ -416,6 +416,7 @@ export default function SolanaSignalsDashboard() {
 
             await updateTradeInDB(result.mint, {
               status: 'closed',
+              exit_sol: result.current_sol || 0,
               pnl_percent: result.pnl_percent || 0,
               gross_profit_usd: result.gross_profit_usd || 0,
               net_profit_usd: result.net_profit_usd || 0,
@@ -445,6 +446,10 @@ export default function SolanaSignalsDashboard() {
         }
         if (data.balance !== undefined) {
           setWallet(prev => prev ? { ...prev, balanceSol: data.balance, balanceUsd: data.balance * (data.sol_price || prev.solPrice) } : prev);
+        }
+        // Force refresh balance from chain if any positions were sold
+        if (closedMints.size > 0) {
+          refreshBalance();
         }
       }
     } catch (e: any) {
@@ -593,7 +598,9 @@ export default function SolanaSignalsDashboard() {
             // Persist close to DB
             await updateTradeInDB(result.mint, {
               status: 'closed',
+              exit_sol: result.returned_sol || 0,
               pnl_percent: pnl,
+              gross_profit_usd: result.profit_usd || 0,
               net_profit_usd: result.profit_usd || 0,
               exit_reason: 'Manual close',
               exit_signature: result.signature || '',
@@ -726,7 +733,7 @@ export default function SolanaSignalsDashboard() {
         if (data?.results) {
           for (const result of data.results) {
             setTrades(prev => prev.map(t => t.mint === result.mint && t.status === 'active' ? { ...t, status: (result.profit_sol || 0) >= 0 ? 'profit' : 'loss' } : t));
-            await updateTradeInDB(result.mint, { status: 'closed', net_profit_usd: result.profit_usd || 0, exit_reason: 'CA scalp stopped', closed_at: new Date().toISOString() });
+            await updateTradeInDB(result.mint, { status: 'closed', exit_sol: result.returned_sol || 0, net_profit_usd: result.profit_usd || 0, gross_profit_usd: result.profit_usd || 0, exit_reason: 'CA scalp stopped', exit_signature: result.signature || '', closed_at: new Date().toISOString() });
           }
         }
         refreshBalance();
