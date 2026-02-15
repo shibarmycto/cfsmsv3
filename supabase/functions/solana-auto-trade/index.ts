@@ -221,27 +221,36 @@ async function getSolPrice(): Promise<number> {
   return 150;
 }
 
-// ── Jupiter API URLs — V6 (quote-api) as primary, V1 (swap) as fallback ──
+// ── Jupiter API URLs — lite-api first (free, no auth), then others ──
+// IMPORTANT: quote-api.jup.ag has DNS issues from Edge Functions, so we skip it entirely
 const JUPITER_QUOTE_ENDPOINTS = [
-  'https://quote-api.jup.ag/v6/quote',
-  'https://api.jup.ag/swap/v1/quote',
   'https://lite-api.jup.ag/swap/v1/quote',
+  'https://api.jup.ag/swap/v1/quote',
 ];
 const JUPITER_SWAP_ENDPOINTS = [
-  'https://quote-api.jup.ag/v6/swap',
-  'https://api.jup.ag/swap/v1/swap',
   'https://lite-api.jup.ag/swap/v1/swap',
+  'https://api.jup.ag/swap/v1/swap',
 ];
 
 async function fetchWithFallback(urls: string[], options?: RequestInit): Promise<Response> {
   let lastError: Error | null = null;
   for (const url of urls) {
     try {
-      const res = await fetch(url, options);
-      if (res.ok || res.status < 500) return res;
-      console.error(`[JUPITER] ${url} returned ${res.status}`);
+      console.log(`[JUPITER] Trying: ${url.split('?')[0]}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+      // Only accept 2xx responses — 401/403 should trigger fallback
+      if (res.ok) {
+        console.log(`[JUPITER] ✅ Success from: ${url.split('?')[0]}`);
+        return res;
+      }
+      const errBody = await res.text().catch(() => '');
+      console.error(`[JUPITER] ${url.split('?')[0]} returned ${res.status}: ${errBody.slice(0, 200)}`);
+      lastError = new Error(`HTTP ${res.status}: ${errBody.slice(0, 100)}`);
     } catch (e) {
-      console.error(`[JUPITER] Failed ${url}: ${e.message}`);
+      console.error(`[JUPITER] Failed ${url.split('?')[0]}: ${e.message}`);
       lastError = e;
     }
   }
@@ -475,10 +484,15 @@ async function discoverTokens(HELIUS_API_KEY: string, solPrice: number): Promise
       const profiles = await profRes.json();
       for (const p of (profiles || []).slice(0, 50)) {
         if (p.chainId !== 'solana' || !p.tokenAddress) continue;
+        // Sanitize name — DexScreener profiles sometimes put CDN image URLs in description/header
+        const rawName = p.description?.split(' ')[0] || '';
+        const rawSymbol = p.header?.split(' ')[0] || '';
+        const safeName = rawName.startsWith('http') ? rawSymbol || p.tokenAddress.slice(0, 8) : rawName || p.tokenAddress.slice(0, 8);
+        const safeSymbol = rawSymbol.startsWith('http') ? 'UNK' : rawSymbol || 'UNK';
         addToken({
           mint: p.tokenAddress,
-          name: p.description?.split(' ')[0] || p.tokenAddress.slice(0, 8),
-          symbol: p.header?.split(' ')[0] || 'UNK',
+          name: safeName,
+          symbol: safeSymbol,
           created_timestamp: Date.now(),
           usd_market_cap: 0,
           virtual_sol_reserves: 0,
@@ -588,7 +602,7 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ success: false, error: 'No auth token provided' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -598,7 +612,7 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !user) {
       console.error('[AUTH] getUser failed:', userError?.message);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ success: false, error: 'Authentication failed' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const userId = user.id;
     console.log('[AUTH] Authenticated user:', userId);
@@ -608,7 +622,7 @@ serve(async (req) => {
 
     const HELIUS_API_KEY = Deno.env.get('HELIUS_API_KEY');
     if (!HELIUS_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Helius API key not configured' }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ success: false, error: 'Helius API key not configured' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const HELIUS_RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
@@ -821,14 +835,14 @@ serve(async (req) => {
       console.log('[TRADE] execute_trade called:', JSON.stringify({ mint_address: body.mint_address, amount_sol: body.amount_sol, trade_type: body.trade_type }));
       const { mint_address, amount_sol, trade_type } = body;
       if (!mint_address || !amount_sol || !trade_type) {
-        return new Response(JSON.stringify({ error: 'Missing trade parameters' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify({ success: false, error: 'Missing trade parameters' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
       if (!solWallet?.encrypted_private_key || !solWallet?.public_key) {
         console.error('[TRADE] No wallet found for user:', userId);
-        return new Response(JSON.stringify({ error: 'No wallet found. Create one first.' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify({ success: false, error: 'No wallet found. Create one first.' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
@@ -842,8 +856,8 @@ serve(async (req) => {
 
       if (!result.success) {
         console.error('[TRADE] Swap failed:', result.error);
-        return new Response(JSON.stringify({ error: result.error }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify({ success: false, error: result.error, trade_executed: false }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
@@ -1010,8 +1024,8 @@ serve(async (req) => {
       }
 
       if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
-        return new Response(JSON.stringify({ error: 'No wallet found' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify({ success: false, error: 'No wallet found' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
@@ -1088,10 +1102,15 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400, headers: corsHeaders });
+    return new Response(JSON.stringify({ success: false, error: 'Invalid action' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
+    console.error('[FATAL] Unhandled error:', error);
+    // ALWAYS return 200 with error details — never let the function crash with 5xx
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message || 'Unknown server error',
+      trade_executed: false,
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

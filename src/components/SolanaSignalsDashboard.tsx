@@ -864,7 +864,7 @@ export default function SolanaSignalsDashboard() {
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-sm">{idx === 0 ? '🏆' : `#${idx + 1}`}</span>
-                          <span className="font-medium text-sm">{opp.name}</span>
+                          <span className="font-medium text-sm">{opp.name && !opp.name.startsWith('http') ? opp.name : opp.symbol || opp.mint?.slice(0, 8)}</span>
                           <span className="text-xs text-[#8899aa]">({opp.symbol})</span>
                         </div>
                         <span className={`text-lg font-bold ${matchColor}`}>{opp.match_pct}%</span>
