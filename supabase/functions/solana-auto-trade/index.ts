@@ -57,7 +57,7 @@ const SCALPER_CONFIG = {
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
   QUICK_EXIT_PROFIT_USD: 2.00, // Keep $2 minimum — strict rule, no lowering
   STOP_LOSS_PCT: -0.25, // -25% stop loss (only after grace period)
-  MAX_HOLD_MINUTES: 5, // 5 min max per token
+  MAX_HOLD_MINUTES: 10, // HARD 10 min max — if no $2 profit by 10min, EXIT regardless
   MAX_SLIPPAGE_BPS: 150, // Tighter slippage to prevent entry losses
   MAX_TOKEN_AGE_MINUTES: 5, // STRICT: only trade tokens ≤5 min old — fresh launches only
   MIN_LP_SOL: 3,
@@ -70,6 +70,10 @@ const SCALPER_CONFIG = {
   MIN_MATCH_PCT: 55, // Higher quality entries — was 40%, too many bad trades
   GRACE_PERIOD_SECONDS: 90, // Don't check stop loss for first 90s — let token stabilize
   MAX_ENTRY_IMPACT_PCT: 3, // Block entry if price impact > 3%
+  EARLY_MOMENTUM_CHECK_SECONDS: 10, // Token must show pump momentum within first 10s
+  MIN_EARLY_BUY_VELOCITY: 3, // Minimum buys/min in first 10 seconds to qualify
+  SELL_PRESSURE_EXIT_RATIO: 2.0, // Exit if sells outnumber buys by 2:1 ratio
+  NO_MOMENTUM_EXIT_SECONDS: 30, // If no price increase in first 30s after entry, exit
 };
 
 // ═══ PERCENTAGE-BASED FILTER SCORING ═══
@@ -459,6 +463,93 @@ async function verifySellable(mintAddress: string): Promise<boolean> {
   } catch (e) {
     console.warn(`[SAFETY] Sell verification failed for ${mintAddress.slice(0,8)}: ${e.message} — BLOCKED`);
     return false;
+  }
+}
+
+// ── Check early momentum — token must be pumping within first 10 seconds ──
+async function checkEarlyMomentum(mintAddress: string, HELIUS_API_KEY: string): Promise<{ hasMomentum: boolean; buyVelocity: number; sellCount: number; detail: string }> {
+  try {
+    // Check recent transactions for this token via Helius
+    const res = await fetch(`https://api.helius.xyz/v0/addresses/${mintAddress}/transactions?api-key=${HELIUS_API_KEY}&limit=20`);
+    if (!res.ok) return { hasMomentum: true, buyVelocity: 0, sellCount: 0, detail: 'Could not verify — allowing' };
+    
+    const txs = await res.json();
+    const now = Date.now();
+    let recentBuys = 0;
+    let recentSells = 0;
+    const windowMs = SCALPER_CONFIG.EARLY_MOMENTUM_CHECK_SECONDS * 1000;
+    
+    for (const tx of txs) {
+      const txTime = (tx.timestamp || 0) * 1000;
+      if (now - txTime > windowMs * 3) continue; // Only look at very recent txs
+      
+      const transfers = tx.tokenTransfers || [];
+      for (const t of transfers) {
+        if (t.mint !== mintAddress) continue;
+        // If SOL is being sent TO the pool (buy) vs FROM the pool (sell)
+        const nativeTransfers = tx.nativeTransfers || [];
+        const solOut = nativeTransfers.reduce((s: number, n: any) => s + (n.amount > 0 ? n.amount : 0), 0);
+        if (solOut > 0) recentBuys++;
+        else recentSells++;
+      }
+    }
+    
+    // Calculate velocity (buys per minute)
+    const windowMin = (SCALPER_CONFIG.EARLY_MOMENTUM_CHECK_SECONDS * 3) / 60; // 30s window
+    const buyVelocity = windowMin > 0 ? recentBuys / windowMin : 0;
+    const hasMomentum = recentBuys >= 2 && recentBuys > recentSells;
+    
+    console.log(`[MOMENTUM] ${mintAddress.slice(0,8)}: ${recentBuys} buys, ${recentSells} sells, velocity=${buyVelocity.toFixed(1)}/min — ${hasMomentum ? '✅ PUMPING' : '❌ NO MOMENTUM'}`);
+    return { hasMomentum, buyVelocity, sellCount: recentSells, detail: `${recentBuys}B/${recentSells}S in ${SCALPER_CONFIG.EARLY_MOMENTUM_CHECK_SECONDS * 3}s` };
+  } catch (e) {
+    console.error('[MOMENTUM] Check error:', e);
+    return { hasMomentum: true, buyVelocity: 0, sellCount: 0, detail: 'Error — allowing' };
+  }
+}
+
+// ── Detect sell pressure — check if dev or whales are dumping ──
+async function detectSellPressure(mintAddress: string, HELIUS_API_KEY: string): Promise<{ isDumping: boolean; sellRatio: number; detail: string }> {
+  try {
+    const res = await fetch(`https://api.helius.xyz/v0/addresses/${mintAddress}/transactions?api-key=${HELIUS_API_KEY}&limit=30`);
+    if (!res.ok) return { isDumping: false, sellRatio: 0, detail: 'Could not check' };
+    
+    const txs = await res.json();
+    const now = Date.now();
+    let recentBuys = 0;
+    let recentSells = 0;
+    let largestSellLamports = 0;
+    
+    for (const tx of txs) {
+      const txTime = (tx.timestamp || 0) * 1000;
+      if (now - txTime > 120000) continue; // Last 2 minutes only
+      
+      const nativeTransfers = tx.nativeTransfers || [];
+      const tokenTransfers = tx.tokenTransfers || [];
+      
+      for (const t of tokenTransfers) {
+        if (t.mint !== mintAddress) continue;
+        // Detect direction: large SOL coming OUT of pool = someone selling tokens
+        const totalSolMovement = nativeTransfers.reduce((s: number, n: any) => s + (n.amount || 0), 0);
+        if (totalSolMovement < 0) {
+          // SOL leaving = buy
+          recentBuys++;
+        } else if (totalSolMovement > 0) {
+          // SOL arriving = sell
+          recentSells++;
+          if (totalSolMovement > largestSellLamports) largestSellLamports = totalSolMovement;
+        }
+      }
+    }
+    
+    const sellRatio = recentBuys > 0 ? recentSells / recentBuys : recentSells > 0 ? 99 : 0;
+    const largestSellSol = largestSellLamports / 1e9;
+    const isDumping = sellRatio >= SCALPER_CONFIG.SELL_PRESSURE_EXIT_RATIO || largestSellSol > 5;
+    
+    console.log(`[SELL_PRESSURE] ${mintAddress.slice(0,8)}: ${recentBuys}B/${recentSells}S ratio=${sellRatio.toFixed(1)} bigSell=${largestSellSol.toFixed(2)}SOL — ${isDumping ? '🚨 DUMPING' : '✅ OK'}`);
+    return { isDumping, sellRatio, detail: `${recentBuys}B/${recentSells}S (ratio ${sellRatio.toFixed(1)}), biggest sell: ${largestSellSol.toFixed(2)} SOL` };
+  } catch (e) {
+    console.error('[SELL_PRESSURE] Error:', e);
+    return { isDumping: false, sellRatio: 0, detail: 'Error checking' };
   }
 }
 
@@ -932,6 +1023,42 @@ serve(async (req) => {
         }
       }
 
+      // ── STEP 3C: Early momentum check — token must be pumping right now ──
+      const momentum = await checkEarlyMomentum(execTarget.mint, HELIUS_API_KEY);
+      if (!momentum.hasMomentum) {
+        console.log(`[SCALPER] ${execTarget.name} has no early momentum (${momentum.detail}) — skipping`);
+        // Try next candidates
+        let foundPumping = false;
+        for (let i = 1; i < Math.min(opportunities.length, 10); i++) {
+          const alt = opportunities[i];
+          if (alt.mint === execTarget.mint || alt.match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) continue;
+          const altHP = await honeypotCheck(alt.mint);
+          if (!altHP) continue;
+          const altSell = await verifySellable(alt.mint);
+          if (!altSell) continue;
+          const altMomentum = await checkEarlyMomentum(alt.mint, HELIUS_API_KEY);
+          if (altMomentum.hasMomentum) {
+            console.log(`[SCALPER] Switching to pumping token #${i+1}: ${alt.name} (${momentum.detail})`);
+            execTarget = alt;
+            foundPumping = true;
+            break;
+          }
+        }
+        if (!foundPumping) {
+          return new Response(JSON.stringify({
+            success: true,
+            trade_executed: false,
+            message: `No tokens showing early pump momentum — waiting for a pumping launch.`,
+            tokens_scanned: freshTokens.length,
+            opportunities: opportunities.slice(0, 10),
+            best_match: bestOpp,
+            balance: solBalance,
+            sol_price: solPrice,
+            config: SCALPER_CONFIG,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      }
+
       const amountLamports = Math.floor(positionSol * 1e9);
       const tradeResult = await executeSwap(
         SOL_MINT, execTarget.mint, amountLamports,
@@ -1016,9 +1143,10 @@ serve(async (req) => {
         balance: newBalance,
         sol_price: solPrice,
         exit_rules: {
-          take_profit: '$2 net (<1.5min) / $1 net (>1.5min)',
+          take_profit: '$2 net profit — strict',
           stop_loss: '-25% (after 90s grace)',
-          time_stop: '5-10 minutes (smart recovery)',
+          time_stop: '10 minutes hard exit',
+          momentum: 'No pump in 10s = skip, sell pressure = exit',
           fee: '$0',
         },
         config: SCALPER_CONFIG,
@@ -1267,31 +1395,41 @@ serve(async (req) => {
           const isQuickExit = ageMin >= SCALPER_CONFIG.QUICK_EXIT_MINUTES;
           const activeNetTarget = isQuickExit ? SCALPER_CONFIG.QUICK_EXIT_PROFIT_USD : SCALPER_CONFIG.TAKE_PROFIT_USD;
 
+          // ── PRIORITY 0: Early momentum check — if no pump in first 30s, bail ──
+          if (ageSeconds <= SCALPER_CONFIG.NO_MOMENTUM_EXIT_SECONDS && pnlPct <= 0) {
+            const momentum = await checkEarlyMomentum(pos.mint, HELIUS_API_KEY);
+            if (!momentum.hasMomentum && ageSeconds >= 10) {
+              shouldSell = true;
+              reason = `🚫 No early momentum (${momentum.detail}) — exiting at ${ageSeconds.toFixed(0)}s`;
+            }
+          }
+
           // ── PRIORITY 1: Take Profit — ALWAYS check, even during grace period ──
-          if (profitUsdRaw >= activeNetTarget) {
+          if (!shouldSell && profitUsdRaw >= activeNetTarget) {
             shouldSell = true;
             const label = isQuickExit ? '⚡ Quick Exit' : '🎯 Take Profit';
             reason = `${label}! +$${netProfitUsd.toFixed(2)} net [${ageMin.toFixed(1)}m]`;
           }
-          // ── PRIORITY 2: Stop Loss — ONLY after grace period (90s) ──
-          else if (!inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+
+          // ── PRIORITY 2: Sell pressure / dev dump detection ──
+          if (!shouldSell && ageSeconds > 15) {
+            const sellPressure = await detectSellPressure(pos.mint, HELIUS_API_KEY);
+            if (sellPressure.isDumping) {
+              shouldSell = true;
+              reason = `🚨 Sell pressure detected (${sellPressure.detail}) — protecting capital [${ageMin.toFixed(1)}m]`;
+            }
+          }
+
+          // ── PRIORITY 3: Stop Loss — ONLY after grace period (90s) ──
+          else if (!shouldSell && !inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
             shouldSell = true;
             reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)}) [after ${SCALPER_CONFIG.GRACE_PERIOD_SECONDS}s grace]`;
           }
-          // ── PRIORITY 3: Time Stop — only exit at loss if > -10%, otherwise extend hold ──
-          else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
-            if (pnlPct >= -10) {
-              // Acceptable loss or small profit — exit cleanly
-              shouldSell = true;
-              reason = `⏰ Time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} net — clean exit`;
-            } else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
-              // Extended hold expired — force exit to free capital
-              shouldSell = true;
-              reason = `⏰ Extended time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} — forced exit`;
-            } else {
-              // Token is down badly but still within extended hold — wait for recovery
-              console.log(`[CHECK] ${pos.mint.slice(0,8)} at ${pnlPct.toFixed(1)}% — extending hold for recovery (${ageMin.toFixed(1)}m)`);
-            }
+
+          // ── PRIORITY 4: Hard 10-minute time stop — NO recovery hold, just EXIT ──
+          else if (!shouldSell && ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
+            shouldSell = true;
+            reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} net — no $2 profit achieved, exiting`;
           }
 
           if (shouldSell) {
@@ -1582,7 +1720,7 @@ serve(async (req) => {
                   const quote = await quoteRes.json();
 
                   if (quote.error || !quote.outAmount) {
-                    if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
+                    if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
                       await supabaseAdmin.from('signal_trades').update({
                         status: 'closed', exit_reason: 'Time stop (no quote)', closed_at: new Date().toISOString(),
                       }).eq('id', trade.id);
@@ -1596,22 +1734,40 @@ serve(async (req) => {
                   let shouldSell = false;
                   let reason = '';
 
+                  // Early momentum check — no pump in first 30s = bail
+                  if (ageSeconds <= SCALPER_CONFIG.NO_MOMENTUM_EXIT_SECONDS && pnlPct <= 0 && ageSeconds >= 10) {
+                    const momentum = await checkEarlyMomentum(trade.mint_address, HELIUS_API_KEY);
+                    if (!momentum.hasMomentum) {
+                      shouldSell = true;
+                      reason = `🚫 No early momentum (${momentum.detail}) — background exit at ${ageSeconds.toFixed(0)}s`;
+                    }
+                  }
+
                   // Take profit
-                  if (profitUsd >= SCALPER_CONFIG.TAKE_PROFIT_USD) {
+                  if (!shouldSell && profitUsd >= SCALPER_CONFIG.TAKE_PROFIT_USD) {
                     shouldSell = true;
                     reason = `🎯 Take Profit! +$${profitUsd.toFixed(2)} (background)`;
                   }
+
+                  // Sell pressure / dev dump
+                  if (!shouldSell && ageSeconds > 15) {
+                    const sellPressure = await detectSellPressure(trade.mint_address, HELIUS_API_KEY);
+                    if (sellPressure.isDumping) {
+                      shouldSell = true;
+                      reason = `🚨 Sell pressure (${sellPressure.detail}) — background exit`;
+                    }
+                  }
+
                   // Stop loss (after grace)
-                  else if (!inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+                  if (!shouldSell && !inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
                     shouldSell = true;
                     reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% (background)`;
                   }
-                  // Time stop
-                  else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
-                    if (pnlPct >= -10 || ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
-                      shouldSell = true;
-                      reason = `⏰ Time stop (${ageMin.toFixed(0)}m, background)`;
-                    }
+
+                  // Hard 10-min time stop — NO recovery hold
+                  if (!shouldSell && ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
+                    shouldSell = true;
+                    reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m) — no $2 profit, background exit`;
                   }
 
                   if (shouldSell) {
@@ -1738,6 +1894,25 @@ serve(async (req) => {
             }
             if (!found) {
               results.push({ session_id: session.id, status: 'all_blocked' });
+              continue;
+            }
+          }
+
+          // Early momentum check — token must be pumping
+          const bgMomentum = await checkEarlyMomentum(execTarget.mint, HELIUS_API_KEY);
+          if (!bgMomentum.hasMomentum) {
+            let foundPumping = false;
+            for (let i = 1; i < Math.min(opportunities.length, 8); i++) {
+              if (opportunities[i].mint === execTarget.mint || opportunities[i].match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) continue;
+              const altHP = await honeypotCheck(opportunities[i].mint);
+              if (!altHP) continue;
+              const altSell = await verifySellable(opportunities[i].mint);
+              if (!altSell) continue;
+              const altMom = await checkEarlyMomentum(opportunities[i].mint, HELIUS_API_KEY);
+              if (altMom.hasMomentum) { execTarget = opportunities[i]; foundPumping = true; break; }
+            }
+            if (!foundPumping) {
+              results.push({ session_id: session.id, status: 'no_momentum' });
               continue;
             }
           }
