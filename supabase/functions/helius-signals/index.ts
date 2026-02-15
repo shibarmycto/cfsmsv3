@@ -72,146 +72,46 @@ serve(async (req) => {
         }
       };
 
-      // ═══ SOURCE 1: DexScreener latest token profiles (free, no auth, very reliable) ═══
+      // ═══ SOURCE 1 (PRIORITY): PumpPortal — real-time just-launched tokens ═══
       try {
-        const dexRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1', {
+        const ppRes = await fetch('https://pumpportal.fun/api/data/tokens/latest', {
           headers: { 'Accept': 'application/json' },
         });
-        if (dexRes.ok) {
-          const profiles = await dexRes.json();
-          const now = Date.now();
-          let count = 0;
-          for (const p of (profiles || [])) {
-            if (p.chainId !== 'solana') continue;
-            // Try to get real name from DexScreener token endpoint
-            const rawName = p.description?.split(' ')[0] || '';
-            const rawSymbol = p.header?.split(' ')[0] || '';
-            let safeName = rawName.startsWith('http') ? '' : rawName;
-            let safeSymbol = rawSymbol.startsWith('http') ? '' : rawSymbol;
-            // If name looks like a truncated mint address, try to resolve it
-            if (!safeName || safeName.length <= 8) {
-              try {
-                const tokenRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${p.tokenAddress}`, { headers: { 'Accept': 'application/json' } });
-                if (tokenRes.ok) {
-                  const tokenData = await tokenRes.json();
-                  const pair = tokenData?.pairs?.[0];
-                  if (pair?.baseToken?.name && !pair.baseToken.name.startsWith('http')) {
-                    safeName = pair.baseToken.name;
-                    safeSymbol = pair.baseToken.symbol || safeSymbol;
-                  }
-                }
-              } catch {}
+        if (ppRes.ok) {
+          const ppTokens = await ppRes.json();
+          if (Array.isArray(ppTokens)) {
+            const now = Date.now();
+            let count = 0;
+            for (const t of ppTokens) {
+              const ts = t.created_timestamp || t.timestamp || 0;
+              const ageMinutes = ts > 0 ? (now - ts) / 60000 : 999;
+              if (ageMinutes <= 10 && ageMinutes >= 0 && t.mint) {
+                addSignal({
+                  id: t.mint,
+                  type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
+                  token_name: t.name || t.mint?.slice(0, 8) || 'Unknown',
+                  token_symbol: t.symbol || 'UNK',
+                  mint_address: t.mint,
+                  market_cap_usd: t.usd_market_cap || t.marketCap || 0,
+                  liquidity_usd: (t.virtual_sol_reserves || 0) * solPrice,
+                  price_usd: t.usd_market_cap ? t.usd_market_cap / (t.total_supply || 1e9) : 0,
+                  created_at: new Date(ts).toISOString(),
+                  age_minutes: Math.round(ageMinutes * 10) / 10,
+                  buy_count: t.reply_count || 0,
+                  is_fresh: ageMinutes <= 5,
+                });
+                count++;
+              }
+              if (count >= 30) break;
             }
-            if (!safeName) safeName = p.tokenAddress?.slice(0, 8) || 'Unknown';
-            if (!safeSymbol) safeSymbol = 'UNK';
-            // DexScreener profiles don't give creation time — skip them for age accuracy
-            // They'll be enriched by the search endpoint below
-            addSignal({
-              id: p.tokenAddress,
-              type: 'NEW_TOKEN_LAUNCH',
-              token_name: safeName || 'Unknown',
-              token_symbol: safeSymbol,
-              mint_address: p.tokenAddress,
-              market_cap_usd: 0,
-              liquidity_usd: 0,
-              price_usd: 0,
-              created_at: new Date().toISOString(),
-              age_minutes: -1, // Flag as unknown age — will be replaced if search finds it
-              buy_count: 0,
-              is_fresh: false,
-            });
-            count++;
-            if (count >= 30) break;
+            console.log(`[SIGNALS] PumpPortal: ${count} fresh tokens`);
           }
-          console.log(`[SIGNALS] DexScreener profiles: ${count} Solana tokens`);
-        } else {
-          console.error(`[SIGNALS] DexScreener status: ${dexRes.status}`);
         }
       } catch (e) {
-        console.error('[SIGNALS] DexScreener error:', e);
+        console.error('[SIGNALS] PumpPortal error:', e);
       }
 
-      // ═══ SOURCE 2: DexScreener search for new Solana pairs ═══
-      try {
-        const searchRes = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana%20new', {
-          headers: { 'Accept': 'application/json' },
-        });
-        if (searchRes.ok) {
-          const searchData = await searchRes.json();
-          const pairs = searchData?.pairs || [];
-          const now = Date.now();
-          let count = 0;
-          for (const pair of pairs) {
-            if (pair.chainId !== 'solana') continue;
-            const createdAt = pair.pairCreatedAt || 0;
-            const ageMinutes = createdAt > 0 ? (now - createdAt) / 60000 : 999;
-            if (ageMinutes <= 30) {
-              addSignal({
-                id: pair.baseToken?.address || pair.pairAddress,
-                type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
-                token_name: pair.baseToken?.name || 'Unknown',
-                token_symbol: pair.baseToken?.symbol || 'UNK',
-                mint_address: pair.baseToken?.address || pair.pairAddress,
-                market_cap_usd: pair.marketCap || pair.fdv || 0,
-                liquidity_usd: pair.liquidity?.usd || 0,
-                price_usd: parseFloat(pair.priceUsd || '0'),
-                created_at: new Date(createdAt).toISOString(),
-                age_minutes: Math.round(ageMinutes * 10) / 10,
-                buy_count: pair.txns?.h1?.buys || 0,
-                is_fresh: ageMinutes <= 5,
-              });
-              count++;
-            }
-            if (count >= 20) break;
-          }
-          console.log(`[SIGNALS] DexScreener search: ${count} new pairs`);
-        }
-      } catch (e) {
-        console.error('[SIGNALS] DexScreener search error:', e);
-      }
-
-      // ═══ SOURCE 3: Helius — monitor PumpFun program for recent token creates ═══
-      const PUMPFUN_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-      try {
-        const sigRes = await fetch(`https://api.helius.xyz/v0/addresses/${PUMPFUN_PROGRAM}/transactions?api-key=${HELIUS_API_KEY}&limit=20&type=SWAP`);
-        if (sigRes.ok) {
-          const txs = await sigRes.json();
-          const now = Date.now();
-          let count = 0;
-          for (const tx of txs) {
-            const timestamp = (tx.timestamp || 0) * 1000;
-            const ageMinutes = (now - timestamp) / 60000;
-            if (ageMinutes > 30) continue;
-            
-            // Extract token mints from token transfers
-            const tokenTransfers = tx.tokenTransfers || [];
-            for (const transfer of tokenTransfers) {
-              const mint = transfer.mint;
-              if (!mint || mint === 'So11111111111111111111111111111111111111112') continue;
-              addSignal({
-                id: mint,
-                type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
-                token_name: transfer.tokenName || mint.slice(0, 8),
-                token_symbol: transfer.tokenSymbol || 'UNK',
-                mint_address: mint,
-                market_cap_usd: 0,
-                liquidity_usd: 0,
-                price_usd: 0,
-                created_at: new Date(timestamp).toISOString(),
-                age_minutes: Math.round(ageMinutes * 10) / 10,
-                buy_count: 0,
-                is_fresh: ageMinutes <= 5,
-              });
-              count++;
-            }
-          }
-          console.log(`[SIGNALS] Helius PumpFun txs: ${count} tokens`);
-        }
-      } catch (e) {
-        console.error('[SIGNALS] Helius PumpFun error:', e);
-      }
-
-      // ═══ SOURCE 4: PumpFun client API (may or may not work from edge) ═══
+      // ═══ SOURCE 2: PumpFun client API — newest tokens ═══
       try {
         const pumpRes = await fetch('https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=created_timestamp&order=DESC&includeNsfw=false', {
           headers: {
@@ -229,7 +129,7 @@ serve(async (req) => {
             for (const t of tokens) {
               const age = now - (t.created_timestamp || 0);
               const ageMinutes = age / 60000;
-              if (ageMinutes <= 30 && ageMinutes >= 0) {
+              if (ageMinutes <= 10 && ageMinutes >= 0) {
                 addSignal({
                   id: t.mint,
                   type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
@@ -255,6 +155,89 @@ serve(async (req) => {
         }
       } catch (e) {
         console.error('[SIGNALS] PumpFun error:', e);
+      }
+
+      // ═══ SOURCE 3: Helius — PumpFun CREATE events (fresh launches) ═══
+      const PUMPFUN_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+      try {
+        // Try CREATE first, then SWAP as fallback
+        for (const txType of ['CREATE', 'SWAP']) {
+          const sigRes = await fetch(`https://api.helius.xyz/v0/addresses/${PUMPFUN_PROGRAM}/transactions?api-key=${HELIUS_API_KEY}&limit=30&type=${txType}`);
+          if (sigRes.ok) {
+            const txs = await sigRes.json();
+            const now = Date.now();
+            let count = 0;
+            for (const tx of txs) {
+              const timestamp = (tx.timestamp || 0) * 1000;
+              const ageMinutes = (now - timestamp) / 60000;
+              if (ageMinutes > 10) continue;
+              
+              const tokenTransfers = tx.tokenTransfers || [];
+              for (const transfer of tokenTransfers) {
+                const mint = transfer.mint;
+                if (!mint || mint === 'So11111111111111111111111111111111111111112') continue;
+                addSignal({
+                  id: mint,
+                  type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
+                  token_name: transfer.tokenName || mint.slice(0, 8),
+                  token_symbol: transfer.tokenSymbol || 'UNK',
+                  mint_address: mint,
+                  market_cap_usd: 0,
+                  liquidity_usd: 0,
+                  price_usd: 0,
+                  created_at: new Date(timestamp).toISOString(),
+                  age_minutes: Math.round(ageMinutes * 10) / 10,
+                  buy_count: 0,
+                  is_fresh: ageMinutes <= 5,
+                });
+                count++;
+              }
+            }
+            console.log(`[SIGNALS] Helius PumpFun (${txType}): ${count} tokens`);
+            if (count > 0) break; // If CREATE found tokens, skip SWAP
+          }
+        }
+      } catch (e) {
+        console.error('[SIGNALS] Helius PumpFun error:', e);
+      }
+
+      // ═══ SOURCE 4: DexScreener search for new Solana pairs (backup) ═══
+      try {
+        const searchRes = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana%20new', {
+          headers: { 'Accept': 'application/json' },
+        });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const pairs = searchData?.pairs || [];
+          const now = Date.now();
+          let count = 0;
+          for (const pair of pairs) {
+            if (pair.chainId !== 'solana') continue;
+            const createdAt = pair.pairCreatedAt || 0;
+            const ageMinutes = createdAt > 0 ? (now - createdAt) / 60000 : 999;
+            if (ageMinutes <= 10) {
+              addSignal({
+                id: pair.baseToken?.address || pair.pairAddress,
+                type: ageMinutes <= 2 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
+                token_name: pair.baseToken?.name || 'Unknown',
+                token_symbol: pair.baseToken?.symbol || 'UNK',
+                mint_address: pair.baseToken?.address || pair.pairAddress,
+                market_cap_usd: pair.marketCap || pair.fdv || 0,
+                liquidity_usd: pair.liquidity?.usd || 0,
+                price_usd: parseFloat(pair.priceUsd || '0'),
+                created_at: new Date(createdAt).toISOString(),
+                age_minutes: Math.round(ageMinutes * 10) / 10,
+                buy_count: pair.txns?.h1?.buys || 0,
+                is_fresh: ageMinutes <= 5,
+              });
+              count++;
+            }
+            if (count >= 20) break;
+          }
+          console.log(`[SIGNALS] DexScreener search: ${count} new pairs`);
+        }
+      } catch (e) {
+        console.error('[SIGNALS] DexScreener search error:', e);
       }
 
       console.log(`[SIGNALS] Total: ${signals.length} tokens from all sources`);
