@@ -3202,6 +3202,39 @@ export type Database = {
           },
         ]
       }
+      trade_notifications: {
+        Row: {
+          amount_sol: number
+          created_at: string
+          id: string
+          profit_percent: number
+          token_name: string
+          token_symbol: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          amount_sol?: number
+          created_at?: string
+          id?: string
+          profit_percent: number
+          token_name: string
+          token_symbol: string
+          user_id: string
+          username?: string
+        }
+        Update: {
+          amount_sol?: number
+          created_at?: string
+          id?: string
+          profit_percent?: number
+          token_name?: string
+          token_symbol?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
