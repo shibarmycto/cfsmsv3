@@ -213,7 +213,36 @@ async function getSolPrice(): Promise<number> {
     const res = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
     const data = await res.json();
     return parseFloat(data?.data?.['So11111111111111111111111111111111111111112']?.price || '150');
-  } catch { return 150; }
+  } catch {}
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    if (res.ok) { const d = await res.json(); return d?.solana?.usd || 150; }
+  } catch {}
+  return 150;
+}
+
+// ── Jupiter API URLs (use current working domains with fallbacks) ──
+const JUPITER_QUOTE_URLS = [
+  'https://api.jup.ag/swap/v1/quote',
+  'https://lite-api.jup.ag/swap/v1/quote',
+];
+const JUPITER_SWAP_URLS = [
+  'https://api.jup.ag/swap/v1/swap',
+  'https://lite-api.jup.ag/swap/v1/swap',
+];
+
+async function fetchWithFallback(urls: string[], options?: RequestInit): Promise<Response> {
+  let lastError: Error | null = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, options);
+      return res;
+    } catch (e) {
+      console.error(`[JUPITER] Failed ${url}: ${e.message}`);
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('All Jupiter endpoints failed');
 }
 
 // ── Execute Jupiter swap ──
@@ -222,54 +251,58 @@ async function executeSwap(
   publicKey: string, privateKeyB58: string, heliusRpc: string,
   maxSlippageBps: number = SCALPER_CONFIG.MAX_SLIPPAGE_BPS
 ): Promise<{ success: boolean; signature?: string; outputAmount?: number; error?: string }> {
-  const quoteRes = await fetch(
-    `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${maxSlippageBps}`
-  );
-  const quote = await quoteRes.json();
-  if (quote.error) return { success: false, error: `Quote: ${quote.error}` };
+  try {
+    const quoteUrls = JUPITER_QUOTE_URLS.map(u => `${u}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${maxSlippageBps}`);
+    const quoteRes = await fetchWithFallback(quoteUrls);
+    const quote = await quoteRes.json();
+    if (quote.error) return { success: false, error: `Quote: ${quote.error}` };
 
-  const priceImpact = parseFloat(quote.priceImpactPct || '0');
-  if (priceImpact > 3) {
-    return { success: false, error: `Price impact ${priceImpact.toFixed(2)}% exceeds 3% max` };
+    const priceImpact = parseFloat(quote.priceImpactPct || '0');
+    if (priceImpact > 5) {
+      return { success: false, error: `Price impact ${priceImpact.toFixed(2)}% exceeds 5% max` };
+    }
+
+    const swapRes = await fetchWithFallback(JUPITER_SWAP_URLS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: publicKey,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: Math.floor(SCALPER_CONFIG.PRIORITY_FEE_SOL * 1e9),
+      }),
+    });
+    const swapData = await swapRes.json();
+    if (swapData.error || !swapData.swapTransaction) {
+      return { success: false, error: `Swap build: ${swapData.error || 'No tx'}` };
+    }
+
+    const txBytes = Uint8Array.from(atob(swapData.swapTransaction), c => c.charCodeAt(0));
+    const secretKeyBytes = base58Decode(privateKeyB58);
+    const messageBytes = txBytes.slice(65);
+    const sig = await signTransaction(messageBytes, secretKeyBytes);
+    const signedTx = new Uint8Array(txBytes);
+    signedTx.set(sig, 1);
+
+    const sendRes = await fetch(heliusRpc, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'sendTransaction',
+        params: [btoa(String.fromCharCode(...signedTx)), { encoding: 'base64', skipPreflight: true, maxRetries: 3 }],
+      }),
+    });
+    const sendResult = await sendRes.json();
+    if (sendResult.error) return { success: false, error: sendResult.error.message || JSON.stringify(sendResult.error) };
+
+    const outputAmount = parseInt(quote.outAmount) / (outputMint === SOL_MINT ? 1e9 : Math.pow(10, quote.outputDecimals || 6));
+    return { success: true, signature: sendResult.result, outputAmount };
+  } catch (e) {
+    console.error('[JUPITER] executeSwap error:', e);
+    return { success: false, error: `Swap failed: ${e.message}` };
   }
-
-  const swapRes = await fetch('https://quote-api.jup.ag/v6/swap', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      quoteResponse: quote,
-      userPublicKey: publicKey,
-      wrapAndUnwrapSol: true,
-      dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: Math.floor(SCALPER_CONFIG.PRIORITY_FEE_SOL * 1e9),
-    }),
-  });
-  const swapData = await swapRes.json();
-  if (swapData.error || !swapData.swapTransaction) {
-    return { success: false, error: `Swap build: ${swapData.error || 'No tx'}` };
-  }
-
-  const txBytes = Uint8Array.from(atob(swapData.swapTransaction), c => c.charCodeAt(0));
-  const secretKeyBytes = base58Decode(privateKeyB58);
-  const messageBytes = txBytes.slice(65);
-  const sig = await signTransaction(messageBytes, secretKeyBytes);
-  const signedTx = new Uint8Array(txBytes);
-  signedTx.set(sig, 1);
-
-  const sendRes = await fetch(heliusRpc, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', id: 1,
-      method: 'sendTransaction',
-      params: [btoa(String.fromCharCode(...signedTx)), { encoding: 'base64', skipPreflight: true, maxRetries: 3 }],
-    }),
-  });
-  const sendResult = await sendRes.json();
-  if (sendResult.error) return { success: false, error: sendResult.error.message || JSON.stringify(sendResult.error) };
-
-  const outputAmount = parseInt(quote.outAmount) / (outputMint === SOL_MINT ? 1e9 : Math.pow(10, quote.outputDecimals || 6));
-  return { success: true, signature: sendResult.result, outputAmount };
 }
 
 // ── Fetch token safety info from Helius DAS ──
@@ -331,9 +364,8 @@ async function getTokenSafetyInfo(mintAddress: string, heliusRpc: string): Promi
 // ── Honeypot check ──
 async function honeypotCheck(mintAddress: string): Promise<boolean> {
   try {
-    const quoteRes = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=500`
-    );
+    const urls = JUPITER_QUOTE_URLS.map(u => `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=500`);
+    const quoteRes = await fetchWithFallback(urls);
     const quote = await quoteRes.json();
     return !quote.error && quote.outAmount && parseInt(quote.outAmount) > 0;
   } catch {
