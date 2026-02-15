@@ -83,20 +83,26 @@ serve(async (req) => {
           let count = 0;
           for (const p of (profiles || [])) {
             if (p.chainId !== 'solana') continue;
-            // DexScreener doesn't give creation time in profiles, treat all as recent
+            // Skip profiles without real data — they show stale CDN URLs
+            const rawName = p.description?.split(' ')[0] || '';
+            const rawSymbol = p.header?.split(' ')[0] || '';
+            const safeName = rawName.startsWith('http') ? rawSymbol || p.tokenAddress?.slice(0, 8) : rawName || p.tokenAddress?.slice(0, 8);
+            const safeSymbol = rawSymbol.startsWith('http') ? 'UNK' : rawSymbol || 'UNK';
+            // DexScreener profiles don't give creation time — skip them for age accuracy
+            // They'll be enriched by the search endpoint below
             addSignal({
               id: p.tokenAddress,
               type: 'NEW_TOKEN_LAUNCH',
-              token_name: p.description?.split(' ')[0] || p.tokenAddress?.slice(0, 8) || 'Unknown',
-              token_symbol: p.header?.split(' ')[0] || 'UNK',
+              token_name: safeName || 'Unknown',
+              token_symbol: safeSymbol,
               mint_address: p.tokenAddress,
               market_cap_usd: 0,
               liquidity_usd: 0,
               price_usd: 0,
               created_at: new Date().toISOString(),
-              age_minutes: 0,
+              age_minutes: -1, // Flag as unknown age — will be replaced if search finds it
               buy_count: 0,
-              is_fresh: true,
+              is_fresh: false,
             });
             count++;
             if (count >= 30) break;
@@ -268,9 +274,19 @@ serve(async (req) => {
         console.error('Helius fetch error:', e);
       }
 
-      signals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // Remove signals with unknown age (-1) if we have better data for that mint
+      const finalSignals = signals.filter(s => s.age_minutes >= 0);
+      // Add back unknown-age ones only if no better data exists
+      for (const s of signals) {
+        if (s.age_minutes < 0 && !finalSignals.find(f => f.mint_address === s.mint_address)) {
+          s.age_minutes = 0;
+          s.is_fresh = false;
+          finalSignals.push(s);
+        }
+      }
+      finalSignals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      return new Response(JSON.stringify({ signals, helius_connected: true, solPrice }), {
+      return new Response(JSON.stringify({ signals: finalSignals, helius_connected: true, solPrice }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

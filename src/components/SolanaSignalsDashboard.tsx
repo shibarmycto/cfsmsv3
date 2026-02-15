@@ -7,11 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { 
   Zap, Wallet, TrendingUp, RefreshCw, Play, Square, 
   Eye, EyeOff, Copy, ExternalLink, Shield, Clock, Coins,
   Bell, Activity, BarChart3, History, AlertTriangle, 
-  ChevronRight, Wifi, WifiOff, DollarSign, ShoppingCart, ArrowRightLeft
+  ChevronRight, Wifi, WifiOff, DollarSign, ShoppingCart, ArrowRightLeft, Settings
 } from 'lucide-react';
 
 interface Signal {
@@ -80,8 +81,12 @@ export default function SolanaSignalsDashboard() {
   const autoTradeInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Manual trade state
-  const [tradeAmountSol, setTradeAmountSol] = useState('0.01');
+  const [tradeAmountSol, setTradeAmountSol] = useState('0.1');
   const [isExecutingTrade, setIsExecutingTrade] = useState<string | null>(null);
+  
+  // Auto-trade config
+  const [tradePercentOfBalance, setTradePercentOfBalance] = useState(10); // % of SOL balance per trade
+  const [autoTradeAmountSol, setAutoTradeAmountSol] = useState(0.1);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const balanceInterval = useRef<NodeJS.Timeout | null>(null);
@@ -290,14 +295,23 @@ export default function SolanaSignalsDashboard() {
 
   const runScalperScan = async (executeMode = false) => {
     setIsScanning(true);
-    setScanStatus('Scanning all sources...');
+    setScanStatus('Scanning fresh tokens (≤10 min old)...');
 
-    // Also check active positions for exits
+    // Also check active positions for 2X exits
     await checkActivePositions();
+
+    // Calculate trade amount from % of balance
+    const currentTradeAmount = wallet
+      ? Math.max(0.1, (wallet.balanceSol * tradePercentOfBalance) / 100)
+      : 0.1;
+    setAutoTradeAmountSol(currentTradeAmount);
 
     try {
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
-        body: { action: executeMode ? 'activate' : 'scan' },
+        body: { 
+          action: executeMode ? 'activate' : 'scan',
+          trade_amount_sol: currentTradeAmount,
+        },
       });
       if (error && !data) throw new Error(error.message);
 
@@ -349,9 +363,10 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     setIsAutoTradeActive(true);
+    // Initial scan first (no execute)
     await runScalperScan(false);
-    // Scan & execute every 30s, also monitors positions
-    autoTradeInterval.current = setInterval(() => runScalperScan(true), 30000);
+    // Then scan & execute every 20s for maximum freshness, 10 min per token cycle
+    autoTradeInterval.current = setInterval(() => runScalperScan(true), 20000);
   };
 
   const stopAutoTrade = async () => {
@@ -711,10 +726,10 @@ export default function SolanaSignalsDashboard() {
               value={tradeAmountSol}
               onChange={(e) => setTradeAmountSol(e.target.value)}
               className="w-24 h-8 text-xs bg-transparent border-white/20"
-              step="0.01"
-              min="0.001"
+              step="0.05"
+              min="0.1"
             />
-            <span className="text-xs text-[#8899aa]">SOL</span>
+            <span className="text-xs text-[#8899aa]">SOL (min 0.1)</span>
           </div>
           
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
@@ -796,8 +811,36 @@ export default function SolanaSignalsDashboard() {
           <div className="p-6 rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Zap className="w-10 h-10 mx-auto mb-3 text-amber-400" />
             <h3 className="font-bold text-lg mb-1">Auto-Trade Bot</h3>
-            <p className="text-xs text-[#8899aa] mb-4">Scans all sources every 30s — always finds & executes the best opportunity</p>
+            <p className="text-xs text-[#8899aa] mb-4">Scans fresh tokens every 20s — auto buys & sells at 2X profit</p>
             
+            {/* Trade % of Balance Selector */}
+            {!isAutoTradeActive && (
+              <div className="p-4 rounded-xl mb-4 text-left" style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.15)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-[#8899aa] flex items-center gap-1"><Settings className="w-3 h-3" /> Trade Size</span>
+                  <span className="text-sm font-bold text-[#00ff88]">{tradePercentOfBalance}% of balance</span>
+                </div>
+                <Slider
+                  value={[tradePercentOfBalance]}
+                  onValueChange={(v) => setTradePercentOfBalance(v[0])}
+                  min={5}
+                  max={50}
+                  step={5}
+                  className="mb-2"
+                />
+                <div className="flex justify-between text-[10px] text-[#8899aa]">
+                  <span>5%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                </div>
+                {wallet && (
+                  <p className="text-xs text-center mt-2 text-[#8899aa]">
+                    ≈ <strong className="text-white">{Math.max(0.1, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(3)} SOL</strong> per trade (min 0.1 SOL)
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-2 mb-4 text-sm">
               <Coins className="w-4 h-4 text-[#00ff88]" />
               <span>Token Balance: <strong>{tokenBalance.toFixed(0)}</strong></span>
@@ -809,15 +852,16 @@ export default function SolanaSignalsDashboard() {
                 {isScanning && (
                   <div className="flex items-center justify-center gap-2 text-xs text-cyan-400">
                     <RefreshCw className="w-3 h-3 animate-spin" />
-                    <span>Scanning all sources...</span>
+                    <span>Scanning fresh tokens...</span>
                   </div>
                 )}
                 {scanStatus && (
                   <p className="text-xs text-[#8899aa] px-2">{scanStatus}</p>
                 )}
                 <div className="text-xs text-[#8899aa] space-y-0.5">
-                  <p>✓ $10 USD per trade · 2× TP · −30% SL · 15 min max hold</p>
-                  <p>✓ Auto-scanning every 30s · Always finds best match</p>
+                  <p>✓ {autoTradeAmountSol.toFixed(3)} SOL per trade ({tradePercentOfBalance}% of balance)</p>
+                  <p>✓ 2× Take Profit · −30% Stop Loss · 10 min max hold</p>
+                  <p>✓ Scanning every 20s · Only tokens ≤10 min old</p>
                   <p>✓ {opportunities.length} opportunities found last scan</p>
                 </div>
                 <Button variant="destructive" onClick={stopAutoTrade} className="w-full">
@@ -837,7 +881,7 @@ export default function SolanaSignalsDashboard() {
                   size="lg"
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  {isScanning ? 'Starting...' : 'Start Auto-Trade Bot — $10/trade'}
+                  {isScanning ? 'Starting...' : `Start Auto-Trade — ${tradePercentOfBalance}% per trade`}
                 </Button>
                 {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
               </>

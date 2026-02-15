@@ -51,18 +51,19 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const SCALPER_CONFIG = {
-  POSITION_SIZE_USD: 10,
+  DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL per trade
   TAKE_PROFIT_MULT: 2.0,
   STOP_LOSS_PCT: -0.30,
-  MAX_HOLD_MINUTES: 15,
+  MAX_HOLD_MINUTES: 10, // 10 min per token then move on
   MAX_SLIPPAGE_BPS: 150,
-  MAX_TOKEN_AGE_MINUTES: 60, // Expanded from 10 to 60 to find more tokens
+  MAX_TOKEN_AGE_MINUTES: 10, // Only fresh tokens under 10 min
   MIN_LP_SOL: 5,
   MAX_TOP10_HOLDER_PCT: 30,
   CIRCUIT_BREAKER_LOSSES: 5,
   CIRCUIT_BREAKER_PAUSE_MIN: 10,
   MAX_CONCURRENT_POSITIONS: 1,
   PRIORITY_FEE_SOL: 0.001,
+  SCAN_INTERVAL_SECONDS: 20, // Scan every 20s for freshness
 };
 
 // ═══ PERCENTAGE-BASED FILTER SCORING ═══
@@ -727,7 +728,8 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const positionSol = SCALPER_CONFIG.POSITION_SIZE_USD / solPrice;
+      // Use custom trade amount from body, or default
+      const positionSol = body.trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
       const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.005;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
 
@@ -803,14 +805,14 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         trade_executed: true,
-        message: `⚡ EXECUTED: ${execTarget.name} (${execTarget.symbol}) — ${execTarget.match_pct}% match — $${SCALPER_CONFIG.POSITION_SIZE_USD} position`,
+        message: `⚡ EXECUTED: ${execTarget.name} (${execTarget.symbol}) — ${execTarget.match_pct}% match — ${positionSol.toFixed(3)} SOL position`,
         token_name: execTarget.name,
         token_symbol: execTarget.symbol,
         mint_address: execTarget.mint,
         match_pct: execTarget.match_pct,
         recommendation: execTarget.recommendation,
         filters: execTarget.filters,
-        position_usd: SCALPER_CONFIG.POSITION_SIZE_USD,
+        position_usd: positionSol * solPrice,
         position_sol: positionSol,
         output_tokens: tradeResult.outputAmount,
         signature: tradeResult.signature,
