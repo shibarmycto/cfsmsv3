@@ -550,11 +550,24 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    let userId: string;
+    const token = authHeader.replace('Bearer ', '');
+    try {
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      if (!claimsError && claimsData?.claims?.sub) {
+        userId = claimsData.claims.sub;
+      } else {
+        throw new Error(claimsError?.message || 'getClaims returned no claims');
+      }
+    } catch (authErr) {
+      console.error('[AUTH] getClaims failed, trying getUser:', authErr);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.error('[AUTH] getUser also failed:', userError?.message);
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      userId = user.id;
     }
-    const userId = user.id;
 
     const body = await req.json();
     const { action } = body;
@@ -771,6 +784,7 @@ serve(async (req) => {
     // ACTION: EXECUTE MANUAL TRADE (BUY or SELL)
     // ══════════════════════════════════════════════════════════════
     if (action === 'execute_trade') {
+      console.log('[TRADE] execute_trade called:', JSON.stringify({ mint_address: body.mint_address, amount_sol: body.amount_sol, trade_type: body.trade_type }));
       const { mint_address, amount_sol, trade_type } = body;
       if (!mint_address || !amount_sol || !trade_type) {
         return new Response(JSON.stringify({ error: 'Missing trade parameters' }), {
@@ -778,11 +792,13 @@ serve(async (req) => {
         });
       }
       if (!solWallet?.encrypted_private_key || !solWallet?.public_key) {
+        console.error('[TRADE] No wallet found for user:', userId);
         return new Response(JSON.stringify({ error: 'No wallet found. Create one first.' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
+      console.log('[TRADE] Executing swap:', trade_type, 'amount:', amount_sol, 'SOL');
       const inputMint = trade_type === 'buy' ? SOL_MINT : mint_address;
       const outputMint = trade_type === 'buy' ? mint_address : SOL_MINT;
       const amountLamports = Math.floor(amount_sol * 1e9);
@@ -791,6 +807,7 @@ serve(async (req) => {
       const result = await executeSwap(inputMint, outputMint, amountLamports, solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC, slippage);
 
       if (!result.success) {
+        console.error('[TRADE] Swap failed:', result.error);
         return new Response(JSON.stringify({ error: result.error }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
