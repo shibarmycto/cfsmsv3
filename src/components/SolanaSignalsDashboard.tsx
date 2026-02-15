@@ -82,12 +82,12 @@ export default function SolanaSignalsDashboard() {
   const autoTradeInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Manual trade state
-  const [tradeAmountSol, setTradeAmountSol] = useState('0.1');
+  const [tradeAmountSol, setTradeAmountSol] = useState('0.05');
   const [isExecutingTrade, setIsExecutingTrade] = useState<string | null>(null);
   
   // Auto-trade config
   const [tradePercentOfBalance, setTradePercentOfBalance] = useState(10); // % of SOL balance per trade
-  const [autoTradeAmountSol, setAutoTradeAmountSol] = useState(0.1);
+  const [autoTradeAmountSol, setAutoTradeAmountSol] = useState(0.05);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const balanceInterval = useRef<NodeJS.Timeout | null>(null);
@@ -389,8 +389,8 @@ export default function SolanaSignalsDashboard() {
 
     // Calculate trade amount from % of balance
     const currentTradeAmount = wallet
-      ? Math.max(0.1, (wallet.balanceSol * tradePercentOfBalance) / 100)
-      : 0.1;
+      ? Math.max(0.05, (wallet.balanceSol * tradePercentOfBalance) / 100)
+      : 0.05;
     setAutoTradeAmountSol(currentTradeAmount);
 
     try {
@@ -941,7 +941,7 @@ export default function SolanaSignalsDashboard() {
                 </div>
                 {wallet && (
                   <p className="text-xs text-center mt-2 text-[#8899aa]">
-                    ≈ <strong className="text-white">{Math.max(0.1, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(3)} SOL</strong> per trade (min 0.1 SOL)
+                    ≈ <strong className="text-white">{Math.max(0.05, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(3)} SOL</strong> per trade (min 0.05 SOL)
                   </p>
                 )}
               </div>
@@ -966,8 +966,8 @@ export default function SolanaSignalsDashboard() {
                 )}
                 <div className="text-xs text-[#8899aa] space-y-0.5">
                   <p>✓ {autoTradeAmountSol.toFixed(3)} SOL per trade ({tradePercentOfBalance}% of balance)</p>
-                  <p>✓ $3 Net TP ($0.99 fee/trade) · −30% Stop Loss · 10 min max hold</p>
-                  <p>✓ Scanning every 20s · Only tokens ≤10 min old</p>
+                  <p>✓ $2 Net TP (no platform fee) · −20% Stop Loss · 5 min max hold</p>
+                  <p>✓ Scanning every 15s · Only tokens ≤15 min old</p>
                   <p>✓ {opportunities.length} opportunities found last scan</p>
                 </div>
                 <Button variant="destructive" onClick={stopAutoTrade} className="w-full">
