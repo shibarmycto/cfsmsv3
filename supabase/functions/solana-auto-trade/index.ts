@@ -752,6 +752,15 @@ serve(async (req) => {
 
       // ── CHECK: If activate mode, ensure no open position already exists ──
       if (shouldExecute) {
+        // First, auto-close any stale trades older than 12 minutes
+        const twelveMinAgo = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+        await supabaseAdmin
+          .from('signal_trades')
+          .update({ status: 'closed', exit_reason: 'Stale trade auto-closed (server)', closed_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('status', 'open')
+          .lt('created_at', twelveMinAgo);
+
         const { data: openTrades } = await supabaseAdmin
           .from('signal_trades')
           .select('id')
