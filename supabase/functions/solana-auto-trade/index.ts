@@ -52,7 +52,8 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // ══════════════════════════════════════════════════════════════
 const SCALPER_CONFIG = {
   DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL per trade
-  TAKE_PROFIT_MULT: 2.0,
+  PLATFORM_FEE_USD: 0.99, // $0.99 fee per trade
+  TAKE_PROFIT_USD: 3.00, // $3 net profit target (after fee)
   STOP_LOSS_PCT: -0.30,
   MAX_HOLD_MINUTES: 10, // 10 min per token then move on
   MAX_SLIPPAGE_BPS: 150,
@@ -906,7 +907,7 @@ serve(async (req) => {
       }
 
       const outputAmount = result.outputAmount || 0;
-      const platformFee = trade_type === 'sell' ? Math.max(0, (outputAmount - amount_sol) * 0.01) : 0;
+      const platformFee = SCALPER_CONFIG.PLATFORM_FEE_USD; // $0.99 flat fee
 
       // Discord: Notify manual trade
       await notifyDiscord(
@@ -983,21 +984,25 @@ serve(async (req) => {
 
           const currentSol = parseInt(quote.outAmount) / 1e9;
           const pnlPct = ((currentSol - pos.entry_sol) / pos.entry_sol) * 100;
+          const profitSolRaw = currentSol - pos.entry_sol;
+          const profitUsdRaw = profitSolRaw * solPrice;
+          const netProfitUsd = profitUsdRaw - SCALPER_CONFIG.PLATFORM_FEE_USD;
+          const grossTargetUsd = SCALPER_CONFIG.TAKE_PROFIT_USD + SCALPER_CONFIG.PLATFORM_FEE_USD; // $3.99
 
-          // Take Profit: 2× (100% gain)
-          if (pnlPct >= (SCALPER_CONFIG.TAKE_PROFIT_MULT - 1) * 100) {
+          // Take Profit: $3 net profit (after $0.99 fee)
+          if (profitUsdRaw >= grossTargetUsd) {
             shouldSell = true;
-            reason = `🎯 Take Profit! +${pnlPct.toFixed(1)}%`;
+            reason = `🎯 Take Profit! +$${netProfitUsd.toFixed(2)} net (gross $${profitUsdRaw.toFixed(2)} - $${SCALPER_CONFIG.PLATFORM_FEE_USD} fee)`;
           }
           // Stop Loss: -30%
           else if (pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
             shouldSell = true;
-            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}%`;
+            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)})`;
           }
-          // Time Stop: 15 minutes
+          // Time Stop: 10 minutes
           else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
             shouldSell = true;
-            reason = `⏰ Time stop (${ageMin.toFixed(0)}m): ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`;
+            reason = `⏰ Time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} gross, $${netProfitUsd.toFixed(2)} net`;
           }
 
           if (shouldSell) {
@@ -1008,7 +1013,10 @@ serve(async (req) => {
             );
 
             const profitSol = currentSol - pos.entry_sol;
-            const platformFee = profitSol > 0 ? profitSol * 0.01 : 0;
+            const grossProfitUsd = profitSol * solPrice;
+            const platformFeeUsd = SCALPER_CONFIG.PLATFORM_FEE_USD;
+            const netProfitUsdFinal = grossProfitUsd - platformFeeUsd;
+            const platformFee = platformFeeUsd / solPrice; // fee in SOL for compatibility
 
             results.push({
               mint: pos.mint,
@@ -1018,7 +1026,10 @@ serve(async (req) => {
               entry_sol: pos.entry_sol,
               pnl_percent: pnlPct,
               profit_sol: profitSol,
-              profit_usd: profitSol * solPrice,
+              gross_profit_usd: grossProfitUsd,
+              platform_fee_usd: platformFeeUsd,
+              net_profit_usd: netProfitUsdFinal,
+              profit_usd: netProfitUsdFinal,
               platform_fee: platformFee,
               signature: sellResult.signature,
               explorer_url: sellResult.signature ? `https://solscan.io/tx/${sellResult.signature}` : null,
@@ -1032,7 +1043,9 @@ serve(async (req) => {
             await notifyDiscord(`${exitEmoji} POSITION EXIT`, exitColor, [
               { name: '🪙 Token', value: pos.token_name || pos.mint?.slice(0, 12), inline: true },
               { name: '📊 P&L', value: `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`, inline: true },
-              { name: '💰 Profit', value: `${profitSol >= 0 ? '+' : ''}${profitSol.toFixed(6)} SOL ($${(profitSol * solPrice).toFixed(2)})`, inline: true },
+              { name: '💰 Gross Profit', value: `$${grossProfitUsd.toFixed(2)}`, inline: true },
+              { name: '🏷️ Fee', value: `$${platformFeeUsd.toFixed(2)}`, inline: true },
+              { name: '💵 Net Profit', value: `$${netProfitUsdFinal.toFixed(2)}`, inline: true },
               { name: '📋 Reason', value: reason, inline: false },
               { name: '🔗 TX', value: sellResult.signature ? `[Solscan](https://solscan.io/tx/${sellResult.signature})` : 'Failed', inline: false },
             ]);
@@ -1050,12 +1063,17 @@ serve(async (req) => {
               });
             }
           } else {
+            const holdProfitUsd = profitSolRaw * solPrice;
+            const holdNetUsd = holdProfitUsd - SCALPER_CONFIG.PLATFORM_FEE_USD;
             results.push({
               mint: pos.mint,
               action: 'hold',
-              reason: `Holding: ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% (${ageMin.toFixed(0)}m)`,
+              reason: `Holding: $${holdProfitUsd.toFixed(2)} gross / $${holdNetUsd.toFixed(2)} net (${ageMin.toFixed(0)}m)`,
               current_sol: currentSol,
               pnl_percent: pnlPct,
+              current_profit_usd: holdProfitUsd,
+              net_profit_usd: holdNetUsd,
+              target_profit_usd: grossTargetUsd,
             });
           }
         } catch (e) {
