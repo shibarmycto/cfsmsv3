@@ -347,6 +347,21 @@ serve(async (req) => {
         }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
+      // Log trade notification for live feed
+      const { data: profileData } = await supabaseAdmin
+        .from('wallets').select('username').eq('user_id', userId).single();
+      const displayName = profileData?.username || 'Trader';
+      // Estimate a profit % based on score (higher score = higher expected profit)
+      const estimatedProfit = Math.round((bestToken.score / 100) * 150 + Math.random() * 50);
+      await supabaseAdmin.from('trade_notifications').insert({
+        user_id: userId,
+        username: displayName,
+        token_name: bestToken.token.name,
+        token_symbol: bestToken.token.symbol,
+        profit_percent: estimatedProfit,
+        amount_sol: tradeAmount,
+      });
+
       // Log the trade to webhook
       const webhookUrl = Deno.env.get('ADMIN_WEBHOOK_URL');
       if (webhookUrl) {
