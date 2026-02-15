@@ -185,9 +185,9 @@ export default function SolanaSignalsDashboard() {
 
       const result = response.data;
       if (result?.success) {
-        // Clear local state
+        // Clear ALL local active positions immediately
         setTrades(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'loss' } : t));
-        setIsAutoTradeActive(false);
+        // Don't stop auto-trade — let it continue scanning for new tokens
         toast.success(`🛑 ${result.message}`);
         if (result.final_balance_sol !== undefined) {
           toast.info(`💰 Wallet balance: ${result.final_balance_sol.toFixed(6)} SOL ($${result.final_balance_usd?.toFixed(2) || '0'})`);
@@ -594,14 +594,32 @@ export default function SolanaSignalsDashboard() {
     if (hasOpenPosition) {
       setScanStatus(`Monitoring ${activePositions.length} open position(s) for exit...`);
       const closedMints = await checkActivePositions();
-      // Check if ALL active positions were closed using returned closedMints
-      const stillActiveCount = activePositions.filter(t => !closedMints.has(t.mint)).length;
+      // Refresh after check — positions may have been closed by checkActivePositions
+      const freshActive = tradesRef.current.filter(t => t.status === 'active');
+      const stillActiveCount = freshActive.filter(t => !closedMints.has(t.mint)).length;
       if (stillActiveCount > 0) {
-        setScanStatus(`Position open — monitoring for $2+ profit exit...`);
-        setIsScanning(false);
-        return; // Don't buy while holding — wait for exit
+        // Double-check against DB — backend may have already closed it
+        if (user) {
+          const { data: dbOpen } = await supabase
+            .from('signal_trades')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('status', 'open')
+            .limit(1);
+          if (!dbOpen || dbOpen.length === 0) {
+            // DB says no open positions — clear local state and continue
+            setTrades(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'loss' } : t));
+            setScanStatus('♻️ Position closed server-side — hunting next token...');
+          } else {
+            setScanStatus(`Position open — monitoring for $2+ profit exit...`);
+            setIsScanning(false);
+            return;
+          }
+        } else {
+          setIsScanning(false);
+          return;
+        }
       }
-      // All positions closed! Immediately proceed to buy next token
       setScanStatus('✅ Position closed — hunting next token...');
     }
 
@@ -624,9 +642,28 @@ export default function SolanaSignalsDashboard() {
       if (error && !data) throw new Error(error.message);
 
       if (data?.has_open_position) {
-        setScanStatus('Position still open — waiting for exit...');
-        setIsScanning(false);
-        return;
+        // Backend says position open — sync with DB to check if it was already closed server-side
+        if (user) {
+          const { data: dbOpen } = await supabase
+            .from('signal_trades')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('status', 'open')
+            .limit(1);
+          if (!dbOpen || dbOpen.length === 0) {
+            // Backend had stale state — clear local trades and continue scanning
+            setTrades(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'loss' } : t));
+            setScanStatus('♻️ Stale position cleared — hunting next token...');
+            // Don't return — fall through to scan for new tokens
+          } else {
+            setScanStatus('Position still open — waiting for exit...');
+            setIsScanning(false);
+            return;
+          }
+        } else {
+          setIsScanning(false);
+          return;
+        }
       }
 
       if (data?.opportunities && data.opportunities.length > 0) {
