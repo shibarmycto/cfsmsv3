@@ -619,6 +619,25 @@ async function notifyDiscord(title: string, color: number, fields: {name: string
   }
 }
 
+// ── Telegram alert helper (sends to cf-blockchain-alerts function) ──
+async function notifyTelegram(alertType: string, data: Record<string, any>) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return;
+    await fetch(`${supabaseUrl}/functions/v1/cf-blockchain-alerts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ alert_type: alertType, data }),
+    });
+  } catch (e) {
+    console.error('[TELEGRAM] Alert error:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -843,6 +862,17 @@ serve(async (req) => {
         { name: '💼 Balance After', value: `${newBalance.toFixed(4)} SOL`, inline: true },
       ]);
 
+      // Telegram: Notify auto-trade to groups
+      await notifyTelegram('solana_auto_trade', {
+        token_name: execTarget.name,
+        token_symbol: execTarget.symbol,
+        username: displayName,
+        amount_sol: positionSol.toFixed(4),
+        amount_usd: (positionSol * solPrice).toFixed(2),
+        match_pct: execTarget.match_pct,
+        signature: tradeResult.signature,
+      });
+
       const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
 
       return new Response(JSON.stringify({
@@ -1049,17 +1079,30 @@ serve(async (req) => {
               { name: '📋 Reason', value: reason, inline: false },
               { name: '🔗 TX', value: sellResult.signature ? `[Solscan](https://solscan.io/tx/${sellResult.signature})` : 'Failed', inline: false },
             ]);
-            // Log profit notification
+            // Log profit notification + Telegram alert
             if (sellResult.success && profitSol > 0) {
               const { data: profileData } = await supabaseAdmin
                 .from('wallets').select('username').eq('user_id', userId).single();
+              const traderName = profileData?.username || 'Trader';
               await supabaseAdmin.from('trade_notifications').insert({
                 user_id: userId,
-                username: profileData?.username || 'Trader',
+                username: traderName,
                 token_name: pos.token_name || 'Token',
                 token_symbol: pos.symbol || 'UNK',
                 profit_percent: Math.round(pnlPct),
                 amount_sol: profitSol,
+              });
+
+              // Telegram: Notify profit to groups
+              await notifyTelegram('solana_profit', {
+                token_name: pos.token_name || 'Token',
+                token_symbol: pos.symbol || 'UNK',
+                username: traderName,
+                gross_profit_usd: grossProfitUsd.toFixed(2),
+                net_profit_usd: netProfitUsdFinal.toFixed(2),
+                fee_usd: platformFeeUsd.toFixed(2),
+                pnl_percent: pnlPct.toFixed(1),
+                signature: sellResult.signature,
               });
             }
           } else {
