@@ -53,20 +53,21 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 const SCALPER_CONFIG = {
   DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL per trade
   PLATFORM_FEE_USD: 0.99, // $0.99 fee per trade
-  TAKE_PROFIT_USD: 3.00, // $3 net profit target (after fee) for trades under 2 min
-  QUICK_EXIT_MINUTES: 2, // After 2 min, lower the TP target
-  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 2 min (+ $0.99 fee = $1.99 gross)
-  STOP_LOSS_PCT: -0.30,
-  MAX_HOLD_MINUTES: 10, // 10 min per token then move on
-  MAX_SLIPPAGE_BPS: 150,
-  MAX_TOKEN_AGE_MINUTES: 10, // Only fresh tokens under 10 min
-  MIN_LP_SOL: 5,
-  MAX_TOP10_HOLDER_PCT: 30,
-  CIRCUIT_BREAKER_LOSSES: 5,
-  CIRCUIT_BREAKER_PAUSE_MIN: 10,
+  TAKE_PROFIT_USD: 2.00, // $2 net profit target (after fee) — aggressive cycling
+  QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, lower the TP target for fast cycling
+  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 1.5 min (+ $0.99 fee = $1.99 gross)
+  STOP_LOSS_PCT: -0.25, // -25% stop loss — exit faster, preserve capital
+  MAX_HOLD_MINUTES: 5, // 5 min max per token — faster cycling between tokens
+  MAX_SLIPPAGE_BPS: 200, // Higher slippage tolerance for faster execution
+  MAX_TOKEN_AGE_MINUTES: 15, // Wider net — tokens up to 15 min old
+  MIN_LP_SOL: 3, // Lower LP requirement — more opportunities
+  MAX_TOP10_HOLDER_PCT: 40, // More lenient holder check
+  CIRCUIT_BREAKER_LOSSES: 8, // Higher tolerance before pause
+  CIRCUIT_BREAKER_PAUSE_MIN: 5, // Shorter pause
   MAX_CONCURRENT_POSITIONS: 1,
   PRIORITY_FEE_SOL: 0.001,
-  SCAN_INTERVAL_SECONDS: 20, // Scan every 20s for freshness
+  SCAN_INTERVAL_SECONDS: 15, // Scan every 15s for maximum freshness
+  MIN_MATCH_PCT: 40, // Minimum match % to execute — lower = more aggressive
 };
 
 // ═══ PERCENTAGE-BASED FILTER SCORING ═══
@@ -118,26 +119,26 @@ function scoreTokenPercentage(metrics: TokenMetrics): ScoringResult {
     detail: metrics.freeze_authority_disabled ? 'Disabled ✓' : 'Active ⚠️',
   });
 
-  // Filter 3: LP >= 5 SOL (weight: 15%)
+  // Filter 3: LP >= 3 SOL (weight: 12%)
   const lpPassed = metrics.liquidity_sol >= SCALPER_CONFIG.MIN_LP_SOL;
   filters.push({
     name: 'Liquidity ≥ 5 SOL',
     passed: lpPassed,
-    weight: 15,
+    weight: 12,
     detail: `${metrics.liquidity_sol.toFixed(2)} SOL`,
   });
 
-  // Filter 4: Top 10 holders < 30% (weight: 10%)
+  // Filter 4: Top 10 holders < 40% (weight: 8%)
   const holdersPassed = metrics.top10_holder_pct < SCALPER_CONFIG.MAX_TOP10_HOLDER_PCT;
   filters.push({
     name: 'Top 10 Holders < 30%',
     passed: holdersPassed,
-    weight: 10,
+    weight: 8,
     detail: `${metrics.top10_holder_pct.toFixed(1)}%`,
   });
 
-  // Filter 5: Token age < 10 min (weight: 10%)
-  const agePassed = metrics.age_seconds <= 600;
+  // Filter 5: Token age < 15 min (weight: 10%)
+  const agePassed = metrics.age_seconds <= SCALPER_CONFIG.MAX_TOKEN_AGE_MINUTES * 60;
   filters.push({
     name: 'Token Age ≤ 10 min',
     passed: agePassed,
@@ -436,9 +437,9 @@ async function honeypotCheck(mintAddress: string): Promise<boolean> {
 // ── Pre-buy sell simulation — verify token can actually be sold back ──
 async function verifySellable(mintAddress: string): Promise<boolean> {
   try {
-    // Simulate selling 1M token units back to SOL
+    // Simulate selling 1M token units back to SOL — use high slippage for new tokens
     const urls = JUPITER_QUOTE_ENDPOINTS.map(u =>
-      `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=1000`
+      `${u}?inputMint=${mintAddress}&outputMint=${SOL_MINT}&amount=1000000&slippageBps=2000`
     );
     const quoteRes = await fetchWithFallback(urls);
     const quote = await quoteRes.json();
@@ -447,7 +448,7 @@ async function verifySellable(mintAddress: string): Promise<boolean> {
       return false;
     }
     const priceImpact = parseFloat(quote.priceImpactPct || '0');
-    if (priceImpact > 10) {
+    if (priceImpact > 25) { // More lenient — only block extreme impacts
       console.warn(`[SAFETY] Token ${mintAddress.slice(0,8)} sell impact ${priceImpact.toFixed(1)}% — BLOCKED`);
       return false;
     }
@@ -711,6 +712,25 @@ serve(async (req) => {
       const shouldExecute = action === 'activate';
       const solPrice = await getSolPrice();
 
+      // ── CHECK: If activate mode, ensure no open position already exists ──
+      if (shouldExecute) {
+        const { data: openTrades } = await supabaseAdmin
+          .from('signal_trades')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('status', 'open')
+          .limit(1);
+        if (openTrades && openTrades.length > 0) {
+          return new Response(JSON.stringify({
+            success: true,
+            trade_executed: false,
+            message: 'Position already open — monitoring for exit before next buy.',
+            has_open_position: true,
+            sol_price: solPrice,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      }
+
       // ── STEP 1: Discover tokens from ALL sources ──
       const freshTokens = await discoverTokens(HELIUS_API_KEY, solPrice);
 
@@ -827,7 +847,21 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Honeypot check + SELL SIMULATION on best candidate, fallback to alternates
+      // ── STEP 3A: Ensure minimum match quality ──
+      if (bestOpp.match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) {
+        return new Response(JSON.stringify({
+          success: true,
+          trade_executed: false,
+          message: `Best match ${bestOpp.name} only ${bestOpp.match_pct}% (min ${SCALPER_CONFIG.MIN_MATCH_PCT}%) — waiting for better opportunity.`,
+          tokens_scanned: freshTokens.length,
+          opportunities: opportunities.slice(0, 10),
+          best_match: bestOpp,
+          sol_price: solPrice,
+          config: SCALPER_CONFIG,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ── STEP 3B: Honeypot & sell verification — try up to 10 candidates ──
       let execTarget = bestOpp;
       const isHoneypotSafe = await honeypotCheck(bestOpp.mint);
       const isSellable = isHoneypotSafe ? await verifySellable(bestOpp.mint) : false;
@@ -838,7 +872,7 @@ serve(async (req) => {
         bestOpp.match_pct = Math.max(0, bestOpp.match_pct - 10);
         
         let foundAlt = false;
-        for (let i = 1; i < Math.min(opportunities.length, 5); i++) {
+        for (let i = 1; i < Math.min(opportunities.length, 10); i++) {
           const alt = opportunities[i];
           const altSafe = await honeypotCheck(alt.mint);
           if (!altSafe) continue;
