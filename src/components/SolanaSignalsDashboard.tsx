@@ -74,6 +74,10 @@ export default function SolanaSignalsDashboard() {
   const [tokenBalance, setTokenBalance] = useState(0);
   const [trades, setTrades] = useState<TradeEntry[]>([]);
   const [totalProfit, setTotalProfit] = useState(0);
+  const [opportunities, setOpportunities] = useState<any[]>([]);
+  const [scanStatus, setScanStatus] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
+  const autoTradeInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Manual trade state
   const [tradeAmountSol, setTradeAmountSol] = useState('0.01');
@@ -92,6 +96,7 @@ export default function SolanaSignalsDashboard() {
     return () => {
       if (balanceInterval.current) clearInterval(balanceInterval.current);
       if (signalInterval.current) clearInterval(signalInterval.current);
+      if (autoTradeInterval.current) clearInterval(autoTradeInterval.current);
     };
   }, [user]);
 
@@ -223,7 +228,9 @@ export default function SolanaSignalsDashboard() {
     }
   };
 
-  const activateAutoTrade = async () => {
+  const runScalperScan = async () => {
+    setIsScanning(true);
+    setScanStatus('Scanning all sources...');
     try {
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
         body: { action: 'activate' },
@@ -231,14 +238,17 @@ export default function SolanaSignalsDashboard() {
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
+      // Store discovered opportunities
+      if (data?.opportunities) {
+        setOpportunities(data.opportunities);
+      }
+
       if (data?.trade_executed) {
-        setIsAutoTradeActive(true);
-        // Add to trade log
         const newTrade: TradeEntry = {
           id: data.signature || Date.now().toString(),
           token_name: data.token_name || 'Unknown',
           mint: data.mint_address || '',
-          entry_price: data.position_sol || data.amount_sol || 0,
+          entry_price: data.position_sol || 0,
           current_price: data.output_tokens || 0,
           amount_sol: data.position_sol || 0,
           timestamp: new Date().toISOString(),
@@ -253,17 +263,37 @@ export default function SolanaSignalsDashboard() {
             duration: 10000,
           });
         }
-        // Refresh balance
         refreshBalance();
+        setScanStatus(`✅ Executed: ${data.token_name} (${data.match_pct}% match)`);
       } else {
-        toast.info(data.message || 'No qualifying tokens found — monitoring...');
-        setIsAutoTradeActive(true);
+        setScanStatus(data.message || `Found ${data?.opportunities?.length || 0} opportunities — retrying...`);
       }
 
       if (data.remaining_tokens !== undefined) setTokenBalance(data.remaining_tokens);
     } catch (e: any) {
-      toast.error(e.message || 'Failed to activate auto-trade');
+      setScanStatus(`Error: ${e.message}`);
+      toast.error(e.message || 'Scan failed');
+    } finally {
+      setIsScanning(false);
     }
+  };
+
+  const activateAutoTrade = async () => {
+    setIsAutoTradeActive(true);
+    // Run immediately
+    await runScalperScan();
+    // Then auto-scan every 30 seconds
+    autoTradeInterval.current = setInterval(runScalperScan, 30000);
+  };
+
+  const stopAutoTrade = () => {
+    setIsAutoTradeActive(false);
+    if (autoTradeInterval.current) {
+      clearInterval(autoTradeInterval.current);
+      autoTradeInterval.current = null;
+    }
+    setScanStatus('');
+    setOpportunities([]);
   };
 
   const executeTrade = async (mintAddress: string, tokenName: string, tradeType: 'buy' | 'sell') => {
@@ -650,11 +680,11 @@ export default function SolanaSignalsDashboard() {
             <p className="text-[11px] text-amber-400">Auto trading involves risk. Only trade what you can afford to lose.</p>
           </div>
 
-          {/* Activate Auto-Trade */}
+          {/* Auto-Trade Control */}
           <div className="p-6 rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Zap className="w-10 h-10 mx-auto mb-3 text-amber-400" />
-            <h3 className="font-bold text-lg mb-1">Auto-Trade</h3>
-            <p className="text-xs text-[#8899aa] mb-4">Automatically snipe new tokens via Helius signals</p>
+            <h3 className="font-bold text-lg mb-1">Auto-Trade Bot</h3>
+            <p className="text-xs text-[#8899aa] mb-4">Scans all sources every 30s — always finds & executes the best opportunity</p>
             
             <div className="flex items-center justify-center gap-2 mb-4 text-sm">
               <Coins className="w-4 h-4 text-[#00ff88]" />
@@ -662,61 +692,111 @@ export default function SolanaSignalsDashboard() {
             </div>
 
             {isAutoTradeActive ? (
-            <div className="space-y-3">
-                <Badge className="bg-emerald-500 text-sm px-4 py-1">⚡ HELIUS PRO SCALPER ACTIVE</Badge>
-                <p className="text-xs text-[#8899aa]">Scanning tokens ≤10 min old with full filter stack...</p>
-                <div className="text-sm text-[#8899aa] space-y-1">
-                  <p>✓ Position size: <strong className="text-white">$10 USD</strong> per trade</p>
-                  <p>✓ Take profit: <strong className="text-emerald-400">2× (100% gain)</strong></p>
-                  <p>✓ Stop loss: <strong className="text-red-400">−30% hard cut</strong></p>
-                  <p>✓ Max hold: <strong className="text-amber-400">15 minutes</strong></p>
-                  <p>✓ Max slippage: 1.5%</p>
-                  <p>✓ Mint authority: must be revoked</p>
-                  <p>✓ Freeze authority: must be disabled</p>
-                  <p>✓ Honeypot simulation check</p>
-                  <p>✓ LP ≥ 5 SOL minimum</p>
-                  <p>✓ Top 10 holders &lt; 30%</p>
-                  <p>✓ Poisson buy-velocity scoring</p>
-                  <p>✓ Circuit breaker: 5 losses → 10 min pause</p>
+              <div className="space-y-3">
+                <Badge className="bg-emerald-500 text-sm px-4 py-1 animate-pulse">⚡ SCALPER BOT RUNNING</Badge>
+                {isScanning && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-cyan-400">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <span>Scanning all sources...</span>
+                  </div>
+                )}
+                {scanStatus && (
+                  <p className="text-xs text-[#8899aa] px-2">{scanStatus}</p>
+                )}
+                <div className="text-xs text-[#8899aa] space-y-0.5">
+                  <p>✓ $10 USD per trade · 2× TP · −30% SL · 15 min max hold</p>
+                  <p>✓ Auto-scanning every 30s · Always finds best match</p>
+                  <p>✓ {opportunities.length} opportunities found last scan</p>
                 </div>
-                <Button variant="destructive" onClick={() => setIsAutoTradeActive(false)} className="w-full">
+                <Button variant="destructive" onClick={stopAutoTrade} className="w-full">
                   <Square className="w-4 h-4 mr-2" />Stop Auto-Trade
                 </Button>
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 p-3 rounded-lg mb-4" style={{ background: 'rgba(0,255,136,0.1)' }}>
-                  <DollarSign className="w-4 h-4 text-[#00ff88]" />
-                  <span className="text-xs text-[#8899aa]">Trade amount:</span>
-                  <Input
-                    type="number"
-                    value={tradeAmountSol}
-                    onChange={(e) => setTradeAmountSol(e.target.value)}
-                    className="w-24 h-8 text-xs bg-transparent border-white/20"
-                    step="0.01"
-                    min="0.001"
-                  />
-                  <span className="text-xs text-[#8899aa]">SOL</span>
-                </div>
-
                 <div className="flex items-center justify-center gap-2 mb-4 text-sm">
                   <Wallet className="w-4 h-4 text-[#00ff88]" />
                   <span>SOL Balance: <strong>{wallet?.balanceSol.toFixed(4) || '0'} SOL</strong></span>
                 </div>
-
                 <Button
                   onClick={activateAutoTrade}
-                  disabled={!wallet}
+                  disabled={!wallet || isScanning}
                   className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
                   size="lg"
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  Start Helius Pro Scalper — $10 Position
+                  {isScanning ? 'Starting...' : 'Start Auto-Trade Bot — $10/trade'}
                 </Button>
                 {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
               </>
             )}
           </div>
+
+          {/* Live Opportunities Feed */}
+          {opportunities.length > 0 && (
+            <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-bold text-sm">Scanned Opportunities</span>
+                <span className="text-xs text-[#8899aa]">{opportunities.length} found</span>
+              </div>
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                {opportunities.map((opp: any, idx: number) => {
+                  const matchColor = opp.match_pct >= 80 ? 'text-emerald-400' : opp.match_pct >= 60 ? 'text-cyan-400' : opp.match_pct >= 40 ? 'text-amber-400' : 'text-red-400';
+                  const matchBg = opp.match_pct >= 80 ? 'rgba(0,255,136,0.1)' : opp.match_pct >= 60 ? 'rgba(0,200,255,0.1)' : opp.match_pct >= 40 ? 'rgba(255,200,0,0.1)' : 'rgba(255,68,68,0.1)';
+                  const recBadge = opp.recommendation === 'STRONG_BUY' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                    opp.recommendation === 'BUY' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' :
+                    opp.recommendation === 'SPECULATIVE' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                    'bg-red-500/20 text-red-400 border-red-500/30';
+                  return (
+                    <div key={opp.mint} className="p-3 rounded-lg" style={{ background: matchBg, border: `1px solid rgba(255,255,255,0.1)` }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm">{idx === 0 ? '🏆' : `#${idx + 1}`}</span>
+                          <span className="font-medium text-sm">{opp.name}</span>
+                          <span className="text-xs text-[#8899aa]">({opp.symbol})</span>
+                        </div>
+                        <span className={`text-lg font-bold ${matchColor}`}>{opp.match_pct}%</span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className={`text-[9px] ${recBadge}`}>{opp.recommendation}</Badge>
+                        <span className="text-[10px] text-[#8899aa]">{opp.age_minutes?.toFixed(1)}m old</span>
+                        {opp.market_cap_usd > 0 && <span className="text-[10px] text-[#8899aa]">MC: ${(opp.market_cap_usd / 1000).toFixed(1)}K</span>}
+                        {opp.liquidity_sol > 0 && <span className="text-[10px] text-[#8899aa]">LP: {opp.liquidity_sol.toFixed(1)} SOL</span>}
+                      </div>
+                      {/* Filter breakdown */}
+                      <div className="flex flex-wrap gap-1">
+                        {opp.filters?.map((f: any) => (
+                          <span key={f.name} className={`text-[9px] px-1.5 py-0.5 rounded ${f.passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                            {f.passed ? '✓' : '✗'} {f.name}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] text-[#8899aa]">{opp.total_passed}/{opp.total_filters} filters passed</span>
+                        <Button
+                          size="sm"
+                          className="ml-auto h-6 text-[10px] px-2"
+                          variant="outline"
+                          onClick={() => window.open(`https://dexscreener.com/solana/${opp.mint}`, '_blank')}
+                        >
+                          <ExternalLink className="w-3 h-3 mr-1" />Chart
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={!wallet || isExecutingTrade === opp.mint}
+                          onClick={() => executeTrade(opp.mint, opp.name, 'buy')}
+                        >
+                          {isExecutingTrade === opp.mint ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ShoppingCart className="w-3 h-3 mr-1" />}
+                          Buy
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Active Trades */}
           {trades.length > 0 && (
