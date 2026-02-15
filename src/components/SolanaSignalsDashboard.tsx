@@ -736,7 +736,7 @@ export default function SolanaSignalsDashboard() {
                 <div key={signal.id} className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                   <div className="flex items-center gap-2">
                     <Badge className={`text-[10px] ${getSignalColor(signal.type)}`}>{signal.type.replace(/_/g, ' ')}</Badge>
-                    <span className="text-sm font-medium">{signal.token_name}</span>
+                    <a href={`https://dexscreener.com/solana/${signal.mint_address}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-emerald-400 transition-colors underline decoration-dotted">{signal.token_name}</a>
                   </div>
                   <span className="text-xs text-[#8899aa]">{signal.age_minutes.toFixed(0)}m ago</span>
                 </div>
@@ -861,8 +861,15 @@ export default function SolanaSignalsDashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-bold">{signal.token_name} <span className="text-[#8899aa] text-xs">({signal.token_symbol})</span></p>
-                    <p className="text-xs font-mono text-[#8899aa] truncate max-w-[200px]">{signal.mint_address}</p>
+                    <p className="font-bold">
+                      <a href={`https://dexscreener.com/solana/${signal.mint_address}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors underline decoration-dotted">
+                        {signal.token_name}
+                      </a>
+                      {' '}<span className="text-[#8899aa] text-xs">({signal.token_symbol})</span>
+                    </p>
+                    <a href={`https://solscan.io/token/${signal.mint_address}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#8899aa] hover:text-emerald-400 transition-colors underline decoration-dotted block truncate max-w-[200px]">
+                      {signal.mint_address}
+                    </a>
                   </div>
                   <div className="text-right">
                     {signal.market_cap_usd > 0 && <p className="text-xs text-[#8899aa]">MC: ${(signal.market_cap_usd / 1000).toFixed(1)}K</p>}
@@ -1068,8 +1075,8 @@ export default function SolanaSignalsDashboard() {
                 {trades.map(trade => (
                   <div key={trade.id} className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <div>
-                      <p className="text-sm font-medium">{trade.token_name}</p>
-                      <p className="text-xs text-[#8899aa]">{trade.amount_sol.toFixed(3)} SOL</p>
+                      <a href={`https://dexscreener.com/solana/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-emerald-400 transition-colors underline decoration-dotted">{trade.token_name}</a>
+                      <a href={`https://solscan.io/token/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#8899aa] hover:text-emerald-400 transition-colors underline decoration-dotted block font-mono truncate max-w-[180px]">{trade.mint}</a>
                     </div>
                     <Badge className={trade.pnl_percent >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
                       {trade.pnl_percent >= 0 ? '+' : ''}{trade.pnl_percent.toFixed(1)}%
@@ -1099,8 +1106,8 @@ export default function SolanaSignalsDashboard() {
                 {trades.filter(t => t.status !== 'active').map(trade => (
                   <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <div>
-                      <p className="text-sm font-medium">{trade.token_name}</p>
-                      <p className="text-xs text-[#8899aa]">{new Date(trade.timestamp).toLocaleString()}</p>
+                      <a href={`https://dexscreener.com/solana/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-emerald-400 transition-colors underline decoration-dotted">{trade.token_name}</a>
+                      <a href={`https://solscan.io/token/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#8899aa] hover:text-emerald-400 transition-colors underline decoration-dotted block font-mono truncate max-w-[180px]">{trade.mint}</a>
                     </div>
                     <div className="text-right">
                       <Badge className={trade.status === 'profit' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
