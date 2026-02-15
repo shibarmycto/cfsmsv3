@@ -813,6 +813,221 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════
+    // ACTION: CHECK_POSITIONS — Monitor active trades for TP/SL/Time-stop
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'check_positions') {
+      const { positions } = body; // Array of { mint, entry_sol, amount_tokens, timestamp }
+      if (!positions || !Array.isArray(positions) || positions.length === 0) {
+        return new Response(JSON.stringify({ success: true, results: [] }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
+        return new Response(JSON.stringify({ success: true, results: [], error: 'No wallet' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const solPrice = await getSolPrice();
+      const results: any[] = [];
+
+      for (const pos of positions) {
+        const ageMin = (Date.now() - new Date(pos.timestamp).getTime()) / 60000;
+        let shouldSell = false;
+        let reason = '';
+
+        // Check current value via Jupiter quote (token → SOL)
+        try {
+          const quoteUrls = JUPITER_QUOTE_URLS.map(u =>
+            `${u}?inputMint=${pos.mint}&outputMint=${SOL_MINT}&amount=${Math.floor(pos.amount_tokens * 1e6)}&slippageBps=500`
+          );
+          const quoteRes = await fetchWithFallback(quoteUrls);
+          const quote = await quoteRes.json();
+
+          if (quote.error || !quote.outAmount) {
+            // Can't get quote — if time-stop hit, force sell anyway
+            if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
+              shouldSell = true;
+              reason = `⏰ Time stop (${ageMin.toFixed(0)}m)`;
+            }
+            results.push({
+              mint: pos.mint,
+              action: shouldSell ? 'sell' : 'hold',
+              reason: shouldSell ? reason : 'Cannot quote — holding',
+              current_sol: 0,
+              pnl_percent: 0,
+            });
+            continue;
+          }
+
+          const currentSol = parseInt(quote.outAmount) / 1e9;
+          const pnlPct = ((currentSol - pos.entry_sol) / pos.entry_sol) * 100;
+
+          // Take Profit: 2× (100% gain)
+          if (pnlPct >= (SCALPER_CONFIG.TAKE_PROFIT_MULT - 1) * 100) {
+            shouldSell = true;
+            reason = `🎯 Take Profit! +${pnlPct.toFixed(1)}%`;
+          }
+          // Stop Loss: -30%
+          else if (pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+            shouldSell = true;
+            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}%`;
+          }
+          // Time Stop: 15 minutes
+          else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
+            shouldSell = true;
+            reason = `⏰ Time stop (${ageMin.toFixed(0)}m): ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`;
+          }
+
+          if (shouldSell) {
+            // Execute sell
+            const sellResult = await executeSwap(
+              pos.mint, SOL_MINT, Math.floor(pos.amount_tokens * 1e6),
+              solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC, 300
+            );
+
+            const profitSol = currentSol - pos.entry_sol;
+            const platformFee = profitSol > 0 ? profitSol * 0.01 : 0;
+
+            results.push({
+              mint: pos.mint,
+              action: 'sold',
+              reason,
+              current_sol: currentSol,
+              entry_sol: pos.entry_sol,
+              pnl_percent: pnlPct,
+              profit_sol: profitSol,
+              profit_usd: profitSol * solPrice,
+              platform_fee: platformFee,
+              signature: sellResult.signature,
+              explorer_url: sellResult.signature ? `https://solscan.io/tx/${sellResult.signature}` : null,
+              sell_success: sellResult.success,
+              sell_error: sellResult.error,
+            });
+
+            // Log profit notification
+            if (sellResult.success && profitSol > 0) {
+              const { data: profileData } = await supabaseAdmin
+                .from('wallets').select('username').eq('user_id', userId).single();
+              await supabaseAdmin.from('trade_notifications').insert({
+                user_id: userId,
+                username: profileData?.username || 'Trader',
+                token_name: pos.token_name || 'Token',
+                token_symbol: pos.symbol || 'UNK',
+                profit_percent: Math.round(pnlPct),
+                amount_sol: profitSol,
+              });
+            }
+          } else {
+            results.push({
+              mint: pos.mint,
+              action: 'hold',
+              reason: `Holding: ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% (${ageMin.toFixed(0)}m)`,
+              current_sol: currentSol,
+              pnl_percent: pnlPct,
+            });
+          }
+        } catch (e) {
+          results.push({
+            mint: pos.mint,
+            action: 'hold',
+            reason: `Error checking: ${e.message}`,
+            current_sol: 0,
+            pnl_percent: 0,
+          });
+        }
+      }
+
+      const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+      return new Response(JSON.stringify({
+        success: true,
+        results,
+        balance: newBalance,
+        sol_price: solPrice,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ACTION: CLOSE_ALL — Sell all active positions back to SOL
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'close_all') {
+      const { positions } = body;
+      if (!positions || !Array.isArray(positions) || positions.length === 0) {
+        return new Response(JSON.stringify({ success: true, results: [], message: 'No positions to close' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
+        return new Response(JSON.stringify({ error: 'No wallet found' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const solPrice = await getSolPrice();
+      const results: any[] = [];
+      let totalProfitSol = 0;
+
+      for (const pos of positions) {
+        try {
+          const sellResult = await executeSwap(
+            pos.mint, SOL_MINT, Math.floor(pos.amount_tokens * 1e6),
+            solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC, 500
+          );
+
+          const returnedSol = sellResult.outputAmount || 0;
+          const profitSol = returnedSol - pos.entry_sol;
+          totalProfitSol += profitSol;
+
+          results.push({
+            mint: pos.mint,
+            token_name: pos.token_name,
+            sold: sellResult.success,
+            returned_sol: returnedSol,
+            profit_sol: profitSol,
+            profit_usd: profitSol * solPrice,
+            signature: sellResult.signature,
+            error: sellResult.error,
+          });
+        } catch (e) {
+          results.push({
+            mint: pos.mint,
+            token_name: pos.token_name,
+            sold: false,
+            error: e.message,
+          });
+        }
+      }
+
+      const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
+      // Log accumulated profit notification
+      if (totalProfitSol > 0) {
+        const { data: profileData } = await supabaseAdmin
+          .from('wallets').select('username').eq('user_id', userId).single();
+        await supabaseAdmin.from('trade_notifications').insert({
+          user_id: userId,
+          username: profileData?.username || 'Trader',
+          token_name: 'Auto-Trade Session',
+          token_symbol: 'SOL',
+          profit_percent: Math.round((totalProfitSol / positions.reduce((s: number, p: any) => s + (p.entry_sol || 0), 0)) * 100),
+          amount_sol: totalProfitSol,
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        results,
+        total_profit_sol: totalProfitSol,
+        total_profit_usd: totalProfitSol * solPrice,
+        balance: newBalance,
+        sol_price: solPrice,
+        message: `Closed ${results.filter(r => r.sold).length}/${positions.length} positions. ${totalProfitSol >= 0 ? 'Profit' : 'Loss'}: ${totalProfitSol.toFixed(6)} SOL ($${(totalProfitSol * solPrice).toFixed(2)})`,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ══════════════════════════════════════════════════════════════
     // ACTION: GET_CONFIG
     // ══════════════════════════════════════════════════════════════
     if (action === 'get_config') {

@@ -228,17 +228,79 @@ export default function SolanaSignalsDashboard() {
     }
   };
 
+  // Monitor active positions for TP/SL/Time-stop
+  const checkActivePositions = async () => {
+    const activePositions = trades.filter(t => t.status === 'active');
+    if (activePositions.length === 0) return;
+
+    try {
+      const { data } = await supabase.functions.invoke('solana-auto-trade', {
+        body: {
+          action: 'check_positions',
+          positions: activePositions.map(t => ({
+            mint: t.mint,
+            entry_sol: t.entry_price,
+            amount_tokens: t.current_price, // stored as output token amount
+            timestamp: t.timestamp,
+            token_name: t.token_name,
+            symbol: t.token_name,
+          })),
+        },
+      });
+
+      if (data?.results) {
+        for (const result of data.results) {
+          if (result.action === 'sold') {
+            setTrades(prev => prev.map(t =>
+              t.mint === result.mint && t.status === 'active'
+                ? { ...t, status: result.pnl_percent >= 0 ? 'profit' : 'loss', pnl_percent: result.pnl_percent }
+                : t
+            ));
+            const profitUsd = result.profit_usd || 0;
+            setTotalProfit(prev => prev + profitUsd);
+
+            if (result.pnl_percent >= 0) {
+              toast.success(`💰 ${result.reason} — +$${profitUsd.toFixed(2)} profit returned to wallet`, { duration: 8000 });
+            } else {
+              toast.error(`${result.reason} — -$${Math.abs(profitUsd).toFixed(2)}`, { duration: 8000 });
+            }
+            if (result.explorer_url) {
+              toast.info('View exit TX on Solscan', {
+                action: { label: 'Open', onClick: () => window.open(result.explorer_url, '_blank') },
+                duration: 10000,
+              });
+            }
+          } else if (result.action === 'hold') {
+            // Update live P&L
+            setTrades(prev => prev.map(t =>
+              t.mint === result.mint && t.status === 'active'
+                ? { ...t, pnl_percent: result.pnl_percent }
+                : t
+            ));
+          }
+        }
+        if (data.balance !== undefined) {
+          setWallet(prev => prev ? { ...prev, balanceSol: data.balance, balanceUsd: data.balance * (data.sol_price || prev.solPrice) } : prev);
+        }
+      }
+    } catch (e: any) {
+      console.error('Position check error:', e);
+    }
+  };
+
   const runScalperScan = async (executeMode = false) => {
     setIsScanning(true);
     setScanStatus('Scanning all sources...');
+
+    // Also check active positions for exits
+    await checkActivePositions();
+
     try {
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
         body: { action: executeMode ? 'activate' : 'scan' },
       });
-      // Don't throw on error — still check for opportunities in response
       if (error && !data) throw new Error(error.message);
 
-      // Always store discovered opportunities
       if (data?.opportunities && data.opportunities.length > 0) {
         setOpportunities(data.opportunities);
       }
@@ -249,7 +311,7 @@ export default function SolanaSignalsDashboard() {
           token_name: data.token_name || 'Unknown',
           mint: data.mint_address || '',
           entry_price: data.position_sol || 0,
-          current_price: data.output_tokens || 0,
+          current_price: data.output_tokens || 0, // Store token amount received
           amount_sol: data.position_sol || 0,
           timestamp: new Date().toISOString(),
           status: 'active',
@@ -270,8 +332,8 @@ export default function SolanaSignalsDashboard() {
         const bestName = data?.best_match?.name || '';
         const bestPct = data?.best_match?.match_pct || '';
         setScanStatus(
-          data?.message || 
-          (oppCount > 0 
+          data?.message ||
+          (oppCount > 0
             ? `Found ${oppCount} opportunities — best: ${bestName} (${bestPct}% match)`
             : 'Scanning...')
         );
@@ -279,7 +341,6 @@ export default function SolanaSignalsDashboard() {
 
       if (data?.remaining_tokens !== undefined) setTokenBalance(data.remaining_tokens);
     } catch (e: any) {
-      // Don't clear opportunities on error — keep showing what we found
       setScanStatus(`Scan error: ${e.message} — retrying...`);
     } finally {
       setIsScanning(false);
@@ -288,18 +349,61 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     setIsAutoTradeActive(true);
-    // First scan to discover opportunities
     await runScalperScan(false);
-    // Then continuously scan and auto-execute every 30 seconds
+    // Scan & execute every 30s, also monitors positions
     autoTradeInterval.current = setInterval(() => runScalperScan(true), 30000);
   };
 
-  const stopAutoTrade = () => {
-    setIsAutoTradeActive(false);
+  const stopAutoTrade = async () => {
+    // Stop the scan loop
     if (autoTradeInterval.current) {
       clearInterval(autoTradeInterval.current);
       autoTradeInterval.current = null;
     }
+
+    // Close all active positions — sell everything back to SOL
+    const activePositions = trades.filter(t => t.status === 'active');
+    if (activePositions.length > 0) {
+      setScanStatus('Closing all positions...');
+      try {
+        const { data } = await supabase.functions.invoke('solana-auto-trade', {
+          body: {
+            action: 'close_all',
+            positions: activePositions.map(t => ({
+              mint: t.mint,
+              entry_sol: t.entry_price,
+              amount_tokens: t.current_price,
+              token_name: t.token_name,
+            })),
+          },
+        });
+
+        if (data?.results) {
+          for (const result of data.results) {
+            setTrades(prev => prev.map(t =>
+              t.mint === result.mint && t.status === 'active'
+                ? { ...t, status: (result.profit_sol || 0) >= 0 ? 'profit' : 'loss', pnl_percent: result.profit_sol ? ((result.returned_sol - t.entry_price) / t.entry_price) * 100 : 0 }
+                : t
+            ));
+          }
+          setTotalProfit(prev => prev + (data.total_profit_usd || 0));
+
+          if (data.total_profit_sol >= 0) {
+            toast.success(`💰 Session closed! Profit: +${data.total_profit_sol.toFixed(6)} SOL ($${data.total_profit_usd.toFixed(2)}) returned to wallet`, { duration: 10000 });
+          } else {
+            toast.error(`Session closed. Loss: ${data.total_profit_sol.toFixed(6)} SOL ($${data.total_profit_usd.toFixed(2)})`, { duration: 10000 });
+          }
+
+          if (data.balance !== undefined) {
+            setWallet(prev => prev ? { ...prev, balanceSol: data.balance, balanceUsd: data.balance * (data.sol_price || prev.solPrice) } : prev);
+          }
+        }
+      } catch (e: any) {
+        toast.error(`Failed to close positions: ${e.message}`);
+      }
+    }
+
+    setIsAutoTradeActive(false);
     setScanStatus('');
     setOpportunities([]);
   };
