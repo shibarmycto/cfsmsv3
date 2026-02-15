@@ -83,11 +83,27 @@ serve(async (req) => {
           let count = 0;
           for (const p of (profiles || [])) {
             if (p.chainId !== 'solana') continue;
-            // Skip profiles without real data — they show stale CDN URLs
+            // Try to get real name from DexScreener token endpoint
             const rawName = p.description?.split(' ')[0] || '';
             const rawSymbol = p.header?.split(' ')[0] || '';
-            const safeName = rawName.startsWith('http') ? rawSymbol || p.tokenAddress?.slice(0, 8) : rawName || p.tokenAddress?.slice(0, 8);
-            const safeSymbol = rawSymbol.startsWith('http') ? 'UNK' : rawSymbol || 'UNK';
+            let safeName = rawName.startsWith('http') ? '' : rawName;
+            let safeSymbol = rawSymbol.startsWith('http') ? '' : rawSymbol;
+            // If name looks like a truncated mint address, try to resolve it
+            if (!safeName || safeName.length <= 8) {
+              try {
+                const tokenRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${p.tokenAddress}`, { headers: { 'Accept': 'application/json' } });
+                if (tokenRes.ok) {
+                  const tokenData = await tokenRes.json();
+                  const pair = tokenData?.pairs?.[0];
+                  if (pair?.baseToken?.name && !pair.baseToken.name.startsWith('http')) {
+                    safeName = pair.baseToken.name;
+                    safeSymbol = pair.baseToken.symbol || safeSymbol;
+                  }
+                }
+              } catch {}
+            }
+            if (!safeName) safeName = p.tokenAddress?.slice(0, 8) || 'Unknown';
+            if (!safeSymbol) safeSymbol = 'UNK';
             // DexScreener profiles don't give creation time — skip them for age accuracy
             // They'll be enriched by the search endpoint below
             addSignal({
