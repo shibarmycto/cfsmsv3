@@ -178,18 +178,18 @@ export default function SolanaSignalsDashboard() {
 
   const startAccessSession = useCallback(async () => {
     if (!user) return false;
-    // Check credits
-    const { data: walletData } = await supabase
-      .from('wallets').select('balance').eq('user_id', user.id).single();
-    const balance = walletData?.balance || 0;
-    if (balance < 20) {
-      toast.error('Insufficient credits. You need 20 credits for 24h access.');
+    // Check CF credits from profiles table
+    const { data: profileData } = await supabase
+      .from('profiles').select('sms_credits').eq('user_id', user.id).single();
+    const credits = profileData?.sms_credits || 0;
+    if (credits < 20) {
+      toast.error(`Insufficient credits (${credits}). You need 20 credits for 24h access.`);
       return false;
     }
     // Deduct 20 credits
     const { error: deductErr } = await supabase
-      .from('wallets')
-      .update({ balance: balance - 20 })
+      .from('profiles')
+      .update({ sms_credits: credits - 20 })
       .eq('user_id', user.id);
     if (deductErr) {
       toast.error('Failed to deduct credits');
