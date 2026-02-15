@@ -64,38 +64,129 @@ serve(async (req) => {
     if (action === 'get_signals') {
       const signals = [];
 
-      // Fetch from PumpFun API for new token launches
+      // Fetch new tokens from multiple reliable sources
+      // Source 1: PumpPortal API (server-friendly)
       try {
-        const pumpRes = await fetch('https://frontend-api.pump.fun/coins?offset=0&limit=30&sort=created_timestamp&order=DESC&includeNsfw=false');
-        if (pumpRes.ok) {
-          const tokens = await pumpRes.json();
+        const pumpPortalRes = await fetch('https://pumpportal.fun/api/data/recent-tokens?limit=50');
+        if (pumpPortalRes.ok) {
+          const tokens = await pumpPortalRes.json();
           const now = Date.now();
 
           for (const t of tokens) {
-            const age = now - (t.created_timestamp || 0);
+            // PumpPortal returns created_timestamp in ms or ISO string
+            const createdAt = typeof t.created_at === 'string' ? new Date(t.created_at).getTime() : (t.created_timestamp || t.timestamp || 0);
+            const age = now - createdAt;
             const ageMinutes = age / 60000;
 
-            if (ageMinutes <= 5) {
+            if (ageMinutes <= 10 && ageMinutes >= 0) {
               signals.push({
-                id: t.mint,
+                id: t.mint || t.address || t.token_address,
                 type: ageMinutes <= 1 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
-                token_name: t.name || 'Unknown',
-                token_symbol: t.symbol || 'UNK',
-                mint_address: t.mint,
-                market_cap_usd: t.usd_market_cap || 0,
-                liquidity_usd: (t.virtual_sol_reserves || 0) * solPrice,
-                price_usd: t.usd_market_cap ? t.usd_market_cap / (t.total_supply || 1e9) : 0,
-                created_at: new Date(t.created_timestamp).toISOString(),
+                token_name: t.name || t.token_name || 'Unknown',
+                token_symbol: t.symbol || t.token_symbol || 'UNK',
+                mint_address: t.mint || t.address || t.token_address,
+                market_cap_usd: t.usd_market_cap || t.market_cap || 0,
+                liquidity_usd: (t.virtual_sol_reserves || t.liquidity || 0) * solPrice,
+                price_usd: t.price || (t.usd_market_cap ? t.usd_market_cap / (t.total_supply || 1e9) : 0),
+                created_at: new Date(createdAt).toISOString(),
                 age_minutes: Math.round(ageMinutes * 10) / 10,
-                buy_count: t.reply_count || 0,
+                buy_count: t.reply_count || t.txns || 0,
                 is_fresh: ageMinutes <= 2,
               });
             }
           }
         }
       } catch (e) {
-        console.error('PumpFun fetch error:', e);
+        console.error('PumpPortal fetch error:', e);
       }
+
+      // Source 2: Helius DAS API for recently created fungible tokens
+      if (signals.length < 5) {
+        try {
+          const dasRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', id: 'token-search',
+              method: 'searchAssets',
+              params: {
+                ownerAddress: undefined,
+                tokenType: 'fungible',
+                sortBy: { sortBy: 'recent_action', sortDirection: 'desc' },
+                limit: 30,
+              },
+            }),
+          });
+          if (dasRes.ok) {
+            const dasData = await dasRes.json();
+            const items = dasData?.result?.items || [];
+            const now = Date.now();
+            for (const item of items) {
+              const createdAt = item.created_at ? new Date(item.created_at).getTime() : 0;
+              const ageMinutes = createdAt > 0 ? (now - createdAt) / 60000 : 999;
+              if (ageMinutes <= 10 && !signals.find((s: any) => s.mint_address === item.id)) {
+                signals.push({
+                  id: item.id,
+                  type: ageMinutes <= 1 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
+                  token_name: item.content?.metadata?.name || 'Unknown',
+                  token_symbol: item.content?.metadata?.symbol || 'UNK',
+                  mint_address: item.id,
+                  market_cap_usd: 0,
+                  liquidity_usd: 0,
+                  price_usd: 0,
+                  created_at: new Date(createdAt).toISOString(),
+                  age_minutes: Math.round(ageMinutes * 10) / 10,
+                  buy_count: 0,
+                  is_fresh: ageMinutes <= 2,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Helius DAS fetch error:', e);
+        }
+      }
+
+      // Source 3: Fallback to PumpFun with browser-like headers
+      if (signals.length < 3) {
+        try {
+          const pumpRes = await fetch('https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=created_timestamp&order=DESC&includeNsfw=false', {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Accept': 'application/json',
+              'Referer': 'https://pump.fun/',
+            },
+          });
+          if (pumpRes.ok) {
+            const tokens = await pumpRes.json();
+            const now = Date.now();
+            for (const t of tokens) {
+              const age = now - (t.created_timestamp || 0);
+              const ageMinutes = age / 60000;
+              if (ageMinutes <= 10 && ageMinutes >= 0 && !signals.find((s: any) => s.mint_address === t.mint)) {
+                signals.push({
+                  id: t.mint,
+                  type: ageMinutes <= 1 ? 'SNIPE_OPPORTUNITY' : 'NEW_TOKEN_LAUNCH',
+                  token_name: t.name || 'Unknown',
+                  token_symbol: t.symbol || 'UNK',
+                  mint_address: t.mint,
+                  market_cap_usd: t.usd_market_cap || 0,
+                  liquidity_usd: (t.virtual_sol_reserves || 0) * solPrice,
+                  price_usd: t.usd_market_cap ? t.usd_market_cap / (t.total_supply || 1e9) : 0,
+                  created_at: new Date(t.created_timestamp).toISOString(),
+                  age_minutes: Math.round(ageMinutes * 10) / 10,
+                  buy_count: t.reply_count || 0,
+                  is_fresh: ageMinutes <= 2,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error('PumpFun fallback error:', e);
+        }
+      }
+
+      console.log(`[SIGNALS] Found ${signals.length} tokens from all sources`);
 
       // Fetch whale transactions via Helius
       try {
