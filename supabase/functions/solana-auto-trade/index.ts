@@ -51,12 +51,12 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL per trade
-  PLATFORM_FEE_USD: 0.99, // $0.99 fee per trade
+  DEFAULT_POSITION_SOL: 0.05, // Minimum 0.05 SOL per trade — lower entry
+  PLATFORM_FEE_USD: 0.50, // $0.50 fee per trade (reduced for smaller positions)
   TAKE_PROFIT_USD: 2.00, // $2 net profit target (after fee) — aggressive cycling
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, lower the TP target for fast cycling
-  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 1.5 min (+ $0.99 fee = $1.99 gross)
-  STOP_LOSS_PCT: -0.25, // -25% stop loss — exit faster, preserve capital
+  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 1.5 min — cover fee + $1 pocket
+  STOP_LOSS_PCT: -0.20, // -20% stop loss — tighter to preserve small capital
   MAX_HOLD_MINUTES: 5, // 5 min max per token — faster cycling between tokens
   MAX_SLIPPAGE_BPS: 200, // Higher slippage tolerance for faster execution
   MAX_TOKEN_AGE_MINUTES: 15, // Wider net — tokens up to 15 min old
@@ -65,7 +65,7 @@ const SCALPER_CONFIG = {
   CIRCUIT_BREAKER_LOSSES: 8, // Higher tolerance before pause
   CIRCUIT_BREAKER_PAUSE_MIN: 5, // Shorter pause
   MAX_CONCURRENT_POSITIONS: 1,
-  PRIORITY_FEE_SOL: 0.001,
+  PRIORITY_FEE_SOL: 0.0005, // Lower priority fee for smaller trades
   SCAN_INTERVAL_SECONDS: 15, // Scan every 15s for maximum freshness
   MIN_MATCH_PCT: 40, // Minimum match % to execute — lower = more aggressive
 };
@@ -830,7 +830,7 @@ serve(async (req) => {
 
       // Use custom trade amount from body, or default
       const positionSol = body.trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
-      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.005;
+      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
 
       if (solBalance < positionSol + feesReserve) {
