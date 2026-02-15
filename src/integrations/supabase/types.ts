@@ -2673,39 +2673,69 @@ export type Database = {
       signal_trades: {
         Row: {
           amount_sol: number
+          closed_at: string | null
           created_at: string
+          entry_sol: number | null
+          exit_reason: string | null
+          exit_signature: string | null
+          gross_profit_usd: number | null
           id: string
           mint_address: string
+          net_profit_usd: number | null
+          output_tokens: number | null
+          pnl_percent: number | null
           price_at_trade: number | null
           status: string | null
           token_amount: number | null
+          token_name: string | null
           token_signal_id: string | null
+          token_symbol: string | null
           trade_type: string
           tx_signature: string | null
           user_id: string
         }
         Insert: {
           amount_sol: number
+          closed_at?: string | null
           created_at?: string
+          entry_sol?: number | null
+          exit_reason?: string | null
+          exit_signature?: string | null
+          gross_profit_usd?: number | null
           id?: string
           mint_address: string
+          net_profit_usd?: number | null
+          output_tokens?: number | null
+          pnl_percent?: number | null
           price_at_trade?: number | null
           status?: string | null
           token_amount?: number | null
+          token_name?: string | null
           token_signal_id?: string | null
+          token_symbol?: string | null
           trade_type: string
           tx_signature?: string | null
           user_id: string
         }
         Update: {
           amount_sol?: number
+          closed_at?: string | null
           created_at?: string
+          entry_sol?: number | null
+          exit_reason?: string | null
+          exit_signature?: string | null
+          gross_profit_usd?: number | null
           id?: string
           mint_address?: string
+          net_profit_usd?: number | null
+          output_tokens?: number | null
+          pnl_percent?: number | null
           price_at_trade?: number | null
           status?: string | null
           token_amount?: number | null
+          token_name?: string | null
           token_signal_id?: string | null
+          token_symbol?: string | null
           trade_type?: string
           tx_signature?: string | null
           user_id?: string
