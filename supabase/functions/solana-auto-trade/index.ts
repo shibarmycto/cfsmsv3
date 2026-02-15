@@ -989,6 +989,123 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════
+    // ACTION: SCALP_CA — Targeted scalping on a specific token CA
+    // Bot buys, monitors, and auto-sells following same TP/SL rules
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'scalp_ca') {
+      const { mint_address, trade_amount_sol } = body;
+      if (!mint_address || typeof mint_address !== 'string' || mint_address.length < 32 || mint_address.length > 50) {
+        return new Response(JSON.stringify({ success: false, error: 'Invalid token CA address' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
+        return new Response(JSON.stringify({ success: false, error: 'No wallet found. Create one first.' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const solPrice = await getSolPrice();
+      const positionSol = trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
+      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
+      const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
+      if (solBalance < positionSol + feesReserve) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Insufficient SOL: ${solBalance.toFixed(4)} (need ~${(positionSol + feesReserve).toFixed(4)})`,
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Safety checks on the target CA
+      const safetyInfo = await getTokenSafetyInfo(mint_address, HELIUS_RPC);
+      const isHoneypotSafe = await honeypotCheck(mint_address);
+      const isSellable = isHoneypotSafe ? await verifySellable(mint_address) : false;
+
+      if (!isHoneypotSafe) {
+        return new Response(JSON.stringify({ success: false, error: 'Token failed honeypot check — cannot sell this token safely' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!isSellable) {
+        return new Response(JSON.stringify({ success: false, error: 'Token has no sell route or extreme price impact — blocked for safety' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Get token metadata from DexScreener
+      let tokenName = mint_address.slice(0, 8);
+      let tokenSymbol = 'UNK';
+      try {
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint_address}`);
+        if (dexRes.ok) {
+          const dexData = await dexRes.json();
+          const pair = dexData?.pairs?.[0];
+          if (pair?.baseToken) {
+            tokenName = pair.baseToken.name || tokenName;
+            tokenSymbol = pair.baseToken.symbol || tokenSymbol;
+          }
+        }
+      } catch {}
+
+      // Execute buy
+      const amountLamports = Math.floor(positionSol * 1e9);
+      const tradeResult = await executeSwap(
+        SOL_MINT, mint_address, amountLamports,
+        solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC
+      );
+
+      if (!tradeResult.success) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Buy failed: ${tradeResult.error}`,
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
+      // Discord notification
+      await notifyDiscord('🎯 TARGETED CA SCALP', 0xff9900, [
+        { name: '🪙 Token', value: `${tokenName} (${tokenSymbol})`, inline: true },
+        { name: '💰 Position', value: `${positionSol.toFixed(4)} SOL ($${(positionSol * solPrice).toFixed(2)})`, inline: true },
+        { name: '🔗 TX', value: `[Solscan](https://solscan.io/tx/${tradeResult.signature})`, inline: true },
+        { name: '📋 CA', value: mint_address.slice(0, 20) + '...', inline: true },
+      ]);
+
+      await notifyTelegram('solana_ca_scalp', {
+        token_name: tokenName,
+        token_symbol: tokenSymbol,
+        mint_address,
+        amount_sol: positionSol.toFixed(4),
+        amount_usd: (positionSol * solPrice).toFixed(2),
+        signature: tradeResult.signature,
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        trade_executed: true,
+        message: `🎯 CA SCALP: Bought ${tokenName} (${tokenSymbol}) — ${positionSol.toFixed(3)} SOL — monitoring for exit`,
+        token_name: tokenName,
+        token_symbol: tokenSymbol,
+        mint_address,
+        position_sol: positionSol,
+        output_tokens: tradeResult.outputAmount,
+        signature: tradeResult.signature,
+        explorer_url: `https://solscan.io/tx/${tradeResult.signature}`,
+        balance: newBalance,
+        sol_price: solPrice,
+        safety: {
+          mint_authority_revoked: safetyInfo.mintAuthorityRevoked,
+          freeze_authority_disabled: safetyInfo.freezeAuthorityDisabled,
+          top10_holder_pct: safetyInfo.top10HolderPct,
+          honeypot_safe: true,
+          sellable: true,
+        },
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ══════════════════════════════════════════════════════════════
     // ACTION: EXECUTE MANUAL TRADE (BUY or SELL)
     // ══════════════════════════════════════════════════════════════
     if (action === 'execute_trade') {

@@ -2599,6 +2599,36 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_access_sessions: {
+        Row: {
+          created_at: string
+          credits_charged: number
+          expires_at: string
+          id: string
+          is_active: boolean
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_charged?: number
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_charged?: number
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       signal_batches: {
         Row: {
           id: string
@@ -2686,6 +2716,7 @@ export type Database = {
           pnl_percent: number | null
           price_at_trade: number | null
           status: string | null
+          targeted_ca: string | null
           token_amount: number | null
           token_name: string | null
           token_signal_id: string | null
@@ -2709,6 +2740,7 @@ export type Database = {
           pnl_percent?: number | null
           price_at_trade?: number | null
           status?: string | null
+          targeted_ca?: string | null
           token_amount?: number | null
           token_name?: string | null
           token_signal_id?: string | null
@@ -2732,6 +2764,7 @@ export type Database = {
           pnl_percent?: number | null
           price_at_trade?: number | null
           status?: string | null
+          targeted_ca?: string | null
           token_amount?: number | null
           token_name?: string | null
           token_signal_id?: string | null
