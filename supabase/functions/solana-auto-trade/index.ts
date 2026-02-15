@@ -50,9 +50,12 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // ══════════════════════════════════════════════════════════════
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
+const PLATFORM_FEE_WALLET = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
+const PLATFORM_FEE_PERCENT = 0.02; // 2% platform fee on exit proceeds
+
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.005, // No minimum — user can trade any amount
-  PLATFORM_FEE_USD: 0, // NO platform fee — only network/Helius fees apply
+  DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL for CA scalping
+  PLATFORM_FEE_USD: 0, // Legacy USD fee — replaced by % SOL fee
   TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: exit immediately at $2+
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
   QUICK_EXIT_PROFIT_USD: 2.00, // Keep $2 minimum — strict rule, no lowering
@@ -369,6 +372,100 @@ async function executeSwap(
   } catch (e) {
     console.error('[JUPITER] executeSwap error:', e);
     return { success: false, error: `Swap failed: ${e.message}` };
+  }
+}
+
+
+// ── Send SOL platform fee to platform wallet ──
+async function sendPlatformFee(
+  exitSol: number, userPublicKey: string, privateKeyB58: string, heliusRpc: string
+): Promise<{ success: boolean; signature?: string; feeSol?: number; error?: string }> {
+  try {
+    const feeSol = exitSol * PLATFORM_FEE_PERCENT;
+    if (feeSol < 0.0001) {
+      console.log('[FEE] Fee too small to send:', feeSol);
+      return { success: true, feeSol: 0, signature: 'skipped_too_small' };
+    }
+    const feeLamports = Math.floor(feeSol * 1e9);
+    console.log(`[FEE] Sending ${feeSol.toFixed(6)} SOL (${(PLATFORM_FEE_PERCENT*100)}%) to platform wallet...`);
+
+    // Build a native SOL transfer via Jupiter (SOL → SOL swap to platform wallet won't work)
+    // Use raw Solana transfer instruction instead
+    const secretKeyBytes = base58Decode(privateKeyB58);
+
+    // Get recent blockhash
+    const bhRes = await fetch(heliusRpc, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [{ commitment: 'finalized' }] }),
+    });
+    const bhData = await bhRes.json();
+    const blockhash = bhData.result?.value?.blockhash;
+    if (!blockhash) return { success: false, error: 'Failed to get blockhash for fee transfer' };
+
+    // Decode addresses
+    const fromPubkey = base58Decode(userPublicKey);
+    const toPubkey = base58Decode(PLATFORM_FEE_WALLET);
+    const blockhashBytes = base58Decode(blockhash);
+
+    // Build legacy transaction: transfer SOL
+    // Header: 1 signer, 0 read-only signed, 1 read-only unsigned (system program)
+    const systemProgram = new Uint8Array(32); // 11111111111111111111111111111111
+    const header = new Uint8Array([1, 0, 1]);
+    const numAccounts = 3;
+
+    // Compact array of account keys: from, to, system_program
+    const accountKeys = new Uint8Array(32 * 3);
+    accountKeys.set(fromPubkey, 0);
+    accountKeys.set(toPubkey, 32);
+    accountKeys.set(systemProgram, 64);
+
+    // Transfer instruction: program_id_index=2 (system), accounts=[0,1], data=transfer(lamports)
+    // System Transfer instruction data: [2,0,0,0] + u64 lamports (little-endian)
+    const instrData = new Uint8Array(12);
+    instrData.set([2, 0, 0, 0], 0); // Transfer instruction index
+    const view = new DataView(instrData.buffer);
+    view.setUint32(4, feeLamports & 0xFFFFFFFF, true);
+    view.setUint32(8, Math.floor(feeLamports / 0x100000000), true);
+
+    // Compile message
+    const messageBytes2 = new Uint8Array([
+      ...header,
+      numAccounts, ...accountKeys,
+      ...blockhashBytes,
+      1, // num instructions
+      2, // program id index (system program)
+      2, 0, 1, // num accounts, account indices
+      instrData.length, ...instrData,
+    ]);
+
+    // Sign
+    const sig = await signTransaction(messageBytes2, secretKeyBytes);
+
+    // Build full transaction: num_signatures(1) + signature + message
+    const fullTx = new Uint8Array(1 + 64 + messageBytes2.length);
+    fullTx[0] = 1;
+    fullTx.set(sig, 1);
+    fullTx.set(messageBytes2, 65);
+
+    // Send
+    const sendRes = await fetch(heliusRpc, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'sendTransaction',
+        params: [btoa(String.fromCharCode(...fullTx)), { encoding: 'base64', skipPreflight: true, maxRetries: 3 }],
+      }),
+    });
+    const sendResult = await sendRes.json();
+    if (sendResult.error) {
+      console.error('[FEE] Transfer error:', JSON.stringify(sendResult.error));
+      return { success: false, feeSol, error: sendResult.error.message || 'Fee transfer failed' };
+    }
+    console.log(`[FEE] ✅ Platform fee sent: ${feeSol.toFixed(6)} SOL → TX: ${sendResult.result}`);
+    return { success: true, signature: sendResult.result, feeSol };
+  } catch (e) {
+    console.error('[FEE] Platform fee transfer error:', e.message);
+    return { success: false, error: e.message };
   }
 }
 
@@ -1175,15 +1272,15 @@ serve(async (req) => {
       }
 
       const solPrice = await getSolPrice();
-      const positionSol = trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
+      const positionSol = Math.max(0.1, trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL);
       const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.001;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
       const actualPositionSolCA = Math.min(positionSol, solBalance - feesReserve);
 
-      if (solBalance < feesReserve) {
+      if (solBalance < 0.1 + feesReserve) {
         return new Response(JSON.stringify({
           success: false,
-          error: `Wallet empty: ${solBalance.toFixed(6)} SOL. Need gas fees (~${feesReserve.toFixed(4)} SOL).`,
+          error: `Need at least 0.1 SOL + gas. Balance: ${solBalance.toFixed(6)} SOL.`,
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
@@ -1445,9 +1542,23 @@ serve(async (req) => {
 
             const profitSol = currentSol - pos.entry_sol;
             const grossProfitUsd = profitSol * solPrice;
-            const platformFeeUsd = SCALPER_CONFIG.PLATFORM_FEE_USD;
+
+            // ✅ Send platform fee (2% of exit SOL) to platform wallet
+            let platformFeeSol = 0;
+            let feeSignature = '';
+            if (sellResult.success && currentSol > 0) {
+              const feeResult = await sendPlatformFee(currentSol, solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC);
+              platformFeeSol = feeResult.feeSol || 0;
+              feeSignature = feeResult.signature || '';
+              if (feeResult.success) {
+                console.log(`[FEE] ✅ Platform fee: ${platformFeeSol.toFixed(6)} SOL — TX: ${feeSignature}`);
+              } else {
+                console.error(`[FEE] ❌ Fee transfer failed: ${feeResult.error}`);
+              }
+            }
+            const platformFeeUsd = platformFeeSol * solPrice;
             const netProfitUsdFinal = grossProfitUsd - platformFeeUsd;
-            const platformFee = platformFeeUsd / solPrice; // fee in SOL for compatibility
+            const platformFee = platformFeeSol;
 
             // ✅ CRITICAL: Update DB record to closed so frontend/CA scalper can proceed
             await supabaseAdmin.from('signal_trades').update({
