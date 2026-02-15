@@ -841,9 +841,9 @@ export default function SolanaSignalsDashboard() {
     }
     setIsCAScalping(true);
     setCAScalpStatus('🎯 Starting targeted scalp...');
-    const currentTradeAmount = Math.max(0.1, (wallet.balanceSol * tradePercentOfBalance) / 100);
-    if (wallet.balanceSol < 0.1) {
-      toast.error('Minimum 0.1 SOL required for CA scalping');
+    const currentTradeAmount = Math.max(0.05, (wallet.balanceSol * tradePercentOfBalance) / 100);
+    if (wallet.balanceSol < 0.05) {
+      toast.error('Minimum 0.05 SOL required for CA scalping');
       setIsCAScalping(false);
       return;
     }

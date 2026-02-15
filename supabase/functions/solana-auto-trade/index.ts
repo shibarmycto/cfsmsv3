@@ -51,11 +51,11 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const PLATFORM_FEE_WALLET = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
-const PLATFORM_FLAT_FEE_SOL = 0.03; // Mandatory 0.03 SOL flat fee per scalp
+const PLATFORM_FLAT_FEE_SOL = 0.001; // Mandatory 0.001 SOL flat fee per scalp
 const PLATFORM_PROFIT_FEE_PERCENT = 0.02; // 2% of profit (only on winning trades)
 
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL for CA scalping
+  DEFAULT_POSITION_SOL: 0.05, // Minimum 0.05 SOL for CA scalping
   PLATFORM_FEE_USD: 0, // Legacy USD fee — replaced by % SOL fee
   TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: exit immediately at $2+
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
@@ -1272,7 +1272,7 @@ serve(async (req) => {
       }
 
       const solPrice = await getSolPrice();
-      const positionSol = Math.max(0.1, trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL);
+      const positionSol = Math.max(0.05, trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL);
       const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.001;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
       const actualPositionSolCA = Math.min(positionSol, solBalance - feesReserve);
@@ -1543,7 +1543,7 @@ serve(async (req) => {
             const profitSol = currentSol - pos.entry_sol;
             const grossProfitUsd = profitSol * solPrice;
 
-            // ✅ Platform fee: 0.03 SOL flat + 2% of profit (if profitable)
+            // ✅ Platform fee: 0.001 SOL flat + 2% of profit (if profitable)
             let platformFeeSol = 0;
             let feeSignature = '';
             if (sellResult.success) {
@@ -2140,7 +2140,7 @@ serve(async (req) => {
       const solPrice = await getSolPrice();
       const walletBal = solWallet?.public_key ? await getBalance(solWallet.public_key, HELIUS_RPC) : 0;
       const walletUsd = walletBal * solPrice;
-      const canContinue = walletBal >= 0.035;
+      const canContinue = walletBal >= 0.02;
 
       const exitReasons: Record<string, number> = {};
       closed.forEach(t => {
@@ -2167,7 +2167,7 @@ serve(async (req) => {
       summary += `💰 **Wallet:** ${walletBal.toFixed(4)} SOL ($${walletUsd.toFixed(2)})\n`;
       summary += canContinue
         ? `✅ Sufficient balance to continue trading.`
-        : `⚠️ Low balance — top up SOL to continue auto-trading (min ~0.035 SOL needed per trade).`;
+        : `⚠️ Low balance — top up SOL to continue auto-trading (min ~0.05 SOL needed per trade).`;
 
       return new Response(JSON.stringify({
         success: true,
