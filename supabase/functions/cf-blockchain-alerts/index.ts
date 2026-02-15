@@ -246,6 +246,52 @@ ${top3.map((t: any, i: number) => {
         break;
       }
 
+      case 'solana_auto_trade': {
+        const { token_name, token_symbol, username, amount_sol, amount_usd, match_pct, signature } = data;
+        message = `
+⚡⚡⚡ <b>NEW AUTO TRADE ON SOLANA SIGNALS</b> ⚡⚡⚡
+━━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>${token_name || token_symbol}</b> ($${token_symbol || 'UNK'})
+
+💰 <b>Amount:</b> ${amount_sol} SOL ($${amount_usd})
+📊 <b>Match Score:</b> ${match_pct}%
+👤 <b>User:</b> ${username || 'Anonymous'}
+${signature ? `🔗 <a href="https://solscan.io/tx/${signature}">View on Solscan</a>` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━
+🌐 <a href="${SITE_URL}/dashboard">Trade on Solana Signals</a>
+
+#SolanaSignals #AutoTrade #CFBlockchain
+`;
+        break;
+      }
+
+      case 'solana_profit': {
+        const { token_name, token_symbol, username, gross_profit_usd, net_profit_usd, fee_usd, pnl_percent, signature } = data;
+        message = `
+💰💰💰 <b>NEW PROFIT EARNED BY SOLANA SIGNALS</b> 💰💰💰
+━━━━━━━━━━━━━━━━━━━━━━
+🌐 <b>CFBLOCKCHAINS.COM</b>
+
+🪙 <b>${token_name || token_symbol}</b> ($${token_symbol || 'UNK'})
+
+🎯 <b>Gross Profit:</b> $${gross_profit_usd}
+🏷️ <b>Fee:</b> $${fee_usd}
+💵 <b>Net Profit:</b> $${net_profit_usd}
+📊 <b>P&L:</b> ${pnl_percent}%
+👤 <b>User:</b> ${username || 'Anonymous'}
+${signature ? `🔗 <a href="https://solscan.io/tx/${signature}">View on Solscan</a>` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━
+🔥 <i>Profits secured automatically!</i>
+🌐 <a href="${SITE_URL}/dashboard">Start earning on Solana Signals</a>
+
+#SolanaSignals #Profit #CFBlockchain
+`;
+        break;
+      }
+
       default:
         message = `📢 <b>CF Exchange Alert</b>
 
