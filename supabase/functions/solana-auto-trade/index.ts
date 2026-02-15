@@ -51,23 +51,25 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.05, // Minimum 0.05 SOL per trade
+  DEFAULT_POSITION_SOL: 0.03, // Minimum 0.03 SOL per trade
   PLATFORM_FEE_USD: 0, // NO platform fee — only network/Helius fees apply
   TAKE_PROFIT_USD: 2.00, // $2 net profit target — pure profit to user
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, lower the TP target for fast cycling
   QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 1.5 min
-  STOP_LOSS_PCT: -0.20, // -20% stop loss
+  STOP_LOSS_PCT: -0.25, // -25% stop loss (only after grace period)
   MAX_HOLD_MINUTES: 5, // 5 min max per token
-  MAX_SLIPPAGE_BPS: 200,
+  MAX_SLIPPAGE_BPS: 150, // Tighter slippage to prevent entry losses
   MAX_TOKEN_AGE_MINUTES: 15,
   MIN_LP_SOL: 3,
   MAX_TOP10_HOLDER_PCT: 40,
-  CIRCUIT_BREAKER_LOSSES: 8,
-  CIRCUIT_BREAKER_PAUSE_MIN: 5,
+  CIRCUIT_BREAKER_LOSSES: 5,
+  CIRCUIT_BREAKER_PAUSE_MIN: 10,
   MAX_CONCURRENT_POSITIONS: 1,
   PRIORITY_FEE_SOL: 0.0005,
   SCAN_INTERVAL_SECONDS: 15,
-  MIN_MATCH_PCT: 40,
+  MIN_MATCH_PCT: 55, // Higher quality entries — was 40%, too many bad trades
+  GRACE_PERIOD_SECONDS: 90, // Don't check stop loss for first 90s — let token stabilize
+  MAX_ENTRY_IMPACT_PCT: 3, // Block entry if price impact > 3%
 };
 
 // ═══ PERCENTAGE-BASED FILTER SCORING ═══
@@ -288,8 +290,8 @@ async function executeSwap(
     }
 
     const priceImpact = parseFloat(quote.priceImpactPct || '0');
-    if (priceImpact > 5) {
-      return { success: false, error: `Price impact ${priceImpact.toFixed(2)}% exceeds 5% max` };
+    if (priceImpact > SCALPER_CONFIG.MAX_ENTRY_IMPACT_PCT) {
+      return { success: false, error: `Price impact ${priceImpact.toFixed(2)}% exceeds ${SCALPER_CONFIG.MAX_ENTRY_IMPACT_PCT}% max — token too illiquid` };
     }
     console.log('[SWAP] Quote OK: outAmount=', quote.outAmount, 'priceImpact=', priceImpact);
 
@@ -977,10 +979,10 @@ serve(async (req) => {
         balance: newBalance,
         sol_price: solPrice,
         exit_rules: {
-          take_profit: '$3 net (<2min) / $1 net (>2min)',
-          stop_loss: '-30%',
-          time_stop: '10 minutes',
-          fee: '$0.99',
+          take_profit: '$2 net (<1.5min) / $1 net (>1.5min)',
+          stop_loss: '-25% (after 90s grace)',
+          time_stop: '5-10 minutes (smart recovery)',
+          fee: '$0',
         },
         config: SCALPER_CONFIG,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -1020,7 +1022,7 @@ serve(async (req) => {
       }
 
       const outputAmount = result.outputAmount || 0;
-      const platformFee = SCALPER_CONFIG.PLATFORM_FEE_USD; // $0.99 flat fee
+      const platformFee = 0; // No platform fee
 
       // Discord: Notify manual trade
       await notifyDiscord(
@@ -1082,6 +1084,8 @@ serve(async (req) => {
         }
 
         const ageMin = (Date.now() - new Date(pos.timestamp).getTime()) / 60000;
+        const ageSeconds = ageMin * 60;
+        const inGracePeriod = ageSeconds < SCALPER_CONFIG.GRACE_PERIOD_SECONDS;
         let shouldSell = false;
         let reason = '';
 
@@ -1094,15 +1098,15 @@ serve(async (req) => {
           const quote = await quoteRes.json();
 
           if (quote.error || !quote.outAmount) {
-            // Can't get quote — if time-stop hit, force sell anyway
+            // Can't get quote — only force sell on hard time-stop, not during grace
             if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
               shouldSell = true;
-              reason = `⏰ Time stop (${ageMin.toFixed(0)}m)`;
+              reason = `⏰ Time stop (${ageMin.toFixed(0)}m) — no quote available`;
             }
             results.push({
               mint: pos.mint,
               action: shouldSell ? 'sell' : 'hold',
-              reason: shouldSell ? reason : 'Cannot quote — holding',
+              reason: shouldSell ? reason : `Cannot quote — holding (${ageMin.toFixed(1)}m)`,
               current_sol: 0,
               pnl_percent: 0,
             });
@@ -1113,28 +1117,37 @@ serve(async (req) => {
           const pnlPct = ((currentSol - pos.entry_sol) / pos.entry_sol) * 100;
           const profitSolRaw = currentSol - pos.entry_sol;
           const profitUsdRaw = profitSolRaw * solPrice;
-          const netProfitUsd = profitUsdRaw - SCALPER_CONFIG.PLATFORM_FEE_USD;
+          const netProfitUsd = profitUsdRaw;
 
-          // Dynamic take-profit: full target < 2min, quick exit after 2min
+          // Dynamic take-profit: full target < 1.5min, quick exit after 1.5min
           const isQuickExit = ageMin >= SCALPER_CONFIG.QUICK_EXIT_MINUTES;
           const activeNetTarget = isQuickExit ? SCALPER_CONFIG.QUICK_EXIT_PROFIT_USD : SCALPER_CONFIG.TAKE_PROFIT_USD;
-          const activeGrossTarget = activeNetTarget + SCALPER_CONFIG.PLATFORM_FEE_USD;
 
-          // Take Profit: dynamic based on time in trade
-          if (profitUsdRaw >= activeGrossTarget) {
+          // ── PRIORITY 1: Take Profit — ALWAYS check, even during grace period ──
+          if (profitUsdRaw >= activeNetTarget) {
             shouldSell = true;
             const label = isQuickExit ? '⚡ Quick Exit' : '🎯 Take Profit';
-            reason = `${label}! +$${netProfitUsd.toFixed(2)} net (gross $${profitUsdRaw.toFixed(2)} - $${SCALPER_CONFIG.PLATFORM_FEE_USD} fee) [${ageMin.toFixed(1)}m]`;
+            reason = `${label}! +$${netProfitUsd.toFixed(2)} net [${ageMin.toFixed(1)}m]`;
           }
-          // Stop Loss: -30%
-          else if (pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+          // ── PRIORITY 2: Stop Loss — ONLY after grace period (90s) ──
+          else if (!inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
             shouldSell = true;
-            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)})`;
+            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)}) [after ${SCALPER_CONFIG.GRACE_PERIOD_SECONDS}s grace]`;
           }
-          // Time Stop: 10 minutes — force exit regardless
+          // ── PRIORITY 3: Time Stop — only exit at loss if > -10%, otherwise extend hold ──
           else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
-            shouldSell = true;
-            reason = `⏰ Time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} gross, $${netProfitUsd.toFixed(2)} net`;
+            if (pnlPct >= -10) {
+              // Acceptable loss or small profit — exit cleanly
+              shouldSell = true;
+              reason = `⏰ Time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} net — clean exit`;
+            } else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
+              // Extended hold expired — force exit to free capital
+              shouldSell = true;
+              reason = `⏰ Extended time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} — forced exit`;
+            } else {
+              // Token is down badly but still within extended hold — wait for recovery
+              console.log(`[CHECK] ${pos.mint.slice(0,8)} at ${pnlPct.toFixed(1)}% — extending hold for recovery (${ageMin.toFixed(1)}m)`);
+            }
           }
 
           if (shouldSell) {
