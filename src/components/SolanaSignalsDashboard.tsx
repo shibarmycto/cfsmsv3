@@ -89,6 +89,16 @@ export default function SolanaSignalsDashboard() {
   const [tradePercentOfBalance, setTradePercentOfBalance] = useState(10); // % of SOL balance per trade
   const [autoTradeAmountSol, setAutoTradeAmountSol] = useState(0.03);
 
+  // Targeted CA scalping
+  const [targetCA, setTargetCA] = useState('');
+  const [isCAScalping, setIsCAScalping] = useState(false);
+  const [caScalpStatus, setCAScalpStatus] = useState('');
+  const caScalpInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // 24h access session
+  const [accessSession, setAccessSession] = useState<{ expires_at: string; is_active: boolean } | null>(null);
+  const [sessionTimeLeft, setSessionTimeLeft] = useState('');
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const balanceInterval = useRef<NodeJS.Timeout | null>(null);
   const signalInterval = useRef<NodeJS.Timeout | null>(null);
@@ -148,17 +158,97 @@ export default function SolanaSignalsDashboard() {
       .eq('status', 'open');
   }, [user]);
 
+  // ── Load/check 24h access session ──
+  const checkAccessSession = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('signal_access_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (data && data.length > 0) {
+      setAccessSession({ expires_at: data[0].expires_at, is_active: true });
+    } else {
+      setAccessSession(null);
+    }
+  }, [user]);
+
+  const startAccessSession = useCallback(async () => {
+    if (!user) return false;
+    // Check credits
+    const { data: walletData } = await supabase
+      .from('wallets').select('balance').eq('user_id', user.id).single();
+    const balance = walletData?.balance || 0;
+    if (balance < 20) {
+      toast.error('Insufficient credits. You need 20 credits for 24h access.');
+      return false;
+    }
+    // Deduct 20 credits
+    const { error: deductErr } = await supabase
+      .from('wallets')
+      .update({ balance: balance - 20 })
+      .eq('user_id', user.id);
+    if (deductErr) {
+      toast.error('Failed to deduct credits');
+      return false;
+    }
+    // Create session
+    const { error: sessErr } = await supabase
+      .from('signal_access_sessions')
+      .insert({ user_id: user.id, credits_charged: 20 });
+    if (sessErr) {
+      toast.error('Failed to start session');
+      return false;
+    }
+    toast.success('✅ 24h access session activated! (20 credits charged)');
+    await checkAccessSession();
+    await loadTokenBalance();
+    return true;
+  }, [user, checkAccessSession]);
+
+  // Update session countdown timer
+  useEffect(() => {
+    if (!accessSession?.expires_at) { setSessionTimeLeft(''); return; }
+    const timer = setInterval(() => {
+      const diff = new Date(accessSession.expires_at).getTime() - Date.now();
+      if (diff <= 0) {
+        setSessionTimeLeft('Expired');
+        setAccessSession(null);
+        clearInterval(timer);
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setSessionTimeLeft(`${h}h ${m}m remaining`);
+    }, 30000);
+    // Initial calc
+    const diff = new Date(accessSession.expires_at).getTime() - Date.now();
+    if (diff > 0) {
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setSessionTimeLeft(`${h}h ${m}m remaining`);
+    }
+    return () => clearInterval(timer);
+  }, [accessSession?.expires_at]);
+
+  
+
   useEffect(() => {
     if (user) {
       checkAccess();
       loadWallet();
       loadTokenBalance();
       loadTrades();
+      checkAccessSession();
     }
     return () => {
       if (balanceInterval.current) clearInterval(balanceInterval.current);
       if (signalInterval.current) clearInterval(signalInterval.current);
       if (autoTradeInterval.current) clearInterval(autoTradeInterval.current);
+      if (caScalpInterval.current) clearInterval(caScalpInterval.current);
     };
   }, [user]);
 
@@ -456,6 +546,10 @@ export default function SolanaSignalsDashboard() {
   };
 
   const activateAutoTrade = async () => {
+    if (!accessSession) {
+      toast.error('Activate a 24h session first (20 credits)');
+      return;
+    }
     setIsAutoTradeActive(true);
     toast.success('🤖 AI Smart Trader activated — scanning & executing every 15s');
     // Immediately execute first trade
@@ -527,6 +621,121 @@ export default function SolanaSignalsDashboard() {
     setScanStatus('');
     setOpportunities([]);
   };
+
+  // ── CA Scalping logic ──
+  const startCAScalp = useCallback(async () => {
+    if (!targetCA || targetCA.length < 32) {
+      toast.error('Enter a valid Solana token CA address');
+      return;
+    }
+    if (!wallet) {
+      toast.error('Create a wallet first');
+      return;
+    }
+    if (!accessSession) {
+      toast.error('You need an active 24h session to use this feature');
+      return;
+    }
+    setIsCAScalping(true);
+    setCAScalpStatus('🎯 Starting targeted scalp...');
+    const currentTradeAmount = Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance) / 100);
+    try {
+      const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
+        body: { action: 'scalp_ca', mint_address: targetCA, trade_amount_sol: currentTradeAmount },
+      });
+      if (error && !data) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      if (data?.trade_executed) {
+        const newTrade: TradeEntry = {
+          id: data.signature || Date.now().toString(),
+          token_name: data.token_name || 'Unknown',
+          mint: data.mint_address || targetCA,
+          entry_price: data.position_sol || currentTradeAmount,
+          current_price: data.output_tokens || 0,
+          amount_sol: data.position_sol || currentTradeAmount,
+          timestamp: new Date().toISOString(),
+          status: 'active',
+          pnl_percent: 0,
+        };
+        setTrades(prev => [newTrade, ...prev]);
+        await saveTradeToDB(newTrade, { token_symbol: data.token_symbol, targeted_ca: targetCA });
+        toast.success(`🎯 ${data.message}`);
+        if (data.explorer_url) {
+          toast.info('View on Solscan', { action: { label: 'Open', onClick: () => window.open(data.explorer_url, '_blank') }, duration: 10000 });
+        }
+        refreshBalance();
+        setCAScalpStatus(`✅ Bought ${data.token_name} — monitoring for exit, then re-buying...`);
+      } else {
+        setCAScalpStatus(data?.message || data?.error || 'Failed to execute');
+        setIsCAScalping(false);
+        return;
+      }
+    } catch (e: any) {
+      setCAScalpStatus(`Error: ${e.message}`);
+      setIsCAScalping(false);
+      return;
+    }
+    caScalpInterval.current = setInterval(async () => {
+      const activePos = tradesRef.current.filter(t => t.status === 'active' && t.mint === targetCA);
+      if (activePos.length > 0) {
+        setCAScalpStatus(`📊 Monitoring ${activePos[0].token_name} for exit...`);
+        await checkActivePositions();
+      } else {
+        setCAScalpStatus('🔄 Position closed — re-buying same CA...');
+        const tradeAmt = wallet ? Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance) / 100) : 0.03;
+        try {
+          const { data } = await supabase.functions.invoke('solana-auto-trade', {
+            body: { action: 'scalp_ca', mint_address: targetCA, trade_amount_sol: tradeAmt },
+          });
+          if (data?.trade_executed) {
+            const newTrade: TradeEntry = {
+              id: data.signature || Date.now().toString(),
+              token_name: data.token_name || 'Unknown',
+              mint: data.mint_address || targetCA,
+              entry_price: data.position_sol || tradeAmt,
+              current_price: data.output_tokens || 0,
+              amount_sol: data.position_sol || tradeAmt,
+              timestamp: new Date().toISOString(),
+              status: 'active',
+              pnl_percent: 0,
+            };
+            setTrades(prev => [newTrade, ...prev]);
+            await saveTradeToDB(newTrade, { token_symbol: data.token_symbol, targeted_ca: targetCA });
+            toast.success(`🔄 Re-bought ${data.token_name}`);
+            setCAScalpStatus(`✅ Re-bought ${data.token_name} — monitoring for exit...`);
+            refreshBalance();
+          } else {
+            setCAScalpStatus(`⏳ Re-buy pending: ${data?.error || data?.message || 'retrying...'}`);
+          }
+        } catch (e: any) {
+          setCAScalpStatus(`Re-buy error: ${e.message} — retrying...`);
+        }
+      }
+    }, 15000);
+  }, [targetCA, wallet, accessSession, tradePercentOfBalance, checkActivePositions, saveTradeToDB, refreshBalance]);
+
+  const stopCAScalp = useCallback(async () => {
+    if (caScalpInterval.current) { clearInterval(caScalpInterval.current); caScalpInterval.current = null; }
+    const activePos = trades.filter(t => t.status === 'active' && t.mint === targetCA);
+    if (activePos.length > 0) {
+      setCAScalpStatus('Closing position...');
+      try {
+        const { data } = await supabase.functions.invoke('solana-auto-trade', {
+          body: { action: 'close_all', positions: activePos.map(t => ({ mint: t.mint, entry_sol: t.entry_price, amount_tokens: t.current_price, token_name: t.token_name })) },
+        });
+        if (data?.results) {
+          for (const result of data.results) {
+            setTrades(prev => prev.map(t => t.mint === result.mint && t.status === 'active' ? { ...t, status: (result.profit_sol || 0) >= 0 ? 'profit' : 'loss' } : t));
+            await updateTradeInDB(result.mint, { status: 'closed', net_profit_usd: result.profit_usd || 0, exit_reason: 'CA scalp stopped', closed_at: new Date().toISOString() });
+          }
+        }
+        refreshBalance();
+      } catch {}
+    }
+    setIsCAScalping(false);
+    setCAScalpStatus('');
+    toast.info('🛑 CA scalping stopped');
+  }, [targetCA, trades, updateTradeInDB, refreshBalance]);
 
   const executeTrade = async (mintAddress: string, tokenName: string, tradeType: 'buy' | 'sell') => {
     if (!wallet) {
@@ -619,12 +828,12 @@ export default function SolanaSignalsDashboard() {
           <p className="text-center text-[#8899aa]">Real-time trade alerts, wallet management & auto-trading</p>
           <div className="grid grid-cols-2 gap-4 text-center">
             <div className="p-4 rounded-lg" style={{ background: 'rgba(0,255,136,0.1)' }}>
-              <p className="text-2xl font-bold text-[#00ff88]">50</p>
-              <p className="text-xs text-[#8899aa]">Credits / 24 lists</p>
+              <p className="text-2xl font-bold text-[#00ff88]">20</p>
+              <p className="text-xs text-[#8899aa]">Credits / 24 hours</p>
             </div>
             <div className="p-4 rounded-lg" style={{ background: 'rgba(0,255,136,0.1)' }}>
-              <p className="text-2xl font-bold text-[#00ff88]">100</p>
-              <p className="text-xs text-[#8899aa]">Credits / 48 lists</p>
+              <p className="text-2xl font-bold text-[#00ff88]">$0</p>
+              <p className="text-xs text-[#8899aa]">Platform fee</p>
             </div>
           </div>
           {!hasAccess ? (
@@ -920,6 +1129,69 @@ export default function SolanaSignalsDashboard() {
             <p className="text-[11px] text-amber-400">Auto trading involves risk. Only trade what you can afford to lose.</p>
           </div>
 
+          {/* 24h Access Session */}
+          <div className="p-4 rounded-xl" style={{ background: accessSession ? 'rgba(0,255,136,0.08)' : 'rgba(255,68,68,0.08)', border: `1px solid ${accessSession ? 'rgba(0,255,136,0.3)' : 'rgba(255,68,68,0.3)'}` }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4" style={{ color: accessSession ? '#00ff88' : '#ff4444' }} />
+                <span className="text-sm font-bold">{accessSession ? '24h Session Active' : 'Session Required'}</span>
+              </div>
+              {accessSession ? (
+                <span className="text-xs text-[#00ff88]">{sessionTimeLeft}</span>
+              ) : (
+                <Button size="sm" className="h-7 text-xs bg-[#00ff88] text-black hover:bg-[#00dd77]" onClick={startAccessSession}>
+                  <Coins className="w-3 h-3 mr-1" />Activate (20 Credits)
+                </Button>
+              )}
+            </div>
+            {!accessSession && <p className="text-[10px] text-[#8899aa] mt-1">20 credits = 24 hours of full Solana Signals access (auto-trade + CA scalping)</p>}
+          </div>
+
+          {/* Targeted CA Scalping */}
+          <div className="p-4 rounded-xl" style={{ background: 'rgba(255,153,0,0.06)', border: '1px solid rgba(255,153,0,0.2)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <ArrowRightLeft className="w-4 h-4 text-orange-400" />
+              <span className="font-bold text-sm">Targeted CA Scalper</span>
+              {isCAScalping && <Badge className="bg-orange-500/20 text-orange-400 text-[9px] animate-pulse">RUNNING</Badge>}
+            </div>
+            <p className="text-[10px] text-[#8899aa] mb-3">Enter any Solana token CA — bot will buy, monitor, and auto-sell following same TP/SL rules, then re-buy 24/7</p>
+            <div className="flex items-center gap-2 mb-3">
+              <Input
+                type="text"
+                placeholder="Paste token CA address..."
+                value={targetCA}
+                onChange={(e) => setTargetCA(e.target.value.trim())}
+                disabled={isCAScalping}
+                className="flex-1 h-9 text-xs bg-transparent border-white/20 font-mono"
+              />
+              {isCAScalping ? (
+                <Button size="sm" variant="destructive" className="h-9 text-xs" onClick={stopCAScalp}>
+                  <Square className="w-3 h-3 mr-1" />Stop
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="h-9 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                  onClick={startCAScalp}
+                  disabled={!wallet || !accessSession || !targetCA}
+                >
+                  <Zap className="w-3 h-3 mr-1" />Scalp
+                </Button>
+              )}
+            </div>
+            {targetCA && targetCA.length >= 32 && (
+              <div className="flex items-center gap-2 text-[10px] text-[#8899aa] mb-2">
+                <a href={`https://dexscreener.com/solana/${targetCA}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 underline decoration-dotted">DexScreener</a>
+                <span>·</span>
+                <a href={`https://solscan.io/token/${targetCA}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 underline decoration-dotted">Solscan</a>
+              </div>
+            )}
+            {caScalpStatus && (
+              <p className="text-xs text-[#8899aa] px-1">{caScalpStatus}</p>
+            )}
+            {!accessSession && <p className="text-[10px] text-orange-400 mt-1">⚠️ Activate 24h session above to use CA scalping</p>}
+          </div>
+
           {/* Auto-Trade Control */}
           <div className="p-6 rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <Zap className="w-10 h-10 mx-auto mb-3 text-amber-400" />
@@ -989,7 +1261,7 @@ export default function SolanaSignalsDashboard() {
                 </div>
                 <Button
                   onClick={activateAutoTrade}
-                  disabled={!wallet || isScanning}
+                  disabled={!wallet || isScanning || !accessSession}
                   className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
                   size="lg"
                 >
@@ -997,6 +1269,7 @@ export default function SolanaSignalsDashboard() {
                   {isScanning ? 'Starting...' : `Start Auto-Trade — ${tradePercentOfBalance}% per trade`}
                 </Button>
                 {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
+                {!accessSession && wallet && <p className="text-xs text-amber-400 mt-2">⚠️ Activate 24h session above to start trading</p>}
               </>
             )}
           </div>
