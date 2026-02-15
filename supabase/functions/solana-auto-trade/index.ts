@@ -403,109 +403,137 @@ serve(async (req) => {
         await supabase.from('wallets').update({ balance: (tokenWallet.balance || 0) - 20 }).eq('user_id', userId);
       }
 
-      // ── STEP 1: Fetch tokens launched in last 10 minutes ──
+      // ── STEP 1: Fetch tokens launched recently from multiple sources ──
       let freshTokens: any[] = [];
       const maxAgeMs = SCALPER_CONFIG.MAX_TOKEN_AGE_MINUTES * 60 * 1000;
+      const existingMints = new Set<string>();
 
-      // Source 1: PumpPortal API (server-friendly, no CORS issues)
+      const addToken = (t: any) => {
+        if (t.mint && !existingMints.has(t.mint)) {
+          existingMints.add(t.mint);
+          freshTokens.push(t);
+        }
+      };
+
+      // ═══ SOURCE 1: DexScreener new Solana pairs (free, reliable, server-friendly) ═══
       try {
-        const pumpPortalRes = await fetch('https://pumpportal.fun/api/data/recent-tokens?limit=50');
-        if (pumpPortalRes.ok) {
-          const tokens = await pumpPortalRes.json();
+        const dexRes = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana%20new', {
+          headers: { 'Accept': 'application/json' },
+        });
+        if (dexRes.ok) {
+          const data = await dexRes.json();
           const now = Date.now();
-          for (const t of tokens) {
-            const createdAt = typeof t.created_at === 'string' ? new Date(t.created_at).getTime() : (t.created_timestamp || t.timestamp || 0);
-            const ageMs = now - createdAt;
-            if (ageMs <= maxAgeMs && ageMs >= 0) {
-              freshTokens.push({
-                mint: t.mint || t.address || t.token_address,
-                name: t.name || t.token_name || 'Unknown',
-                symbol: t.symbol || t.token_symbol || 'UNK',
+          for (const pair of (data?.pairs || [])) {
+            if (pair.chainId !== 'solana') continue;
+            const createdAt = pair.pairCreatedAt || 0;
+            const ageMs = createdAt > 0 ? now - createdAt : Infinity;
+            if (ageMs <= maxAgeMs) {
+              addToken({
+                mint: pair.baseToken?.address,
+                name: pair.baseToken?.name || 'Unknown',
+                symbol: pair.baseToken?.symbol || 'UNK',
                 created_timestamp: createdAt,
-                usd_market_cap: t.usd_market_cap || t.market_cap || 0,
-                virtual_sol_reserves: t.virtual_sol_reserves || t.liquidity || 0,
-                reply_count: t.reply_count || t.txns || 0,
-                total_supply: t.total_supply || 1e9,
+                usd_market_cap: pair.marketCap || pair.fdv || 0,
+                virtual_sol_reserves: (pair.liquidity?.usd || 0) / Math.max(solPrice, 1),
+                reply_count: pair.txns?.h1?.buys || 0,
+                total_supply: pair.fdv && parseFloat(pair.priceUsd || '0') > 0 ? pair.fdv / parseFloat(pair.priceUsd) : 1e9,
+                liquidity_usd: pair.liquidity?.usd || 0,
+                price_usd: parseFloat(pair.priceUsd || '0'),
               });
             }
           }
-          console.log(`[SCALPER] PumpPortal: found ${freshTokens.length} tokens < ${SCALPER_CONFIG.MAX_TOKEN_AGE_MINUTES}m old`);
+          console.log(`[SCALPER] DexScreener: ${freshTokens.length} tokens < ${SCALPER_CONFIG.MAX_TOKEN_AGE_MINUTES}m`);
         }
       } catch (e) {
-        console.error('PumpPortal scan error:', e);
+        console.error('[SCALPER] DexScreener error:', e);
       }
 
-      // Source 2: PumpFun with browser-like headers as fallback
-      if (freshTokens.length < 5) {
-        try {
-          const pumpRes = await fetch('https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=created_timestamp&order=DESC&includeNsfw=false', {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Accept': 'application/json',
-              'Referer': 'https://pump.fun/',
-            },
-          });
-          if (pumpRes.ok) {
-            const allTokens = await pumpRes.json();
+      // ═══ SOURCE 2: DexScreener latest token profiles ═══
+      try {
+        const profRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1', {
+          headers: { 'Accept': 'application/json' },
+        });
+        if (profRes.ok) {
+          const profiles = await profRes.json();
+          for (const p of (profiles || [])) {
+            if (p.chainId !== 'solana' || !p.tokenAddress) continue;
+            addToken({
+              mint: p.tokenAddress,
+              name: p.description?.split(' ')[0] || p.tokenAddress.slice(0, 8),
+              symbol: p.header?.split(' ')[0] || 'UNK',
+              created_timestamp: Date.now(), // treat as fresh
+              usd_market_cap: 0,
+              virtual_sol_reserves: 0,
+              reply_count: 0,
+              total_supply: 1e9,
+            });
+          }
+          console.log(`[SCALPER] DexScreener profiles: total ${freshTokens.length} tokens`);
+        }
+      } catch (e) {
+        console.error('[SCALPER] DexScreener profiles error:', e);
+      }
+
+      // ═══ SOURCE 3: Helius — PumpFun program recent transactions ═══
+      const PUMPFUN_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+      try {
+        const sigRes = await fetch(`https://api.helius.xyz/v0/addresses/${PUMPFUN_PROGRAM}/transactions?api-key=${HELIUS_API_KEY}&limit=30&type=SWAP`);
+        if (sigRes.ok) {
+          const txs = await sigRes.json();
+          const now = Date.now();
+          for (const tx of txs) {
+            const timestamp = (tx.timestamp || 0) * 1000;
+            const ageMs = now - timestamp;
+            if (ageMs > maxAgeMs) continue;
+            for (const transfer of (tx.tokenTransfers || [])) {
+              const mint = transfer.mint;
+              if (!mint || mint === 'So11111111111111111111111111111111111111112') continue;
+              addToken({
+                mint,
+                name: transfer.tokenName || mint.slice(0, 8),
+                symbol: transfer.tokenSymbol || 'UNK',
+                created_timestamp: timestamp,
+                usd_market_cap: 0,
+                virtual_sol_reserves: 0,
+                reply_count: 0,
+                total_supply: 1e9,
+              });
+            }
+          }
+          console.log(`[SCALPER] Helius PumpFun: total ${freshTokens.length} tokens`);
+        }
+      } catch (e) {
+        console.error('[SCALPER] Helius PumpFun error:', e);
+      }
+
+      // ═══ SOURCE 4: PumpFun client API (best effort) ═══
+      try {
+        const pumpRes = await fetch('https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=created_timestamp&order=DESC&includeNsfw=false', {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Origin': 'https://pump.fun',
+            'Referer': 'https://pump.fun/',
+          },
+        });
+        if (pumpRes.ok) {
+          const allTokens = await pumpRes.json();
+          if (Array.isArray(allTokens)) {
             const now = Date.now();
-            const existingMints = new Set(freshTokens.map(t => t.mint));
             for (const t of allTokens) {
-              if (existingMints.has(t.mint)) continue;
               const ageMs = now - (t.created_timestamp || 0);
               if (ageMs <= maxAgeMs && ageMs >= 0) {
-                freshTokens.push(t);
+                addToken(t);
               }
             }
-            console.log(`[SCALPER] PumpFun fallback: total ${freshTokens.length} tokens now`);
           }
-        } catch (e) {
-          console.error('PumpFun fallback error:', e);
+          console.log(`[SCALPER] PumpFun client: total ${freshTokens.length} tokens`);
+        } else {
+          const body = await pumpRes.text();
+          console.error(`[SCALPER] PumpFun status ${pumpRes.status}: ${body.slice(0, 200)}`);
         }
-      }
-
-      // Source 3: Helius DAS searchAssets for recently created fungibles
-      if (freshTokens.length < 3) {
-        try {
-          const dasRes = await fetch(HELIUS_RPC, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0', id: 'recent-tokens',
-              method: 'searchAssets',
-              params: {
-                tokenType: 'fungible',
-                sortBy: { sortBy: 'recent_action', sortDirection: 'desc' },
-                limit: 30,
-              },
-            }),
-          });
-          if (dasRes.ok) {
-            const dasData = await dasRes.json();
-            const items = dasData?.result?.items || [];
-            const now = Date.now();
-            const existingMints = new Set(freshTokens.map(t => t.mint));
-            for (const item of items) {
-              if (existingMints.has(item.id)) continue;
-              const createdAt = item.created_at ? new Date(item.created_at).getTime() : 0;
-              const ageMs = createdAt > 0 ? now - createdAt : Infinity;
-              if (ageMs <= maxAgeMs) {
-                freshTokens.push({
-                  mint: item.id,
-                  name: item.content?.metadata?.name || 'Unknown',
-                  symbol: item.content?.metadata?.symbol || 'UNK',
-                  created_timestamp: createdAt,
-                  usd_market_cap: 0,
-                  virtual_sol_reserves: 0,
-                  reply_count: 0,
-                  total_supply: 1e9,
-                });
-              }
-            }
-            console.log(`[SCALPER] Helius DAS fallback: total ${freshTokens.length} tokens now`);
-          }
-        } catch (e) {
-          console.error('Helius DAS scan error:', e);
-        }
+      } catch (e) {
+        console.error('[SCALPER] PumpFun error:', e);
       }
 
       console.log(`[SCALPER] Final token count: ${freshTokens.length}`);
