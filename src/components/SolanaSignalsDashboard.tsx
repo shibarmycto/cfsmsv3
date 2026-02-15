@@ -860,7 +860,7 @@ export default function SolanaSignalsDashboard() {
                 )}
                 <div className="text-xs text-[#8899aa] space-y-0.5">
                   <p>✓ {autoTradeAmountSol.toFixed(3)} SOL per trade ({tradePercentOfBalance}% of balance)</p>
-                  <p>✓ 2× Take Profit · −30% Stop Loss · 10 min max hold</p>
+                  <p>✓ $3 Net TP ($0.99 fee/trade) · −30% Stop Loss · 10 min max hold</p>
                   <p>✓ Scanning every 20s · Only tokens ≤10 min old</p>
                   <p>✓ {opportunities.length} opportunities found last scan</p>
                 </div>
