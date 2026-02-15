@@ -23,6 +23,7 @@ import Exchange from "./pages/Exchange";
 import Roleplay from "./pages/Roleplay";
 import CRM from "./pages/CRM";
 import NotFound from "./pages/NotFound";
+import LiveTradeNotifications from "./components/LiveTradeNotifications";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <LiveTradeNotifications />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
