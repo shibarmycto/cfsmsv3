@@ -225,15 +225,47 @@ export default function SolanaSignalsDashboard() {
 
   const activateAutoTrade = async () => {
     try {
+      const amount = parseFloat(tradeAmountSol);
+      if (isNaN(amount) || amount <= 0) {
+        toast.error('Set a valid trade amount in SOL first');
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
-        body: { action: 'activate' },
+        body: { action: 'activate', trade_amount_sol: amount },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
-      setIsAutoTradeActive(true);
-      setTokenBalance(data.remaining_balance);
-      toast.success(data.message);
+      if (data?.trade_executed) {
+        setIsAutoTradeActive(true);
+        // Add to trade log
+        const newTrade: TradeEntry = {
+          id: data.signature || Date.now().toString(),
+          token_name: data.token_name || 'Unknown',
+          mint: data.mint_address || '',
+          entry_price: data.amount_sol || amount,
+          current_price: data.output_tokens || 0,
+          amount_sol: amount,
+          timestamp: new Date().toISOString(),
+          status: 'active',
+          pnl_percent: 0,
+        };
+        setTrades(prev => [newTrade, ...prev]);
+        toast.success(data.message);
+        if (data.explorer_url) {
+          toast.info('View on Solscan', {
+            action: { label: 'Open', onClick: () => window.open(data.explorer_url, '_blank') },
+            duration: 10000,
+          });
+        }
+        // Refresh balance
+        refreshBalance();
+      } else {
+        toast.info(data.message || 'No qualifying tokens found — monitoring...');
+        setIsAutoTradeActive(true);
+      }
+
+      if (data.remaining_tokens !== undefined) setTokenBalance(data.remaining_tokens);
     } catch (e: any) {
       toast.error(e.message || 'Failed to activate auto-trade');
     }
@@ -637,11 +669,13 @@ export default function SolanaSignalsDashboard() {
             {isAutoTradeActive ? (
               <div className="space-y-3">
                 <Badge className="bg-emerald-500 text-sm px-4 py-1">⚡ AUTO-TRADING ACTIVE</Badge>
-                <p className="text-xs text-[#8899aa]">Monitoring signals for entry criteria...</p>
+                <p className="text-xs text-[#8899aa]">Scanning fresh tokens (≤60s old) with Poisson model...</p>
                 <div className="text-sm text-[#8899aa] space-y-1">
-                  <p>✓ Token ≤2min old</p>
-                  <p>✓ Liquidity ≥$500</p>
-                  <p>✓ 3+ buys/min</p>
+                  <p>✓ Tokens launched ≤60 seconds ago</p>
+                  <p>✓ Poisson buy-velocity scoring</p>
+                  <p>✓ Liquidity &amp; market cap analysis</p>
+                  <p>✓ Score threshold: 60/100</p>
+                  <p>✓ Trade amount: {tradeAmountSol} SOL</p>
                   <p>✓ Take profit: 2x (100%)</p>
                   <p>✓ Stop loss: -50%</p>
                 </div>
@@ -650,18 +684,38 @@ export default function SolanaSignalsDashboard() {
                 </Button>
               </div>
             ) : (
-              <Button
-                onClick={activateAutoTrade}
-                disabled={tokenBalance < 20 || !wallet}
-                className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
-                size="lg"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                Start Auto Trade — 20 Tokens
-              </Button>
+              <>
+                <div className="flex items-center gap-2 p-3 rounded-lg mb-4" style={{ background: 'rgba(0,255,136,0.1)' }}>
+                  <DollarSign className="w-4 h-4 text-[#00ff88]" />
+                  <span className="text-xs text-[#8899aa]">Trade amount:</span>
+                  <Input
+                    type="number"
+                    value={tradeAmountSol}
+                    onChange={(e) => setTradeAmountSol(e.target.value)}
+                    className="w-24 h-8 text-xs bg-transparent border-white/20"
+                    step="0.01"
+                    min="0.001"
+                  />
+                  <span className="text-xs text-[#8899aa]">SOL</span>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 mb-4 text-sm">
+                  <Wallet className="w-4 h-4 text-[#00ff88]" />
+                  <span>SOL Balance: <strong>{wallet?.balanceSol.toFixed(4) || '0'} SOL</strong></span>
+                </div>
+
+                <Button
+                  onClick={activateAutoTrade}
+                  disabled={!wallet || (wallet?.balanceSol || 0) < parseFloat(tradeAmountSol || '0')}
+                  className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
+                  size="lg"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Start Auto Trade — {tradeAmountSol} SOL
+                </Button>
+                {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
+              </>
             )}
-            {tokenBalance < 20 && <p className="text-xs text-[#ff4444] mt-2">Need 20 tokens to activate</p>}
-            {!wallet && <p className="text-xs text-[#ff4444] mt-2">Create a wallet first</p>}
           </div>
 
           {/* Active Trades */}
