@@ -595,6 +595,29 @@ async function discoverTokens(HELIUS_API_KEY: string, solPrice: number): Promise
   return freshTokens;
 }
 
+// ── Discord webhook notification helper ──
+async function notifyDiscord(title: string, color: number, fields: {name: string, value: string, inline?: boolean}[]) {
+  const webhookUrl = Deno.env.get('ADMIN_WEBHOOK_URL');
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title,
+          color,
+          fields,
+          timestamp: new Date().toISOString(),
+          footer: { text: 'CF Blockchain — Solana Auto-Trade' },
+        }],
+      }),
+    });
+  } catch (e) {
+    console.error('[DISCORD] Webhook error:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -700,6 +723,15 @@ serve(async (req) => {
       const bestOpp = opportunities[0];
       console.log(`[SCALPER] Scored ${opportunities.length} tokens. Best: ${bestOpp.name} (${bestOpp.match_pct}% match, ${bestOpp.recommendation})`);
 
+      // Discord: Notify scan results (only when executing)
+      if (shouldExecute) {
+        await notifyDiscord('🔍 SCALPER SCAN', 0x00aaff, [
+          { name: '📊 Tokens Scanned', value: `${freshTokens.length}`, inline: true },
+          { name: '🏆 Best Match', value: `${bestOpp.name} (${bestOpp.match_pct}%)`, inline: true },
+          { name: '📋 Recommendation', value: bestOpp.recommendation, inline: true },
+        ]);
+      }
+
       // If scan-only mode, return opportunities without executing
       if (!shouldExecute) {
         return new Response(JSON.stringify({
@@ -800,6 +832,16 @@ serve(async (req) => {
         amount_sol: positionSol,
       });
 
+      // Discord: Notify trade execution
+      await notifyDiscord('⚡ AUTO-TRADE EXECUTED', 0x00ff88, [
+        { name: '🪙 Token', value: `${execTarget.name} (${execTarget.symbol})`, inline: true },
+        { name: '📊 Match', value: `${execTarget.match_pct}% — ${execTarget.recommendation}`, inline: true },
+        { name: '💰 Position', value: `${positionSol.toFixed(4)} SOL ($${(positionSol * solPrice).toFixed(2)})`, inline: true },
+        { name: '🔗 TX', value: `[Solscan](https://solscan.io/tx/${tradeResult.signature})`, inline: true },
+        { name: '👤 User', value: displayName, inline: true },
+        { name: '💼 Balance After', value: `${newBalance.toFixed(4)} SOL`, inline: true },
+      ]);
+
       const newBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
 
       return new Response(JSON.stringify({
@@ -865,6 +907,18 @@ serve(async (req) => {
 
       const outputAmount = result.outputAmount || 0;
       const platformFee = trade_type === 'sell' ? Math.max(0, (outputAmount - amount_sol) * 0.01) : 0;
+
+      // Discord: Notify manual trade
+      await notifyDiscord(
+        trade_type === 'buy' ? '🟢 MANUAL BUY' : '🔴 MANUAL SELL',
+        trade_type === 'buy' ? 0x00ff88 : 0xff4444,
+        [
+          { name: '🪙 Token', value: mint_address.slice(0, 12) + '...', inline: true },
+          { name: '💰 Amount', value: `${amount_sol} SOL`, inline: true },
+          { name: '📤 Output', value: `${outputAmount.toFixed(6)}`, inline: true },
+          { name: '🔗 TX', value: `[Solscan](https://solscan.io/tx/${result.signature})`, inline: false },
+        ]
+      );
 
       return new Response(JSON.stringify({
         success: true,
@@ -972,6 +1026,16 @@ serve(async (req) => {
               sell_error: sellResult.error,
             });
 
+            // Discord: Notify position exit
+            const exitColor = profitSol >= 0 ? 0x00ff88 : 0xff4444;
+            const exitEmoji = profitSol >= 0 ? '💰' : '🛑';
+            await notifyDiscord(`${exitEmoji} POSITION EXIT`, exitColor, [
+              { name: '🪙 Token', value: pos.token_name || pos.mint?.slice(0, 12), inline: true },
+              { name: '📊 P&L', value: `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%`, inline: true },
+              { name: '💰 Profit', value: `${profitSol >= 0 ? '+' : ''}${profitSol.toFixed(6)} SOL ($${(profitSol * solPrice).toFixed(2)})`, inline: true },
+              { name: '📋 Reason', value: reason, inline: false },
+              { name: '🔗 TX', value: sellResult.signature ? `[Solscan](https://solscan.io/tx/${sellResult.signature})` : 'Failed', inline: false },
+            ]);
             // Log profit notification
             if (sellResult.success && profitSol > 0) {
               const { data: profileData } = await supabaseAdmin

