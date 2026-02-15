@@ -167,35 +167,48 @@ export default function SolanaSignalsDashboard() {
       .eq('status', 'open');
   }, [user]);
 
-  // ── Force close last open trade (manual override) ──
+  // ── Force close ALL positions — server-side sells tokens back to SOL ──
   const forceCloseLastTrade = useCallback(async () => {
     if (!user) return;
-    const activeTrades = tradesRef.current.filter(t => t.status === 'active');
-    if (activeTrades.length === 0) {
-      // Also check DB for any stuck open trades
-      const { data: dbOpen } = await supabase.from('signal_trades')
-        .select('mint_address, token_name')
-        .eq('user_id', user.id)
-        .eq('status', 'open')
-        .limit(5);
-      if (dbOpen && dbOpen.length > 0) {
+    toast.info('🛑 Force closing all positions — selling tokens back to SOL...');
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast.error('Not authenticated');
+        return;
+      }
+
+      const response = await supabase.functions.invoke('solana-auto-trade', {
+        body: { action: 'force_close' },
+      });
+
+      const result = response.data;
+      if (result?.success) {
+        // Clear local state
+        setTrades(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'loss' } : t));
+        setIsAutoTradeActive(false);
+        toast.success(`🛑 ${result.message}`);
+        if (result.final_balance_sol !== undefined) {
+          toast.info(`💰 Wallet balance: ${result.final_balance_sol.toFixed(6)} SOL ($${result.final_balance_usd?.toFixed(2) || '0'})`);
+        }
+      } else {
+        // Fallback: still close DB trades
         await supabase.from('signal_trades')
           .update({ status: 'closed', exit_reason: 'Manual force close', closed_at: new Date().toISOString() })
           .eq('user_id', user.id)
           .eq('status', 'open');
-        toast.success(`🛑 Force-closed ${dbOpen.length} stuck DB trade(s)`);
-        return;
+        toast.success('🛑 DB trades closed (server sell may have failed)');
       }
-      toast.info('No active trades to close');
-      return;
+    } catch (e) {
+      // Fallback: close DB trades even if server call fails
+      await supabase.from('signal_trades')
+        .update({ status: 'closed', exit_reason: 'Manual force close (fallback)', closed_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('status', 'open');
+      setTrades(prev => prev.map(t => t.status === 'active' ? { ...t, status: 'loss' } : t));
+      toast.success('🛑 Force-closed trades (fallback)');
     }
-    const last = activeTrades[activeTrades.length - 1];
-    setTrades(prev => prev.map(t => t.mint === last.mint && t.status === 'active' ? { ...t, status: 'loss' } : t));
-    await supabase.from('signal_trades')
-      .update({ status: 'closed', exit_reason: 'Manual force close', closed_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-      .eq('status', 'open');
-    toast.success(`🛑 Force-closed trade: ${last.token_name}`);
   }, [user]);
 
   // ── Load/check 24h access session ──
