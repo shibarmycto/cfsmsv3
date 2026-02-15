@@ -462,6 +462,42 @@ async function verifySellable(mintAddress: string): Promise<boolean> {
   }
 }
 
+// ── Fetch full token metadata from DexScreener ──
+async function getTokenMetadata(mintAddress: string): Promise<{ name: string; symbol: string }> {
+  try {
+    const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintAddress}`, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (dexRes.ok) {
+      const dexData = await dexRes.json();
+      const pair = dexData?.pairs?.[0];
+      if (pair?.baseToken?.name && !pair.baseToken.name.startsWith('http')) {
+        return {
+          name: pair.baseToken.name,
+          symbol: pair.baseToken.symbol || 'UNK',
+        };
+      }
+    }
+  } catch {}
+  // Fallback: try Helius DAS
+  try {
+    const HELIUS_API_KEY = Deno.env.get('HELIUS_API_KEY');
+    if (HELIUS_API_KEY) {
+      const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAsset', params: { id: mintAddress } }),
+      });
+      const data = await res.json();
+      const content = data?.result?.content;
+      if (content?.metadata?.name) {
+        return { name: content.metadata.name, symbol: content.metadata.symbol || 'UNK' };
+      }
+    }
+  } catch {}
+  return { name: mintAddress.slice(0, 12), symbol: 'UNK' };
+}
+
 // ══════════════════════════════════════════════════════════════
 // MULTI-SOURCE TOKEN DISCOVERY
 // ══════════════════════════════════════════════════════════════
@@ -921,7 +957,13 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Trade successful
+      // Trade successful — resolve full token name from DexScreener/Helius
+      const resolvedMeta = await getTokenMetadata(execTarget.mint);
+      if (resolvedMeta.name !== execTarget.mint.slice(0, 12)) {
+        execTarget.name = resolvedMeta.name;
+        execTarget.symbol = resolvedMeta.symbol;
+      }
+
       const { data: profileData } = await supabaseAdmin
         .from('wallets').select('username').eq('user_id', userId).single();
       const displayName = profileData?.username || 'Trader';
@@ -1034,20 +1076,10 @@ serve(async (req) => {
         });
       }
 
-      // Get token metadata from DexScreener
-      let tokenName = mint_address.slice(0, 8);
-      let tokenSymbol = 'UNK';
-      try {
-        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint_address}`);
-        if (dexRes.ok) {
-          const dexData = await dexRes.json();
-          const pair = dexData?.pairs?.[0];
-          if (pair?.baseToken) {
-            tokenName = pair.baseToken.name || tokenName;
-            tokenSymbol = pair.baseToken.symbol || tokenSymbol;
-          }
-        }
-      } catch {}
+      // Get full token metadata
+      const resolvedCA = await getTokenMetadata(mint_address);
+      let tokenName = resolvedCA.name;
+      let tokenSymbol = resolvedCA.symbol;
 
       // Execute buy
       const amountLamports = Math.floor(positionSol * 1e9);
@@ -1340,7 +1372,7 @@ serve(async (req) => {
           } else {
             const holdProfitUsd = profitSolRaw * solPrice;
             const holdNetUsd = holdProfitUsd - SCALPER_CONFIG.PLATFORM_FEE_USD;
-            const targetLabel = isQuickExit ? `$${activeGrossTarget.toFixed(2)} gross (quick)` : `$${activeGrossTarget.toFixed(2)} gross`;
+            const targetLabel = isQuickExit ? `$${activeNetTarget.toFixed(2)} net (quick)` : `$${activeNetTarget.toFixed(2)} net`;
             results.push({
               mint: pos.mint,
               action: 'hold',
@@ -1349,7 +1381,7 @@ serve(async (req) => {
               pnl_percent: pnlPct,
               current_profit_usd: holdProfitUsd,
               net_profit_usd: holdNetUsd,
-              target_profit_usd: activeGrossTarget,
+              target_profit_usd: activeNetTarget,
             });
           }
         } catch (e) {
