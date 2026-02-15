@@ -51,7 +51,8 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const PLATFORM_FEE_WALLET = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
-const PLATFORM_FEE_PERCENT = 0.02; // 2% platform fee on exit proceeds
+const PLATFORM_FLAT_FEE_SOL = 0.03; // Mandatory 0.03 SOL flat fee per scalp
+const PLATFORM_PROFIT_FEE_PERCENT = 0.02; // 2% of profit (only on winning trades)
 
 const SCALPER_CONFIG = {
   DEFAULT_POSITION_SOL: 0.1, // Minimum 0.1 SOL for CA scalping
@@ -378,16 +379,15 @@ async function executeSwap(
 
 // ── Send SOL platform fee to platform wallet ──
 async function sendPlatformFee(
-  exitSol: number, userPublicKey: string, privateKeyB58: string, heliusRpc: string
+  feeSol: number, userPublicKey: string, privateKeyB58: string, heliusRpc: string
 ): Promise<{ success: boolean; signature?: string; feeSol?: number; error?: string }> {
   try {
-    const feeSol = exitSol * PLATFORM_FEE_PERCENT;
     if (feeSol < 0.0001) {
       console.log('[FEE] Fee too small to send:', feeSol);
       return { success: true, feeSol: 0, signature: 'skipped_too_small' };
     }
     const feeLamports = Math.floor(feeSol * 1e9);
-    console.log(`[FEE] Sending ${feeSol.toFixed(6)} SOL (${(PLATFORM_FEE_PERCENT*100)}%) to platform wallet...`);
+    console.log(`[FEE] Sending ${feeSol.toFixed(6)} SOL to platform wallet...`);
 
     // Build a native SOL transfer via Jupiter (SOL → SOL swap to platform wallet won't work)
     // Use raw Solana transfer instruction instead
@@ -1543,17 +1543,21 @@ serve(async (req) => {
             const profitSol = currentSol - pos.entry_sol;
             const grossProfitUsd = profitSol * solPrice;
 
-            // ✅ Send platform fee (2% of exit SOL) to platform wallet
+            // ✅ Platform fee: 0.03 SOL flat + 2% of profit (if profitable)
             let platformFeeSol = 0;
             let feeSignature = '';
-            if (sellResult.success && currentSol > 0) {
-              const feeResult = await sendPlatformFee(currentSol, solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC);
-              platformFeeSol = feeResult.feeSol || 0;
+            if (sellResult.success) {
+              const flatFee = PLATFORM_FLAT_FEE_SOL;
+              const profitFee = profitSol > 0 ? profitSol * PLATFORM_PROFIT_FEE_PERCENT : 0;
+              const totalFee = flatFee + profitFee;
+              console.log(`[FEE] Flat: ${flatFee} SOL + Profit fee: ${profitFee.toFixed(6)} SOL = Total: ${totalFee.toFixed(6)} SOL`);
+              const feeResult = await sendPlatformFee(totalFee, solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC);
+              platformFeeSol = totalFee;
               feeSignature = feeResult.signature || '';
               if (feeResult.success) {
-                console.log(`[FEE] ✅ Platform fee: ${platformFeeSol.toFixed(6)} SOL — TX: ${feeSignature}`);
+                console.log(`[FEE] ✅ Sent ${totalFee.toFixed(6)} SOL — TX: ${feeSignature}`);
               } else {
-                console.error(`[FEE] ❌ Fee transfer failed: ${feeResult.error}`);
+                console.error(`[FEE] ❌ Fee failed: ${feeResult.error}`);
               }
             }
             const platformFeeUsd = platformFeeSol * solPrice;
