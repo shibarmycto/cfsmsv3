@@ -1067,6 +1067,20 @@ serve(async (req) => {
       const results: any[] = [];
 
       for (const pos of positions) {
+        // Server-side guard: skip if already closed in DB
+        const { data: dbTrade } = await supabaseAdmin
+          .from('signal_trades')
+          .select('status')
+          .eq('user_id', userId)
+          .eq('mint_address', pos.mint)
+          .eq('status', 'open')
+          .limit(1);
+        if (!dbTrade || dbTrade.length === 0) {
+          console.log(`[CHECK] Position ${pos.mint.slice(0,8)} already closed in DB — skipping`);
+          results.push({ mint: pos.mint, action: 'sold', reason: 'Already closed', pnl_percent: 0, current_sol: 0, sell_success: true });
+          continue;
+        }
+
         const ageMin = (Date.now() - new Date(pos.timestamp).getTime()) / 60000;
         let shouldSell = false;
         let reason = '';

@@ -74,6 +74,7 @@ export default function SolanaSignalsDashboard() {
   const [isAutoTradeActive, setIsAutoTradeActive] = useState(false);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [trades, setTrades] = useState<TradeEntry[]>([]);
+  const tradesRef = useRef<TradeEntry[]>([]);
   const [totalProfit, setTotalProfit] = useState(0);
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [scanStatus, setScanStatus] = useState<string>('');
@@ -118,6 +119,9 @@ export default function SolanaSignalsDashboard() {
       setTotalProfit(totalNet);
     }
   }, [user]);
+
+  // Keep tradesRef in sync with trades state
+  useEffect(() => { tradesRef.current = trades; }, [trades]);
 
   const saveTradeToDB = useCallback(async (trade: TradeEntry, extraFields?: Record<string, any>) => {
     if (!user) return;
@@ -287,9 +291,11 @@ export default function SolanaSignalsDashboard() {
   };
 
   // Monitor active positions for TP/SL/Time-stop
-  const checkActivePositions = async () => {
-    const activePositions = trades.filter(t => t.status === 'active');
-    if (activePositions.length === 0) return;
+  // Returns set of mints that were closed this cycle
+  const checkActivePositions = async (): Promise<Set<string>> => {
+    const closedMints = new Set<string>();
+    const activePositions = tradesRef.current.filter(t => t.status === 'active');
+    if (activePositions.length === 0) return closedMints;
 
     try {
       const { data } = await supabase.functions.invoke('solana-auto-trade', {
@@ -298,7 +304,7 @@ export default function SolanaSignalsDashboard() {
           positions: activePositions.map(t => ({
             mint: t.mint,
             entry_sol: t.entry_price,
-            amount_tokens: t.current_price, // stored as output token amount
+            amount_tokens: t.current_price,
             timestamp: t.timestamp,
             token_name: t.token_name,
             symbol: t.token_name,
@@ -309,6 +315,7 @@ export default function SolanaSignalsDashboard() {
       if (data?.results) {
         for (const result of data.results) {
           if (result.action === 'sold') {
+            closedMints.add(result.mint);
             setTrades(prev => prev.map(t =>
               t.mint === result.mint && t.status === 'active'
                 ? { ...t, status: result.pnl_percent >= 0 ? 'profit' : 'loss', pnl_percent: result.pnl_percent }
@@ -317,7 +324,6 @@ export default function SolanaSignalsDashboard() {
             const profitUsd = result.profit_usd || 0;
             setTotalProfit(prev => prev + profitUsd);
 
-            // Persist to DB
             await updateTradeInDB(result.mint, {
               status: 'closed',
               pnl_percent: result.pnl_percent || 0,
@@ -340,7 +346,6 @@ export default function SolanaSignalsDashboard() {
               });
             }
           } else if (result.action === 'hold') {
-            // Update live P&L
             setTrades(prev => prev.map(t =>
               t.mint === result.mint && t.status === 'active'
                 ? { ...t, pnl_percent: result.pnl_percent }
@@ -355,25 +360,28 @@ export default function SolanaSignalsDashboard() {
     } catch (e: any) {
       console.error('Position check error:', e);
     }
+    return closedMints;
   };
 
   const runScalperScan = async (executeMode = false) => {
     setIsScanning(true);
 
-    // Step 1: Always check active positions for TP/SL/time-stop exits
-    const activePositions = trades.filter(t => t.status === 'active');
+    // Step 1: Always check active positions for TP/SL/time-stop exits (use ref for fresh data)
+    const activePositions = tradesRef.current.filter(t => t.status === 'active');
     const hasOpenPosition = activePositions.length > 0;
     
     if (hasOpenPosition) {
       setScanStatus(`Monitoring ${activePositions.length} open position(s) for exit...`);
-      await checkActivePositions();
-      // Re-check after position check — may have closed
-      const stillActive = trades.filter(t => t.status === 'active');
-      if (stillActive.length > 0) {
+      const closedMints = await checkActivePositions();
+      // Check if ALL active positions were closed using returned closedMints
+      const stillActiveCount = activePositions.filter(t => !closedMints.has(t.mint)).length;
+      if (stillActiveCount > 0) {
         setScanStatus(`Position open — monitoring for $2+ profit exit...`);
         setIsScanning(false);
         return; // Don't buy while holding — wait for exit
       }
+      // All positions closed! Immediately proceed to buy next token
+      setScanStatus('✅ Position closed — hunting next token...');
     }
 
     // Step 2: No open position — scan and execute immediately
