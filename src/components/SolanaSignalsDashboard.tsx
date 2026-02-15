@@ -1227,9 +1227,18 @@ export default function SolanaSignalsDashboard() {
             {/* Trade % of Balance Selector */}
             {!isAutoTradeActive && (
               <div className="p-4 rounded-xl mb-4 text-left" style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.15)' }}>
+                {/* Wallet balance display */}
+                {wallet && (
+                  <div className="flex items-center justify-between mb-3 p-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span className="text-xs text-[#8899aa]">Wallet Balance</span>
+                    <span className="text-sm font-bold text-white">{wallet.balanceSol.toFixed(4)} SOL <span className="text-[#8899aa] font-normal">(${wallet.balanceUsd.toFixed(2)})</span></span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-[#8899aa] flex items-center gap-1"><Settings className="w-3 h-3" /> Trade Size</span>
-                  <span className="text-sm font-bold text-[#00ff88]">{tradePercentOfBalance}% of balance</span>
+                  <span className="text-sm font-bold text-[#00ff88]">
+                    {wallet ? Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(4) : '0.03'} SOL
+                  </span>
                 </div>
                 <Slider
                   value={[tradePercentOfBalance]}
@@ -1245,9 +1254,13 @@ export default function SolanaSignalsDashboard() {
                   <span>50%</span>
                 </div>
                 {wallet && (
-                  <p className="text-xs text-center mt-2 text-[#8899aa]">
-                    ≈ <strong className="text-white">{Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(3)} SOL</strong> per trade (min 0.03 SOL)
-                  </p>
+                  <div className="mt-3 p-2 rounded-lg text-center" style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.2)' }}>
+                    <p className="text-[10px] text-[#8899aa] mb-1">Using {tradePercentOfBalance}% of {wallet.balanceSol.toFixed(4)} SOL</p>
+                    <p className="text-sm font-bold text-[#00ff88]">
+                      {Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance / 100)).toFixed(4)} SOL per trade
+                    </p>
+                    <p className="text-[10px] text-amber-400 mt-1 font-semibold">🎯 Strict $2 Profit Exit — exits immediately at $2+ profit</p>
+                  </div>
                 )}
               </div>
             )}
@@ -1270,9 +1283,9 @@ export default function SolanaSignalsDashboard() {
                   <p className="text-xs text-[#8899aa] px-2">{scanStatus}</p>
                 )}
                 <div className="text-xs text-[#8899aa] space-y-0.5">
-                  <p>✓ {autoTradeAmountSol.toFixed(3)} SOL per trade ({tradePercentOfBalance}% of balance)</p>
-                  <p>✓ $2 Net TP · −25% SL (90s grace) · 5–10 min hold · 55%+ match only</p>
-                  <p>✓ Scanning every 15s · Max 3% entry impact · Smart recovery exits</p>
+                  <p>✓ Trading {autoTradeAmountSol.toFixed(4)} SOL ({tradePercentOfBalance}% of {wallet?.balanceSol.toFixed(4) || '0'} SOL)</p>
+                  <p className="text-amber-400 font-semibold">✓ 🎯 STRICT $2 Profit Exit — sells immediately at $2+ net profit</p>
+                  <p>✓ −25% SL (90s grace) · 5–10 min hold · 55%+ match only</p>
                   <p>✓ {opportunities.length} opportunities found last scan</p>
                 </div>
                 <Button variant="destructive" onClick={stopAutoTrade} className="w-full">
