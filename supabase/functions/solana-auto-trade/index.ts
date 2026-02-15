@@ -51,7 +51,7 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.03, // Minimum 0.03 SOL per trade
+  DEFAULT_POSITION_SOL: 0.005, // No minimum — user can trade any amount
   PLATFORM_FEE_USD: 0, // NO platform fee — only network/Helius fees apply
   TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: exit immediately at $2+
   QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
@@ -952,16 +952,17 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Use custom trade amount from body, or default
+      // Use custom trade amount from body, or default — NO minimum requirement
       const positionSol = body.trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
-      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
+      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.001;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
 
-      if (solBalance < positionSol + feesReserve) {
+      // Only block if literally can't afford fees — no minimum trade size enforced
+      if (solBalance < feesReserve) {
         return new Response(JSON.stringify({
           success: true,
           trade_executed: false,
-          message: `Insufficient SOL: ${solBalance.toFixed(4)} SOL (need ~${(positionSol + feesReserve).toFixed(4)}). Found ${opportunities.length} opportunities.`,
+          message: `Wallet empty: ${solBalance.toFixed(6)} SOL. Need at least ~${feesReserve.toFixed(4)} SOL for gas fees.`,
           tokens_scanned: freshTokens.length,
           opportunities: opportunities.slice(0, 10),
           best_match: bestOpp,
@@ -970,6 +971,8 @@ serve(async (req) => {
           config: SCALPER_CONFIG,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+      // Adjust position size down to available balance if needed
+      const actualPositionSol = Math.min(positionSol, solBalance - feesReserve);
 
       // ── STEP 3A: Ensure minimum match quality ──
       if (bestOpp.match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) {
@@ -1059,7 +1062,7 @@ serve(async (req) => {
         }
       }
 
-      const amountLamports = Math.floor(positionSol * 1e9);
+      const amountLamports = Math.floor(actualPositionSol * 1e9);
       const tradeResult = await executeSwap(
         SOL_MINT, execTarget.mint, amountLamports,
         solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC
@@ -1173,13 +1176,14 @@ serve(async (req) => {
 
       const solPrice = await getSolPrice();
       const positionSol = trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
-      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
+      const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.001;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+      const actualPositionSolCA = Math.min(positionSol, solBalance - feesReserve);
 
-      if (solBalance < positionSol + feesReserve) {
+      if (solBalance < feesReserve) {
         return new Response(JSON.stringify({
           success: false,
-          error: `Insufficient SOL: ${solBalance.toFixed(4)} (need ~${(positionSol + feesReserve).toFixed(4)})`,
+          error: `Wallet empty: ${solBalance.toFixed(6)} SOL. Need gas fees (~${feesReserve.toFixed(4)} SOL).`,
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
@@ -1205,7 +1209,7 @@ serve(async (req) => {
       let tokenSymbol = resolvedCA.symbol;
 
       // Execute buy
-      const amountLamports = Math.floor(positionSol * 1e9);
+      const amountLamports = Math.floor(actualPositionSolCA * 1e9);
       const tradeResult = await executeSwap(
         SOL_MINT, mint_address, amountLamports,
         solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC
@@ -1828,13 +1832,15 @@ serve(async (req) => {
           const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
           const solBalance = await getBalance(userWallet.public_key, HELIUS_RPC);
 
-          if (solBalance < positionSol + feesReserve) {
+          if (solBalance < feesReserve) {
             await supabaseAdmin.from('auto_trade_sessions').update({
               last_scan_at: new Date().toISOString(), updated_at: new Date().toISOString(),
             }).eq('id', session.id);
-            results.push({ session_id: session.id, status: 'low_balance', balance: solBalance, needed: positionSol + feesReserve });
+            results.push({ session_id: session.id, status: 'low_balance', balance: solBalance, needed: feesReserve });
             continue;
           }
+          // Adjust position size to available balance
+          const bgPositionSol = Math.min(positionSol, solBalance - feesReserve);
 
           // Discover tokens
           const freshTokens = await discoverTokens(HELIUS_API_KEY, solPrice);
@@ -1918,7 +1924,7 @@ serve(async (req) => {
           }
 
           // Execute buy
-          const amountLamports = Math.floor(positionSol * 1e9);
+          const amountLamports = Math.floor(bgPositionSol * 1e9);
           const tradeResult = await executeSwap(
             SOL_MINT, execTarget.mint, amountLamports,
             userWallet.public_key, userWallet.encrypted_private_key, HELIUS_RPC
@@ -2052,6 +2058,170 @@ serve(async (req) => {
           can_continue: canContinue,
           exit_reasons: exitReasons,
         },
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ACTION: FORCE_CLOSE — Emergency sell ALL token positions, close token accounts, refund SOL
+    // No matter what — ignores sell quote issues, uses max slippage, always closes DB trades
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'force_close') {
+      if (!solWallet?.public_key || !solWallet?.encrypted_private_key) {
+        // Still close DB trades even without wallet
+        await supabaseAdmin.from('signal_trades')
+          .update({ status: 'closed', exit_reason: 'Force close (no wallet)', closed_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('status', 'open');
+        return new Response(JSON.stringify({ success: true, message: 'DB trades closed. No wallet to sell from.', sold: 0 }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const solPrice = await getSolPrice();
+      const results: any[] = [];
+      let totalRecoveredSol = 0;
+
+      // ── Step 1: Get ALL open trades from DB ──
+      const { data: openTrades } = await supabaseAdmin
+        .from('signal_trades')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'open');
+
+      // ── Step 2: Try to sell each position with MAXIMUM slippage (5000 bps = 50%) ──
+      if (openTrades && openTrades.length > 0) {
+        for (const trade of openTrades) {
+          const outputTokens = Number(trade.output_tokens) || 0;
+          if (outputTokens <= 0 || !trade.mint_address) {
+            // No tokens to sell — just close the DB record
+            await supabaseAdmin.from('signal_trades').update({
+              status: 'closed', exit_reason: 'Force close (no tokens)', closed_at: new Date().toISOString(),
+            }).eq('id', trade.id);
+            results.push({ mint: trade.mint_address, status: 'closed_no_tokens', token_name: trade.token_name });
+            continue;
+          }
+
+          try {
+            // Attempt sell with extremely high slippage to guarantee execution
+            const sellResult = await executeSwap(
+              trade.mint_address, SOL_MINT, Math.floor(outputTokens * 1e6),
+              solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC,
+              5000 // 50% slippage — force the trade through no matter what
+            );
+
+            const entSol = Number(trade.entry_sol) || Number(trade.amount_sol) || 0;
+            const returnedSol = sellResult.outputAmount || 0;
+            const profitSol = returnedSol - entSol;
+            const profitUsd = profitSol * solPrice;
+            totalRecoveredSol += returnedSol;
+
+            await supabaseAdmin.from('signal_trades').update({
+              status: 'closed',
+              pnl_percent: entSol > 0 ? ((returnedSol - entSol) / entSol) * 100 : 0,
+              gross_profit_usd: profitUsd,
+              net_profit_usd: profitUsd,
+              exit_reason: sellResult.success ? 'Manual force close (sold)' : 'Manual force close (sell failed)',
+              exit_signature: sellResult.signature || '',
+              closed_at: new Date().toISOString(),
+            }).eq('id', trade.id);
+
+            results.push({
+              mint: trade.mint_address,
+              token_name: trade.token_name,
+              sold: sellResult.success,
+              returned_sol: returnedSol,
+              profit_usd: profitUsd,
+              signature: sellResult.signature,
+              error: sellResult.error,
+            });
+          } catch (e) {
+            // Even if sell fails, ALWAYS close the DB record
+            await supabaseAdmin.from('signal_trades').update({
+              status: 'closed', exit_reason: `Force close (error: ${e.message})`, closed_at: new Date().toISOString(),
+            }).eq('id', trade.id);
+            results.push({ mint: trade.mint_address, token_name: trade.token_name, sold: false, error: e.message });
+          }
+        }
+      }
+
+      // ── Step 3: Scan wallet for ANY remaining token accounts and close them ──
+      try {
+        const tokenAccountsRes = await fetch(HELIUS_RPC, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            method: 'getTokenAccountsByOwner',
+            params: [solWallet.public_key, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }, { encoding: 'jsonParsed' }],
+          }),
+        });
+        const tokenData = await tokenAccountsRes.json();
+        const tokenAccounts = tokenData?.result?.value || [];
+
+        for (const account of tokenAccounts) {
+          const parsed = account.account?.data?.parsed?.info;
+          if (!parsed) continue;
+          const mintAddr = parsed.mint;
+          const tokenAmount = Number(parsed.tokenAmount?.amount || '0');
+          const decimals = parsed.tokenAmount?.decimals || 6;
+
+          if (mintAddr === SOL_MINT || tokenAmount <= 0) continue;
+
+          // Try to sell remaining tokens back to SOL
+          try {
+            const sellResult = await executeSwap(
+              mintAddr, SOL_MINT, tokenAmount,
+              solWallet.public_key, solWallet.encrypted_private_key, HELIUS_RPC,
+              5000 // 50% slippage
+            );
+            if (sellResult.success) {
+              totalRecoveredSol += sellResult.outputAmount || 0;
+              results.push({
+                mint: mintAddr,
+                status: 'wallet_token_sold',
+                returned_sol: sellResult.outputAmount || 0,
+                signature: sellResult.signature,
+              });
+            } else {
+              results.push({ mint: mintAddr, status: 'wallet_token_sell_failed', error: sellResult.error });
+            }
+          } catch (e) {
+            results.push({ mint: mintAddr, status: 'wallet_token_error', error: e.message });
+          }
+        }
+      } catch (e) {
+        console.error('[FORCE_CLOSE] Token account scan error:', e);
+      }
+
+      // ── Step 4: Deactivate any active auto-trade sessions ──
+      await supabaseAdmin.from('auto_trade_sessions')
+        .update({ is_active: false, stopped_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      // ── Step 5: Final cleanup — close any remaining open DB trades ──
+      await supabaseAdmin.from('signal_trades')
+        .update({ status: 'closed', exit_reason: 'Force close cleanup', closed_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('status', 'open');
+
+      const finalBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
+
+      await notifyDiscord('🛑 FORCE CLOSE ALL', 0xff0000, [
+        { name: '💰 Recovered', value: `${totalRecoveredSol.toFixed(6)} SOL ($${(totalRecoveredSol * solPrice).toFixed(2)})`, inline: true },
+        { name: '📊 Positions', value: `${results.length} processed`, inline: true },
+        { name: '💼 Final Balance', value: `${finalBalance.toFixed(6)} SOL ($${(finalBalance * solPrice).toFixed(2)})`, inline: true },
+      ]);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Force-closed ${results.length} position(s). Recovered ${totalRecoveredSol.toFixed(6)} SOL ($${(totalRecoveredSol * solPrice).toFixed(2)}).`,
+        results,
+        total_recovered_sol: totalRecoveredSol,
+        total_recovered_usd: totalRecoveredSol * solPrice,
+        final_balance_sol: finalBalance,
+        final_balance_usd: finalBalance * solPrice,
+        sol_price: solPrice,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
