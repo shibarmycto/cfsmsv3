@@ -53,9 +53,9 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 const SCALPER_CONFIG = {
   DEFAULT_POSITION_SOL: 0.03, // Minimum 0.03 SOL per trade
   PLATFORM_FEE_USD: 0, // NO platform fee — only network/Helius fees apply
-  TAKE_PROFIT_USD: 2.00, // $2 net profit target — pure profit to user
-  QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, lower the TP target for fast cycling
-  QUICK_EXIT_PROFIT_USD: 1.00, // $1 net profit after 1.5 min
+  TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: exit immediately at $2+
+  QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
+  QUICK_EXIT_PROFIT_USD: 2.00, // Keep $2 minimum — strict rule, no lowering
   STOP_LOSS_PCT: -0.25, // -25% stop loss (only after grace period)
   MAX_HOLD_MINUTES: 5, // 5 min max per token
   MAX_SLIPPAGE_BPS: 150, // Tighter slippage to prevent entry losses
