@@ -841,7 +841,7 @@ export default function SolanaSignalsDashboard() {
     }
     setIsCAScalping(true);
     setCAScalpStatus('🎯 Starting targeted scalp...');
-    const currentTradeAmount = Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance) / 100);
+    const currentTradeAmount = (wallet.balanceSol * tradePercentOfBalance) / 100;
     try {
       const { data, error } = await supabase.functions.invoke('solana-auto-trade', {
         body: { action: 'scalp_ca', mint_address: targetCA, trade_amount_sol: currentTradeAmount },
@@ -885,7 +885,7 @@ export default function SolanaSignalsDashboard() {
         await checkActivePositions();
       } else {
         setCAScalpStatus('🔄 Position closed — re-buying same CA...');
-        const tradeAmt = wallet ? Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance) / 100) : 0.03;
+        const tradeAmt = wallet ? (wallet.balanceSol * tradePercentOfBalance) / 100 : 0.001;
         try {
           const { data } = await supabase.functions.invoke('solana-auto-trade', {
             body: { action: 'scalp_ca', mint_address: targetCA, trade_amount_sol: tradeAmt },
