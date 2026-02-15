@@ -499,6 +499,63 @@ export type Database = {
         }
         Relationships: []
       }
+      auto_trade_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          last_scan_at: string | null
+          last_trade_at: string | null
+          mode: string
+          started_at: string
+          stopped_at: string | null
+          target_ca: string | null
+          total_loss_usd: number
+          total_profit_usd: number
+          trade_amount_sol: number
+          trade_percent: number
+          trades_completed: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_scan_at?: string | null
+          last_trade_at?: string | null
+          mode?: string
+          started_at?: string
+          stopped_at?: string | null
+          target_ca?: string | null
+          total_loss_usd?: number
+          total_profit_usd?: number
+          trade_amount_sol?: number
+          trade_percent?: number
+          trades_completed?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_scan_at?: string | null
+          last_trade_at?: string | null
+          mode?: string
+          started_at?: string
+          stopped_at?: string | null
+          target_ca?: string | null
+          total_loss_usd?: number
+          total_profit_usd?: number
+          trade_amount_sol?: number
+          trade_percent?: number
+          trades_completed?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       blocked_users: {
         Row: {
           blocked_id: string

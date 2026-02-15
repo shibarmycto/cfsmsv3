@@ -1489,6 +1489,397 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // ACTION: BACKGROUND_RUN — Called by cron to process all active sessions
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'background_run') {
+      // Fetch all active auto-trade sessions
+      const { data: sessions } = await supabaseAdmin
+        .from('auto_trade_sessions')
+        .select('*')
+        .eq('is_active', true);
+
+      if (!sessions || sessions.length === 0) {
+        return new Response(JSON.stringify({ success: true, message: 'No active sessions', processed: 0 }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const results: any[] = [];
+      for (const session of sessions) {
+        const sessionUserId = session.user_id;
+        try {
+          // Check if user still has valid 24h access
+          const { data: accessData } = await supabaseAdmin
+            .from('signal_access_sessions')
+            .select('*')
+            .eq('user_id', sessionUserId)
+            .eq('is_active', true)
+            .gte('expires_at', new Date().toISOString())
+            .limit(1);
+          
+          if (!accessData || accessData.length === 0) {
+            // Session expired — deactivate
+            await supabaseAdmin.from('auto_trade_sessions')
+              .update({ is_active: false, stopped_at: new Date().toISOString() })
+              .eq('id', session.id);
+            results.push({ session_id: session.id, status: 'deactivated', reason: 'Access session expired' });
+            continue;
+          }
+
+          // Get user's wallet
+          const { data: userWallet } = await supabaseAdmin
+            .from('solana_wallets')
+            .select('public_key, encrypted_private_key')
+            .eq('user_id', sessionUserId)
+            .single();
+
+          if (!userWallet?.public_key || !userWallet?.encrypted_private_key) {
+            results.push({ session_id: session.id, status: 'skipped', reason: 'No wallet' });
+            continue;
+          }
+
+          const solPrice = await getSolPrice();
+
+          // ── Step 1: Check & close any open positions for this user ──
+          const { data: openTrades } = await supabaseAdmin
+            .from('signal_trades')
+            .select('*')
+            .eq('user_id', sessionUserId)
+            .eq('status', 'open');
+
+          if (openTrades && openTrades.length > 0) {
+            // Auto-close stale trades >12 min
+            const twelveMinAgo = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+            await supabaseAdmin.from('signal_trades')
+              .update({ status: 'closed', exit_reason: 'Stale trade auto-closed (background)', closed_at: new Date().toISOString() })
+              .eq('user_id', sessionUserId)
+              .eq('status', 'open')
+              .lt('created_at', twelveMinAgo);
+
+            // Check active (non-stale) positions for TP/SL
+            const { data: freshOpenTrades } = await supabaseAdmin
+              .from('signal_trades')
+              .select('*')
+              .eq('user_id', sessionUserId)
+              .eq('status', 'open');
+
+            if (freshOpenTrades && freshOpenTrades.length > 0) {
+              for (const trade of freshOpenTrades) {
+                const ageMin = (Date.now() - new Date(trade.created_at).getTime()) / 60000;
+                const ageSeconds = ageMin * 60;
+                const inGracePeriod = ageSeconds < SCALPER_CONFIG.GRACE_PERIOD_SECONDS;
+                const entSol = Number(trade.entry_sol) || Number(trade.amount_sol) || 0;
+                const outputTokens = Number(trade.output_tokens) || 0;
+
+                if (entSol <= 0 || outputTokens <= 0) continue;
+
+                try {
+                  const quoteUrls = JUPITER_QUOTE_ENDPOINTS.map(u =>
+                    `${u}?inputMint=${trade.mint_address}&outputMint=${SOL_MINT}&amount=${Math.floor(outputTokens * 1e6)}&slippageBps=500`
+                  );
+                  const quoteRes = await fetchWithFallback(quoteUrls);
+                  const quote = await quoteRes.json();
+
+                  if (quote.error || !quote.outAmount) {
+                    if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
+                      await supabaseAdmin.from('signal_trades').update({
+                        status: 'closed', exit_reason: 'Time stop (no quote)', closed_at: new Date().toISOString(),
+                      }).eq('id', trade.id);
+                    }
+                    continue;
+                  }
+
+                  const currentSol = parseInt(quote.outAmount) / 1e9;
+                  const pnlPct = ((currentSol - entSol) / entSol) * 100;
+                  const profitUsd = (currentSol - entSol) * solPrice;
+                  let shouldSell = false;
+                  let reason = '';
+
+                  // Take profit
+                  if (profitUsd >= SCALPER_CONFIG.TAKE_PROFIT_USD) {
+                    shouldSell = true;
+                    reason = `🎯 Take Profit! +$${profitUsd.toFixed(2)} (background)`;
+                  }
+                  // Stop loss (after grace)
+                  else if (!inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+                    shouldSell = true;
+                    reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% (background)`;
+                  }
+                  // Time stop
+                  else if (ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
+                    if (pnlPct >= -10 || ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES * 2) {
+                      shouldSell = true;
+                      reason = `⏰ Time stop (${ageMin.toFixed(0)}m, background)`;
+                    }
+                  }
+
+                  if (shouldSell) {
+                    const sellResult = await executeSwap(
+                      trade.mint_address, SOL_MINT, Math.floor(outputTokens * 1e6),
+                      userWallet.public_key, userWallet.encrypted_private_key, HELIUS_RPC, 300
+                    );
+                    const profitSol = currentSol - entSol;
+                    const netProfitUsd = profitSol * solPrice;
+
+                    await supabaseAdmin.from('signal_trades').update({
+                      status: 'closed',
+                      pnl_percent: pnlPct,
+                      gross_profit_usd: netProfitUsd,
+                      net_profit_usd: netProfitUsd,
+                      exit_reason: reason,
+                      exit_signature: sellResult.signature || '',
+                      closed_at: new Date().toISOString(),
+                    }).eq('id', trade.id);
+
+                    // Update session stats
+                    await supabaseAdmin.from('auto_trade_sessions').update({
+                      trades_completed: (session.trades_completed || 0) + 1,
+                      total_profit_usd: Number(session.total_profit_usd || 0) + (netProfitUsd > 0 ? netProfitUsd : 0),
+                      total_loss_usd: Number(session.total_loss_usd || 0) + (netProfitUsd < 0 ? Math.abs(netProfitUsd) : 0),
+                      last_trade_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    }).eq('id', session.id);
+
+                    await notifyDiscord(`${netProfitUsd >= 0 ? '💰' : '🛑'} BACKGROUND EXIT`, netProfitUsd >= 0 ? 0x00ff88 : 0xff4444, [
+                      { name: '🪙 Token', value: trade.token_name || trade.mint_address.slice(0, 12), inline: true },
+                      { name: '📊 P&L', value: `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% ($${netProfitUsd.toFixed(2)})`, inline: true },
+                      { name: '📋 Reason', value: reason, inline: false },
+                    ]);
+
+                    results.push({ session_id: session.id, action: 'sold', token: trade.token_name, pnl: netProfitUsd });
+                  }
+                } catch (e) {
+                  console.error(`[BG] Error checking position ${trade.mint_address}:`, e);
+                }
+              }
+
+              // If still have open positions after checking, skip buying
+              const { data: stillOpen } = await supabaseAdmin.from('signal_trades')
+                .select('id').eq('user_id', sessionUserId).eq('status', 'open').limit(1);
+              if (stillOpen && stillOpen.length > 0) {
+                await supabaseAdmin.from('auto_trade_sessions').update({
+                  last_scan_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+                }).eq('id', session.id);
+                results.push({ session_id: session.id, status: 'monitoring', reason: 'Position still open' });
+                continue;
+              }
+            }
+          }
+
+          // ── Step 2: No open position — discover & buy ──
+          const positionSol = Number(session.trade_amount_sol) || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
+          const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.002;
+          const solBalance = await getBalance(userWallet.public_key, HELIUS_RPC);
+
+          if (solBalance < positionSol + feesReserve) {
+            await supabaseAdmin.from('auto_trade_sessions').update({
+              last_scan_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+            }).eq('id', session.id);
+            results.push({ session_id: session.id, status: 'low_balance', balance: solBalance, needed: positionSol + feesReserve });
+            continue;
+          }
+
+          // Discover tokens
+          const freshTokens = await discoverTokens(HELIUS_API_KEY, solPrice);
+          if (freshTokens.length === 0) {
+            await supabaseAdmin.from('auto_trade_sessions').update({
+              last_scan_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+            }).eq('id', session.id);
+            results.push({ session_id: session.id, status: 'no_tokens' });
+            continue;
+          }
+
+          // Score tokens
+          const opportunities: any[] = [];
+          for (const t of freshTokens.slice(0, 15)) {
+            const now = Date.now();
+            const ageSeconds = Math.max(1, (now - (t.created_timestamp || 0)) / 1000);
+            const safetyInfo = await getTokenSafetyInfo(t.mint, HELIUS_RPC);
+            const lpSol = t.virtual_sol_reserves ? t.virtual_sol_reserves / 1e6 : (t.liquidity_usd || 0) / Math.max(solPrice, 1);
+            const metrics: TokenMetrics = {
+              age_seconds: ageSeconds,
+              buy_count: t.reply_count || 0,
+              liquidity_sol: lpSol > 0 ? lpSol : (t.liquidity_usd || 0) / Math.max(solPrice, 1),
+              liquidity_usd: t.liquidity_usd || lpSol * solPrice,
+              market_cap_usd: t.usd_market_cap || 0,
+              reply_count: t.reply_count || 0,
+              holder_count: 0,
+              mint_authority_revoked: safetyInfo.mintAuthorityRevoked,
+              freeze_authority_disabled: safetyInfo.freezeAuthorityDisabled,
+              top10_holder_pct: safetyInfo.top10HolderPct,
+            };
+            const scoring = scoreTokenPercentage(metrics);
+            opportunities.push({ ...t, ...scoring, age_seconds: ageSeconds, age_minutes: ageSeconds / 60, liquidity_sol: metrics.liquidity_sol });
+          }
+          opportunities.sort((a, b) => b.match_pct - a.match_pct);
+
+          const best = opportunities[0];
+          if (!best || best.match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) {
+            await supabaseAdmin.from('auto_trade_sessions').update({
+              last_scan_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+            }).eq('id', session.id);
+            results.push({ session_id: session.id, status: 'no_match', best_pct: best?.match_pct });
+            continue;
+          }
+
+          // Honeypot + sell check
+          let execTarget = best;
+          const isHP = await honeypotCheck(best.mint);
+          const isSellOk = isHP ? await verifySellable(best.mint) : false;
+          if (!isHP || !isSellOk) {
+            let found = false;
+            for (let i = 1; i < Math.min(opportunities.length, 8); i++) {
+              if (opportunities[i].match_pct < SCALPER_CONFIG.MIN_MATCH_PCT) break;
+              const altHP = await honeypotCheck(opportunities[i].mint);
+              if (!altHP) continue;
+              const altSell = await verifySellable(opportunities[i].mint);
+              if (altSell) { execTarget = opportunities[i]; found = true; break; }
+            }
+            if (!found) {
+              results.push({ session_id: session.id, status: 'all_blocked' });
+              continue;
+            }
+          }
+
+          // Execute buy
+          const amountLamports = Math.floor(positionSol * 1e9);
+          const tradeResult = await executeSwap(
+            SOL_MINT, execTarget.mint, amountLamports,
+            userWallet.public_key, userWallet.encrypted_private_key, HELIUS_RPC
+          );
+
+          if (tradeResult.success) {
+            const resolvedMeta = await getTokenMetadata(execTarget.mint);
+            const tokenName = resolvedMeta.name !== execTarget.mint.slice(0, 12) ? resolvedMeta.name : execTarget.name;
+            const tokenSymbol = resolvedMeta.symbol || execTarget.symbol || 'UNK';
+
+            // Save trade to DB
+            await supabaseAdmin.from('signal_trades').insert({
+              user_id: sessionUserId,
+              mint_address: execTarget.mint,
+              token_name: tokenName,
+              token_symbol: tokenSymbol,
+              trade_type: 'buy',
+              amount_sol: positionSol,
+              entry_sol: positionSol,
+              output_tokens: tradeResult.outputAmount || 0,
+              tx_signature: tradeResult.signature || '',
+              status: 'open',
+            });
+
+            // Update session
+            await supabaseAdmin.from('auto_trade_sessions').update({
+              last_trade_at: new Date().toISOString(),
+              last_scan_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('id', session.id);
+
+            await notifyDiscord('⚡ BACKGROUND BUY', 0x00ff88, [
+              { name: '🪙 Token', value: `${tokenName} (${tokenSymbol})`, inline: true },
+              { name: '💰 Position', value: `${positionSol.toFixed(4)} SOL`, inline: true },
+              { name: '📊 Match', value: `${execTarget.match_pct}%`, inline: true },
+            ]);
+
+            results.push({ session_id: session.id, action: 'bought', token: tokenName, match_pct: execTarget.match_pct });
+          } else {
+            results.push({ session_id: session.id, status: 'buy_failed', error: tradeResult.error });
+          }
+        } catch (e) {
+          console.error(`[BG] Session ${session.id} error:`, e);
+          results.push({ session_id: session.id, status: 'error', error: e.message });
+        }
+      }
+
+      console.log(`[BACKGROUND] Processed ${sessions.length} sessions:`, JSON.stringify(results));
+      return new Response(JSON.stringify({ success: true, processed: sessions.length, results }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ACTION: TRADE_SUMMARY — AI summary of recent trades
+    // ══════════════════════════════════════════════════════════════
+    if (action === 'trade_summary') {
+      const { data: recentTrades } = await supabaseAdmin
+        .from('signal_trades')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (!recentTrades || recentTrades.length === 0) {
+        return new Response(JSON.stringify({
+          success: true,
+          summary: 'No trades recorded yet. Start auto-trading to see your performance summary here.',
+          stats: { total: 0, wins: 0, losses: 0, net_profit: 0 },
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const closed = recentTrades.filter(t => t.status === 'closed');
+      const open = recentTrades.filter(t => t.status === 'open');
+      const wins = closed.filter(t => Number(t.net_profit_usd || 0) > 0);
+      const losses = closed.filter(t => Number(t.net_profit_usd || 0) <= 0);
+      const totalProfit = closed.reduce((s, t) => s + Number(t.net_profit_usd || 0), 0);
+      const totalVolume = closed.reduce((s, t) => s + Number(t.amount_sol || 0), 0);
+      const avgHoldMin = closed.length > 0
+        ? closed.reduce((s, t) => s + (t.closed_at ? (new Date(t.closed_at).getTime() - new Date(t.created_at).getTime()) / 60000 : 0), 0) / closed.length
+        : 0;
+      const bestTrade = wins.length > 0 ? wins.reduce((best, t) => Number(t.net_profit_usd || 0) > Number(best.net_profit_usd || 0) ? t : best) : null;
+      const worstTrade = losses.length > 0 ? losses.reduce((worst, t) => Number(t.net_profit_usd || 0) < Number(worst.net_profit_usd || 0) ? t : worst) : null;
+
+      const solPrice = await getSolPrice();
+      const walletBal = solWallet?.public_key ? await getBalance(solWallet.public_key, HELIUS_RPC) : 0;
+      const walletUsd = walletBal * solPrice;
+      const canContinue = walletBal >= 0.035;
+
+      const exitReasons: Record<string, number> = {};
+      closed.forEach(t => {
+        const r = t.exit_reason || 'Unknown';
+        const key = r.includes('Take Profit') || r.includes('Quick Exit') ? 'Take Profit' :
+                    r.includes('Stop Loss') ? 'Stop Loss' :
+                    r.includes('Time stop') ? 'Time Stop' :
+                    r.includes('force close') ? 'Manual Close' : 'Other';
+        exitReasons[key] = (exitReasons[key] || 0) + 1;
+      });
+
+      let summary = `📊 **Trading Summary** (Last ${recentTrades.length} trades)\n\n`;
+      summary += `• **${closed.length} completed** | ${open.length} open\n`;
+      summary += `• **Win rate:** ${closed.length > 0 ? ((wins.length / closed.length) * 100).toFixed(0) : 0}% (${wins.length}W / ${losses.length}L)\n`;
+      summary += `• **Net P&L:** ${totalProfit >= 0 ? '+' : ''}$${totalProfit.toFixed(2)}\n`;
+      summary += `• **Volume:** ${totalVolume.toFixed(4)} SOL traded\n`;
+      summary += `• **Avg hold:** ${avgHoldMin.toFixed(1)} minutes\n\n`;
+
+      if (bestTrade) summary += `🏆 **Best:** ${bestTrade.token_name} (+$${Number(bestTrade.net_profit_usd).toFixed(2)})\n`;
+      if (worstTrade) summary += `📉 **Worst:** ${worstTrade.token_name} ($${Number(worstTrade.net_profit_usd).toFixed(2)})\n\n`;
+
+      summary += `**Exit reasons:** ${Object.entries(exitReasons).map(([k, v]) => `${k}: ${v}`).join(' | ')}\n\n`;
+
+      summary += `💰 **Wallet:** ${walletBal.toFixed(4)} SOL ($${walletUsd.toFixed(2)})\n`;
+      summary += canContinue
+        ? `✅ Sufficient balance to continue trading.`
+        : `⚠️ Low balance — top up SOL to continue auto-trading (min ~0.035 SOL needed per trade).`;
+
+      return new Response(JSON.stringify({
+        success: true,
+        summary,
+        stats: {
+          total: closed.length,
+          open: open.length,
+          wins: wins.length,
+          losses: losses.length,
+          win_rate: closed.length > 0 ? ((wins.length / closed.length) * 100).toFixed(0) : '0',
+          net_profit: totalProfit,
+          total_volume_sol: totalVolume,
+          avg_hold_minutes: avgHoldMin,
+          wallet_sol: walletBal,
+          wallet_usd: walletUsd,
+          can_continue: canContinue,
+          exit_reasons: exitReasons,
+        },
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     return new Response(JSON.stringify({ success: false, error: 'Invalid action' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

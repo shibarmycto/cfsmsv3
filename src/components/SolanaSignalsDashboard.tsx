@@ -80,6 +80,15 @@ export default function SolanaSignalsDashboard() {
   const [scanStatus, setScanStatus] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const autoTradeInterval = useRef<NodeJS.Timeout | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  
+  // Trade summary
+  const [tradeSummary, setTradeSummary] = useState<string>('');
+  const [tradeStats, setTradeStats] = useState<any>(null);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  
+  // DB trade history
+  const [dbTradeHistory, setDbTradeHistory] = useState<any[]>([]);
 
   // Manual trade state
   const [tradeAmountSol, setTradeAmountSol] = useState('0.03');
@@ -265,7 +274,59 @@ export default function SolanaSignalsDashboard() {
     return () => clearInterval(timer);
   }, [accessSession?.expires_at]);
 
-  
+  // ── Resume background session on page load ──
+  const checkBackgroundSession = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase.from('auto_trade_sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (data && data.length > 0) {
+      setActiveSessionId(data[0].id);
+      setIsAutoTradeActive(true);
+      setTradePercentOfBalance(data[0].trade_percent || 10);
+      setScanStatus('🔄 Background session active — trading continues even when you leave this page');
+      // Resume local polling loop too
+      if (!autoTradeInterval.current) {
+        autoTradeInterval.current = setInterval(() => runScalperScan(true), 15000);
+      }
+    }
+  }, [user]);
+
+  // ── Load full trade history from DB ──
+  const loadFullTradeHistory = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('signal_trades')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (data) {
+      setDbTradeHistory(data);
+      const totalNet = data.reduce((sum: number, t: any) => sum + (Number(t.net_profit_usd) || 0), 0);
+      setTotalProfit(totalNet);
+    }
+  }, [user]);
+
+  // ── Fetch AI trade summary ──
+  const fetchTradeSummary = useCallback(async () => {
+    if (!user) return;
+    setIsLoadingSummary(true);
+    try {
+      const { data } = await supabase.functions.invoke('solana-auto-trade', {
+        body: { action: 'trade_summary' },
+      });
+      if (data?.summary) setTradeSummary(data.summary);
+      if (data?.stats) setTradeStats(data.stats);
+    } catch (e) {
+      console.error('Failed to load summary:', e);
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -274,6 +335,8 @@ export default function SolanaSignalsDashboard() {
       loadTokenBalance();
       loadTrades();
       checkAccessSession();
+      checkBackgroundSession();
+      loadFullTradeHistory();
     }
     return () => {
       if (balanceInterval.current) clearInterval(balanceInterval.current);
@@ -605,8 +668,27 @@ export default function SolanaSignalsDashboard() {
       toast.error('Activate a 24h session first (20 credits)');
       return;
     }
+    if (!user || !wallet) return;
+    
+    // Calculate trade amount
+    const tradeSol = Math.max(0.03, (wallet.balanceSol * tradePercentOfBalance) / 100);
+    
+    // Save session to DB so background cron can continue
+    const { data: sessionData, error: sessErr } = await supabase.from('auto_trade_sessions').insert({
+      user_id: user.id,
+      trade_percent: tradePercentOfBalance,
+      trade_amount_sol: tradeSol,
+      mode: 'auto',
+    }).select('id').single();
+    
+    if (sessErr) {
+      console.error('Failed to save session:', sessErr);
+    } else if (sessionData) {
+      setActiveSessionId(sessionData.id);
+    }
+    
     setIsAutoTradeActive(true);
-    toast.success('🤖 AI Smart Trader activated — scanning & executing every 15s');
+    toast.success('🤖 AI Smart Trader activated — runs in background even when you leave');
     // Immediately execute first trade
     await runScalperScan(true);
     // Then cycle every 15s: check positions → exit if profitable → buy next token
@@ -672,6 +754,20 @@ export default function SolanaSignalsDashboard() {
       } catch (e: any) {
         toast.error(`Failed to close positions: ${e.message}`);
       }
+    }
+
+    // Deactivate background session
+    if (activeSessionId) {
+      await supabase.from('auto_trade_sessions')
+        .update({ is_active: false, stopped_at: new Date().toISOString() })
+        .eq('id', activeSessionId);
+      setActiveSessionId(null);
+    } else if (user) {
+      // Deactivate all active sessions for this user
+      await supabase.from('auto_trade_sessions')
+        .update({ is_active: false, stopped_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('is_active', true);
     }
 
     setIsAutoTradeActive(false);
@@ -1440,33 +1536,134 @@ export default function SolanaSignalsDashboard() {
 
         {/* HISTORY TAB */}
         <TabsContent value="history" className="space-y-4">
+          {/* AI Summary */}
+          <div className="p-4 rounded-xl" style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-bold flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-[#00ff88]" /> AI Trade Summary
+              </span>
+              <Button size="sm" variant="outline" onClick={fetchTradeSummary} disabled={isLoadingSummary} className="text-xs">
+                <RefreshCw className={`w-3 h-3 mr-1 ${isLoadingSummary ? 'animate-spin' : ''}`} />
+                {isLoadingSummary ? 'Analyzing...' : 'Generate Summary'}
+              </Button>
+            </div>
+            {tradeSummary ? (
+              <div className="text-sm text-[#ccddee] whitespace-pre-line leading-relaxed">{tradeSummary}</div>
+            ) : (
+              <p className="text-xs text-[#8899aa]">Click "Generate Summary" to get an AI analysis of your recent trades.</p>
+            )}
+            {tradeStats && (
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                <div className="p-2 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <p className="text-lg font-bold text-[#00ff88]">{tradeStats.win_rate}%</p>
+                  <p className="text-[10px] text-[#8899aa]">Win Rate</p>
+                </div>
+                <div className="p-2 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <p className={`text-lg font-bold ${tradeStats.net_profit >= 0 ? 'text-[#00ff88]' : 'text-[#ff4444]'}`}>
+                    ${tradeStats.net_profit?.toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-[#8899aa]">Net P&L</p>
+                </div>
+                <div className="p-2 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <p className="text-lg font-bold text-white">{tradeStats.total}</p>
+                  <p className="text-[10px] text-[#8899aa]">Trades</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Background session status */}
+          {isAutoTradeActive && (
+            <div className="p-3 rounded-xl flex items-center gap-2" style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.2)' }}>
+              <Activity className="w-4 h-4 text-[#00ff88] animate-pulse" />
+              <span className="text-xs text-[#00ff88]">Background trading active — trades continue even when you leave this page</span>
+            </div>
+          )}
+
+          {/* Full trade history from DB */}
           <div className="p-4 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <div className="flex items-center justify-between mb-3">
               <span className="font-bold">Trade History</span>
-              <span className="text-sm text-[#00ff88]">Total: ${totalProfit.toFixed(2)}</span>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={loadFullTradeHistory} className="text-xs text-[#8899aa]">
+                  <RefreshCw className="w-3 h-3 mr-1" />Refresh
+                </Button>
+                <span className="text-sm text-[#00ff88]">Net: ${totalProfit.toFixed(2)}</span>
+              </div>
             </div>
-            {trades.filter(t => t.status === 'closed' || t.status === 'profit' || t.status === 'loss').length === 0 ? (
+            {dbTradeHistory.length === 0 ? (
               <div className="text-center py-12 text-[#8899aa]">
                 <History className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No completed trades yet</p>
                 <p className="text-xs mt-1">Activate auto-trade to start</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {trades.filter(t => t.status !== 'active').map(trade => (
-                  <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                    <div>
-                      <a href={`https://dexscreener.com/solana/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium hover:text-emerald-400 transition-colors underline decoration-dotted">{trade.token_name}</a>
-                      <a href={`https://solscan.io/token/${trade.mint}`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#8899aa] hover:text-emerald-400 transition-colors underline decoration-dotted block font-mono truncate max-w-[180px]">{trade.mint}</a>
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {dbTradeHistory.map((trade: any) => {
+                  const isOpen = trade.status === 'open';
+                  const netProfit = Number(trade.net_profit_usd || 0);
+                  const pnl = Number(trade.pnl_percent || 0);
+                  const createdAt = new Date(trade.created_at);
+                  const closedAt = trade.closed_at ? new Date(trade.closed_at) : null;
+                  const holdMinutes = closedAt ? (closedAt.getTime() - createdAt.getTime()) / 60000 : (Date.now() - createdAt.getTime()) / 60000;
+                  
+                  return (
+                    <div key={trade.id} className="p-3 rounded-xl" style={{
+                      background: isOpen ? 'rgba(0,200,255,0.06)' : netProfit > 0 ? 'rgba(0,255,136,0.04)' : 'rgba(255,68,68,0.04)',
+                      border: `1px solid ${isOpen ? 'rgba(0,200,255,0.2)' : netProfit > 0 ? 'rgba(0,255,136,0.15)' : 'rgba(255,68,68,0.15)'}`,
+                    }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <a href={`https://dexscreener.com/solana/${trade.mint_address}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold hover:text-emerald-400 transition-colors underline decoration-dotted">
+                            {trade.token_name || 'Unknown'}
+                          </a>
+                          <span className="text-[10px] text-[#8899aa]">({trade.token_symbol || 'UNK'})</span>
+                        </div>
+                        <Badge className={
+                          isOpen ? 'bg-cyan-500/20 text-cyan-400' :
+                          netProfit > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                        }>
+                          {isOpen ? '⏳ OPEN' : netProfit > 0 ? '✓ PROFIT' : '✗ LOSS'}
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs text-[#8899aa] mb-1">
+                        <span>{createdAt.toLocaleDateString()} {createdAt.toLocaleTimeString()}</span>
+                        <span>{holdMinutes.toFixed(1)}m hold</span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs">
+                          <span className="text-[#8899aa]">Entry: </span>
+                          <span className="text-white">{Number(trade.amount_sol || 0).toFixed(4)} SOL</span>
+                        </div>
+                        {!isOpen && (
+                          <div className="text-right">
+                            <span className={`text-sm font-bold ${netProfit >= 0 ? 'text-[#00ff88]' : 'text-[#ff4444]'}`}>
+                              {netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-[#8899aa] ml-1">
+                              ({pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {trade.exit_reason && (
+                        <p className="text-[10px] text-[#8899aa] mt-1">📋 {trade.exit_reason}</p>
+                      )}
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        {trade.tx_signature && (
+                          <a href={`https://solscan.io/tx/${trade.tx_signature}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-cyan-400 hover:text-cyan-300 underline decoration-dotted">Buy TX</a>
+                        )}
+                        {trade.exit_signature && (
+                          <a href={`https://solscan.io/tx/${trade.exit_signature}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-amber-400 hover:text-amber-300 underline decoration-dotted">Sell TX</a>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <Badge className={trade.status === 'profit' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
-                        {trade.status === 'profit' ? '✓ PROFIT' : '✗ LOSS'}
-                      </Badge>
-                      <p className="text-xs mt-1">{trade.pnl_percent >= 0 ? '+' : ''}{trade.pnl_percent.toFixed(1)}%</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
