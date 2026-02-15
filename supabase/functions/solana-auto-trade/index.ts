@@ -541,33 +541,20 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
 
-    let userId: string;
+    // Use service role to verify the JWT token reliably
     const token = authHeader.replace('Bearer ', '');
-    try {
-      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-      if (!claimsError && claimsData?.claims?.sub) {
-        userId = claimsData.claims.sub;
-      } else {
-        throw new Error(claimsError?.message || 'getClaims returned no claims');
-      }
-    } catch (authErr) {
-      console.error('[AUTH] getClaims failed, trying getUser:', authErr);
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        console.error('[AUTH] getUser also failed:', userError?.message);
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      userId = user.id;
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !user) {
+      console.error('[AUTH] getUser failed:', userError?.message);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    const userId = user.id;
+    console.log('[AUTH] Authenticated user:', userId);
 
     const body = await req.json();
     const { action } = body;
