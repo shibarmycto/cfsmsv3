@@ -16,7 +16,6 @@ export default function Navbar() {
     { label: 'Forum', path: '/forum' },
     { label: 'Exchange', path: '/exchange' },
     { label: 'Mining', path: '/miner' },
-    { label: 'Mint Token', path: '/create-token' },
     { label: 'CFGPT', path: 'https://cfgpt.org/', external: true },
   ];
 
