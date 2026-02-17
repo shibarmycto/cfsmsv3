@@ -5,6 +5,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Base58 helpers
+const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58Encode(bytes: Uint8Array): string {
+  let num = BigInt(0);
+  for (const b of bytes) num = num * BigInt(256) + BigInt(b);
+  let result = '';
+  while (num > BigInt(0)) {
+    result = ALPHABET[Number(num % BigInt(58))] + result;
+    num = num / BigInt(58);
+  }
+  for (const b of bytes) {
+    if (b === 0) result = '1' + result;
+    else break;
+  }
+  return result || '1';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -12,12 +29,12 @@ Deno.serve(async (req) => {
 
   try {
     const platformPrivateKey = Deno.env.get('PLATFORM_WALLET_PRIVATE_KEY')!;
-    const heliusApiKey = Deno.env.get('HELIUS_API_KEY')!;
+    const pumpPortalApiKey = Deno.env.get('PUMPPORTAL_API_KEY')!;
     const PLATFORM_PUBLIC_KEY = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
 
-    if (!platformPrivateKey) {
-      return new Response(JSON.stringify({ error: 'Platform wallet not configured' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    if (!platformPrivateKey || !pumpPortalApiKey) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing platform wallet or PumpPortal API key' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -72,51 +89,82 @@ Deno.serve(async (req) => {
         console.log('✅ Metadata uploaded:', metadataUri);
       } catch (ipfsError) {
         console.error('IPFS error:', ipfsError);
-        return new Response(JSON.stringify({ error: 'Failed to upload metadata', details: ipfsError.message }), {
-          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        return new Response(JSON.stringify({ success: false, error: 'Failed to upload metadata', details: ipfsError.message }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // Step 2: Create token via SolanaAPIs (handles tx construction + submission)
-      console.log('📡 Creating token via SolanaAPIs...');
+      // Step 2: Generate a mint keypair for the new token
+      const mintKeyPair = await crypto.subtle.generateKey(
+        { name: 'Ed25519' },
+        true,
+        ['sign', 'verify']
+      );
+
+      const mintPrivateRaw = await crypto.subtle.exportKey('pkcs8', mintKeyPair.privateKey);
+      const mintPublicRaw = await crypto.subtle.exportKey('raw', mintKeyPair.publicKey);
+      const mintPublicBytes = new Uint8Array(mintPublicRaw);
+      const mintPrivateBytes = new Uint8Array(mintPrivateRaw);
       
-      const createBody: Record<string, any> = {
-        private_key: platformPrivateKey,
-        mint_authority: PLATFORM_PUBLIC_KEY,
-        name,
-        symbol,
-        metadata_uri: metadataUri,
+      // Extract 32-byte seed from PKCS8 and build 64-byte Solana keypair
+      const mintSeed = mintPrivateBytes.slice(mintPrivateBytes.length - 32);
+      const mintFullSecret = new Uint8Array(64);
+      mintFullSecret.set(mintSeed, 0);
+      mintFullSecret.set(mintPublicBytes, 32);
+      
+      const mintPublicKeyB58 = base58Encode(mintPublicBytes);
+      const mintKeypairB58 = base58Encode(mintFullSecret);
+
+      console.log('🔑 Generated mint address (CA):', mintPublicKeyB58);
+
+      // Step 3: Create token via PumpPortal Lightning API
+      console.log('📡 Submitting creation to PumpPortal Lightning API...');
+      
+      const createPayload = {
+        action: 'create',
+        tokenMetadata: {
+          name,
+          symbol,
+          uri: metadataUri,
+        },
+        mint: mintKeypairB58,
+        denominatedInSol: 'true',
         amount: initialBuySol,
         slippage: 10,
-        priority_fee: 0.0005,
+        priorityFee: 0.0005,
+        pool: 'pump',
       };
 
-      const createRes = await fetch('https://api.solanaapis.net/pumpfun/create/token', {
+      const portalUrl = `https://pumpportal.fun/api/trade?api-key=${pumpPortalApiKey}`;
+      
+      const createRes = await fetch(portalUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createBody),
+        body: JSON.stringify(createPayload),
       });
 
-      const createResult = await createRes.json();
-      console.log('SolanaAPIs response:', JSON.stringify(createResult));
+      const createResultText = await createRes.text();
+      console.log('PumpPortal response status:', createRes.status);
+      console.log('PumpPortal response:', createResultText);
 
-      if (createResult.status !== 'success' && !createResult.mint) {
-        console.error('Token creation failed:', JSON.stringify(createResult));
+      if (!createRes.ok) {
         return new Response(JSON.stringify({ 
-          error: 'Token creation failed',
-          details: createResult,
+          success: false, 
+          error: 'PumpPortal creation failed',
+          details: createResultText,
+          mintAddress: mintPublicKeyB58,
         }), {
-          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      const contractAddress = createResult.mint;
-      const txSignature = createResult.txid || createResult.txSignature || createResult.signature || '';
+      // PumpPortal Lightning API returns the tx signature directly as text
+      const txSignature = createResultText.replace(/"/g, '').trim();
 
-      console.log('✅ TOKEN LAUNCHED!');
-      console.log('📋 CA (Contract Address):', contractAddress);
-      console.log('📋 TX:', txSignature);
-      console.log(`🔗 Pump.fun: https://pump.fun/${contractAddress}`);
+      console.log('✅ TOKEN LAUNCHED ON PUMP.FUN!');
+      console.log('📋 CA (Contract Address):', mintPublicKeyB58);
+      console.log('📋 TX Signature:', txSignature);
+      console.log(`🔗 Pump.fun: https://pump.fun/coin/${mintPublicKeyB58}`);
 
       // Send webhook notification
       const webhookUrl = Deno.env.get('ADMIN_WEBHOOK_URL');
@@ -131,8 +179,8 @@ Deno.serve(async (req) => {
                 color: 0x00ff88,
                 fields: [
                   { name: '📛 Name', value: `${name} ($${symbol})`, inline: true },
-                  { name: '📋 Contract Address (CA)', value: `\`${contractAddress}\``, inline: false },
-                  { name: '🔗 Pump.fun', value: `https://pump.fun/${contractAddress}`, inline: false },
+                  { name: '📋 Contract Address (CA)', value: `\`${mintPublicKeyB58}\``, inline: false },
+                  { name: '🔗 Pump.fun', value: `https://pump.fun/coin/${mintPublicKeyB58}`, inline: false },
                   { name: '🔗 Solscan', value: `https://solscan.io/tx/${txSignature}`, inline: false },
                   { name: '💼 Deployer', value: `\`${PLATFORM_PUBLIC_KEY}\``, inline: false },
                   { name: '📄 Metadata', value: metadataUri, inline: false },
@@ -152,10 +200,10 @@ Deno.serve(async (req) => {
         token: {
           name,
           symbol,
-          contractAddress,
+          contractAddress: mintPublicKeyB58,
           metadataUri,
           txSignature,
-          pumpfunUrl: `https://pump.fun/${contractAddress}`,
+          pumpfunUrl: `https://pump.fun/coin/${mintPublicKeyB58}`,
           solscanUrl: `https://solscan.io/tx/${txSignature}`,
           deployer: PLATFORM_PUBLIC_KEY,
         },
@@ -164,14 +212,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: 'Invalid action. Use "launch"' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    return new Response(JSON.stringify({ success: false, error: 'Invalid action. Use "launch"' }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
     console.error('Launch error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
