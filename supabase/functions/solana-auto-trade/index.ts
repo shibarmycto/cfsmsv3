@@ -1272,15 +1272,15 @@ serve(async (req) => {
       }
 
       const solPrice = await getSolPrice();
-      const positionSol = Math.max(0.05, trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL);
+      const positionSol = trade_amount_sol || SCALPER_CONFIG.DEFAULT_POSITION_SOL;
       const feesReserve = SCALPER_CONFIG.PRIORITY_FEE_SOL + 0.001;
       const solBalance = await getBalance(solWallet.public_key, HELIUS_RPC);
       const actualPositionSolCA = Math.min(positionSol, solBalance - feesReserve);
 
-      if (solBalance < 0.1 + feesReserve) {
+      if (actualPositionSolCA <= 0.001) {
         return new Response(JSON.stringify({
           success: false,
-          error: `Need at least 0.1 SOL + gas. Balance: ${solBalance.toFixed(6)} SOL.`,
+          error: `Insufficient balance for trade + gas. Balance: ${solBalance.toFixed(6)} SOL.`,
         }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
