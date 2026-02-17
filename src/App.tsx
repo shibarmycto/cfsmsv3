@@ -22,6 +22,7 @@ import Promo from "./pages/Promo";
 import Exchange from "./pages/Exchange";
 import Roleplay from "./pages/Roleplay";
 import CRM from "./pages/CRM";
+import SolanaToken from "./pages/SolanaToken";
 import NotFound from "./pages/NotFound";
 import LiveTradeNotifications from "./components/LiveTradeNotifications";
 
@@ -76,6 +77,7 @@ const App = () => {
               <Route path="/exchange" element={<Exchange />} />
               <Route path="/roleplay" element={<Roleplay />} />
               <Route path="/crm" element={<CRM />} />
+              <Route path="/token" element={<SolanaToken />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

@@ -28,6 +28,7 @@ import {
   Gamepad2,
   Info,
   Users,
+  Rocket,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -167,6 +168,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-5 lg:flex lg:flex-col gap-1 lg:gap-2 bg-card/50 lg:bg-transparent rounded-lg lg:rounded-none p-2 lg:p-4 border border-border lg:border-border/50">
               {[
                 { id: 'info', icon: Info, label: 'Info' },
+                { id: 'token', icon: Rocket, label: '$CFB', isLink: true, href: '/token' },
                 { id: 'ai-agent', icon: Bot, label: 'AI' },
                 { id: 'cfgpt', icon: Sparkles, label: 'CFGPT', isExternal: true, href: 'https://cfgpt.org/' },
                 { id: 'forum', icon: MessageSquare, label: 'Forum', isLink: true, href: '/forum' },
