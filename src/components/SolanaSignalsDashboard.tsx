@@ -571,9 +571,9 @@ export default function SolanaSignalsDashboard() {
     // Step 1: Always check active positions for TP/SL/time-stop exits (use ref for fresh data)
     let activePositions = tradesRef.current.filter(t => t.status === 'active');
     
-    // Failsafe: Auto-close stale trades older than 12 minutes (should never last this long)
+    // Failsafe: Auto-close stale trades older than 65 minutes
     const now = Date.now();
-    const staleThresholdMs = 12 * 60 * 1000; // 12 minutes
+    const staleThresholdMs = 65 * 60 * 1000; // 65 minutes
     for (const pos of activePositions) {
       const ageMs = now - new Date(pos.timestamp).getTime();
       if (ageMs > staleThresholdMs) {

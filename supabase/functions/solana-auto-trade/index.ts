@@ -55,13 +55,13 @@ const PLATFORM_FLAT_FEE_SOL = 0.001; // Mandatory 0.001 SOL flat fee per scalp
 const PLATFORM_PROFIT_FEE_PERCENT = 0.02; // 2% of profit (only on winning trades)
 
 const SCALPER_CONFIG = {
-  DEFAULT_POSITION_SOL: 0.05, // Minimum 0.05 SOL for CA scalping
-  PLATFORM_FEE_USD: 0, // Legacy USD fee — replaced by % SOL fee
-  TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: exit immediately at $2+
-  QUICK_EXIT_MINUTES: 1.5, // After 1.5 min, still require $2 minimum
-  QUICK_EXIT_PROFIT_USD: 2.00, // Keep $2 minimum — strict rule, no lowering
-  STOP_LOSS_PCT: -0.25, // -25% stop loss (only after grace period)
-  MAX_HOLD_MINUTES: 10, // HARD 10 min max — if no $2 profit by 10min, EXIT regardless
+  DEFAULT_POSITION_SOL: 0.05,
+  PLATFORM_FEE_USD: 0,
+  TAKE_PROFIT_USD: 2.00, // $2 net profit target — STRICT: ONLY exit at $2+
+  QUICK_EXIT_MINUTES: 1.5,
+  QUICK_EXIT_PROFIT_USD: 2.00,
+  STOP_LOSS_PCT: -0.90, // -90% — effectively disabled, we hold until $2 profit
+  MAX_HOLD_MINUTES: 60, // 60 min hold — give token time to pump to $2
   MAX_SLIPPAGE_BPS: 150, // Tighter slippage to prevent entry losses
   MAX_TOKEN_AGE_MINUTES: 5, // STRICT: only trade tokens ≤5 min old — fresh launches only
   MIN_LP_SOL: 3,
@@ -926,14 +926,14 @@ serve(async (req) => {
 
       // ── CHECK: If activate mode, ensure no open position already exists ──
       if (shouldExecute) {
-        // First, auto-close any stale trades older than 12 minutes
-        const twelveMinAgo = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+        // First, auto-close any stale trades older than 65 minutes
+        const staleMinAgo = new Date(Date.now() - 65 * 60 * 1000).toISOString();
         await supabaseAdmin
           .from('signal_trades')
           .update({ status: 'closed', exit_reason: 'Stale trade auto-closed (server)', closed_at: new Date().toISOString() })
           .eq('user_id', userId)
           .eq('status', 'open')
-          .lt('created_at', twelveMinAgo);
+          .lt('created_at', staleMinAgo);
 
         const { data: openTrades } = await supabaseAdmin
           .from('signal_trades')
@@ -1496,41 +1496,17 @@ serve(async (req) => {
           const isQuickExit = ageMin >= SCALPER_CONFIG.QUICK_EXIT_MINUTES;
           const activeNetTarget = isQuickExit ? SCALPER_CONFIG.QUICK_EXIT_PROFIT_USD : SCALPER_CONFIG.TAKE_PROFIT_USD;
 
-          // ── PRIORITY 0: Early momentum check — if no pump in first 30s, bail ──
-          if (ageSeconds <= SCALPER_CONFIG.NO_MOMENTUM_EXIT_SECONDS && pnlPct <= 0) {
-            const momentum = await checkEarlyMomentum(pos.mint, HELIUS_API_KEY);
-            if (!momentum.hasMomentum && ageSeconds >= 10) {
-              shouldSell = true;
-              reason = `🚫 No early momentum (${momentum.detail}) — exiting at ${ageSeconds.toFixed(0)}s`;
-            }
-          }
-
-          // ── PRIORITY 1: Take Profit — ALWAYS check, even during grace period ──
+          // ── PRIORITY 1: Take Profit — ONLY exit when $2+ profit is made ──
           if (!shouldSell && profitUsdRaw >= activeNetTarget) {
             shouldSell = true;
             const label = isQuickExit ? '⚡ Quick Exit' : '🎯 Take Profit';
             reason = `${label}! +$${netProfitUsd.toFixed(2)} net [${ageMin.toFixed(1)}m]`;
           }
 
-          // ── PRIORITY 2: Sell pressure / dev dump detection ──
-          if (!shouldSell && ageSeconds > 15) {
-            const sellPressure = await detectSellPressure(pos.mint, HELIUS_API_KEY);
-            if (sellPressure.isDumping) {
-              shouldSell = true;
-              reason = `🚨 Sell pressure detected (${sellPressure.detail}) — protecting capital [${ageMin.toFixed(1)}m]`;
-            }
-          }
-
-          // ── PRIORITY 3: Stop Loss — ONLY after grace period (90s) ──
-          else if (!shouldSell && !inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
+          // ── PRIORITY 2: Hard 60-minute time stop — last resort only ──
+          if (!shouldSell && ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
             shouldSell = true;
-            reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% ($${profitUsdRaw.toFixed(2)}) [after ${SCALPER_CONFIG.GRACE_PERIOD_SECONDS}s grace]`;
-          }
-
-          // ── PRIORITY 4: Hard 10-minute time stop — NO recovery hold, just EXIT ──
-          else if (!shouldSell && ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
-            shouldSell = true;
-            reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} net — no $2 profit achieved, exiting`;
+            reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m): $${profitUsdRaw.toFixed(2)} — exiting after max hold`;
           }
 
           if (shouldSell) {
@@ -1819,13 +1795,13 @@ serve(async (req) => {
             .eq('status', 'open');
 
           if (openTrades && openTrades.length > 0) {
-            // Auto-close stale trades >12 min
-            const twelveMinAgo = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+            // Auto-close stale trades >65 min (slightly above max hold)
+            const staleMinAgo = new Date(Date.now() - 65 * 60 * 1000).toISOString();
             await supabaseAdmin.from('signal_trades')
               .update({ status: 'closed', exit_reason: 'Stale trade auto-closed (background)', closed_at: new Date().toISOString() })
               .eq('user_id', sessionUserId)
               .eq('status', 'open')
-              .lt('created_at', twelveMinAgo);
+              .lt('created_at', staleMinAgo);
 
             // Check active (non-stale) positions for TP/SL
             const { data: freshOpenTrades } = await supabaseAdmin
@@ -1866,40 +1842,16 @@ serve(async (req) => {
                   let shouldSell = false;
                   let reason = '';
 
-                  // Early momentum check — no pump in first 30s = bail
-                  if (ageSeconds <= SCALPER_CONFIG.NO_MOMENTUM_EXIT_SECONDS && pnlPct <= 0 && ageSeconds >= 10) {
-                    const momentum = await checkEarlyMomentum(trade.mint_address, HELIUS_API_KEY);
-                    if (!momentum.hasMomentum) {
-                      shouldSell = true;
-                      reason = `🚫 No early momentum (${momentum.detail}) — background exit at ${ageSeconds.toFixed(0)}s`;
-                    }
-                  }
-
-                  // Take profit
+                  // Take profit — ONLY exit at $2+ profit
                   if (!shouldSell && profitUsd >= SCALPER_CONFIG.TAKE_PROFIT_USD) {
                     shouldSell = true;
                     reason = `🎯 Take Profit! +$${profitUsd.toFixed(2)} (background)`;
                   }
 
-                  // Sell pressure / dev dump
-                  if (!shouldSell && ageSeconds > 15) {
-                    const sellPressure = await detectSellPressure(trade.mint_address, HELIUS_API_KEY);
-                    if (sellPressure.isDumping) {
-                      shouldSell = true;
-                      reason = `🚨 Sell pressure (${sellPressure.detail}) — background exit`;
-                    }
-                  }
-
-                  // Stop loss (after grace)
-                  if (!shouldSell && !inGracePeriod && pnlPct <= SCALPER_CONFIG.STOP_LOSS_PCT * 100) {
-                    shouldSell = true;
-                    reason = `🛑 Stop Loss: ${pnlPct.toFixed(1)}% (background)`;
-                  }
-
-                  // Hard 10-min time stop — NO recovery hold
+                  // Hard 60-min time stop — last resort
                   if (!shouldSell && ageMin >= SCALPER_CONFIG.MAX_HOLD_MINUTES) {
                     shouldSell = true;
-                    reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m) — no $2 profit, background exit`;
+                    reason = `⏰ Hard time stop (${ageMin.toFixed(0)}m) — background exit`;
                   }
 
                   if (shouldSell) {
