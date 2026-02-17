@@ -5,7 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Base58 helpers
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 function base58Encode(bytes: Uint8Array): string {
   let num = BigInt(0);
@@ -28,12 +27,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const platformPrivateKey = Deno.env.get('PLATFORM_WALLET_PRIVATE_KEY')!;
     const pumpPortalApiKey = Deno.env.get('PUMPPORTAL_API_KEY')!;
+    const heliusApiKey = Deno.env.get('HELIUS_API_KEY')!;
     const PLATFORM_PUBLIC_KEY = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
 
-    if (!platformPrivateKey || !pumpPortalApiKey) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing platform wallet or PumpPortal API key' }), {
+    if (!pumpPortalApiKey) {
+      return new Response(JSON.stringify({ success: false, error: 'PumpPortal API key not configured' }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -41,18 +40,54 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // ===== CHECK PREVIOUS TX STATUS =====
+    if (action === 'check_tx') {
+      const { signature } = body;
+      if (!signature) {
+        return new Response(JSON.stringify({ success: false, error: 'No signature provided' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+      const statusRes = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'getTransaction',
+          params: [signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }],
+        }),
+      });
+      const statusResult = await statusRes.json();
+      
+      return new Response(JSON.stringify({
+        success: true,
+        found: !!statusResult.result,
+        transaction: statusResult.result ? {
+          slot: statusResult.result.slot,
+          err: statusResult.result.meta?.err,
+          fee: statusResult.result.meta?.fee,
+        } : null,
+        error: statusResult.error || null,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // ===== LAUNCH TOKEN =====
     if (action === 'launch') {
       const {
         name = 'CF Blockchain',
         symbol = 'CFB',
-        description = 'CF Blockchain Network — The future of decentralized community tokens. Anti-rug pull protection, revenue sharing, and milestone rewards.',
+        description = 'CF Blockchain Network — The future of decentralized community tokens.',
         telegram = 'https://t.me/cfblockchain',
         website = 'https://cfsmsv3.lovable.app',
         twitter = '',
         initialBuySol = 0,
       } = body;
 
-      console.log(`🚀 Launching token: ${name} ($${symbol}) on Pump.fun`);
+      console.log(`🚀 Launching: ${name} ($${symbol})`);
 
       // Step 1: Upload metadata to Pump.fun IPFS
       let metadataUri = '';
@@ -60,8 +95,7 @@ Deno.serve(async (req) => {
         const logoUrl = 'https://cfsmsv3.lovable.app/cf-blockchain-logo.png';
         const logoRes = await fetch(logoUrl);
         const logoBlob = await logoRes.blob();
-        const logoArrayBuffer = await logoBlob.arrayBuffer();
-        const logoBytes = new Uint8Array(logoArrayBuffer);
+        const logoBytes = new Uint8Array(await logoBlob.arrayBuffer());
 
         const formData = new FormData();
         formData.append('name', name);
@@ -73,137 +107,133 @@ Deno.serve(async (req) => {
         formData.append('showName', 'true');
         formData.append('file', new Blob([logoBytes], { type: 'image/png' }), 'logo.png');
 
-        console.log('📤 Uploading metadata to Pump.fun IPFS...');
-        const ipfsRes = await fetch('https://pump.fun/api/ipfs', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!ipfsRes.ok) {
-          const errText = await ipfsRes.text();
-          throw new Error(`IPFS upload failed: ${ipfsRes.status} - ${errText}`);
-        }
-
+        const ipfsRes = await fetch('https://pump.fun/api/ipfs', { method: 'POST', body: formData });
+        if (!ipfsRes.ok) throw new Error(`IPFS: ${ipfsRes.status} ${await ipfsRes.text()}`);
         const ipfsData = await ipfsRes.json();
         metadataUri = ipfsData.metadataUri;
-        console.log('✅ Metadata uploaded:', metadataUri);
-      } catch (ipfsError) {
-        console.error('IPFS error:', ipfsError);
-        return new Response(JSON.stringify({ success: false, error: 'Failed to upload metadata', details: ipfsError.message }), {
+        console.log('✅ IPFS:', metadataUri);
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: 'IPFS upload failed', details: e.message }), {
           status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // Step 2: Generate a mint keypair for the new token
-      const mintKeyPair = await crypto.subtle.generateKey(
-        { name: 'Ed25519' },
-        true,
-        ['sign', 'verify']
-      );
+      // Step 2: Generate mint keypair
+      const mintKP = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+      const mintPrivRaw = new Uint8Array(await crypto.subtle.exportKey('pkcs8', mintKP.privateKey));
+      const mintPubBytes = new Uint8Array(await crypto.subtle.exportKey('raw', mintKP.publicKey));
+      const mintSeed = mintPrivRaw.slice(mintPrivRaw.length - 32);
+      const mintFull = new Uint8Array(64);
+      mintFull.set(mintSeed, 0);
+      mintFull.set(mintPubBytes, 32);
+      const mintCA = base58Encode(mintPubBytes);
+      const mintKeypairB58 = base58Encode(mintFull);
 
-      const mintPrivateRaw = await crypto.subtle.exportKey('pkcs8', mintKeyPair.privateKey);
-      const mintPublicRaw = await crypto.subtle.exportKey('raw', mintKeyPair.publicKey);
-      const mintPublicBytes = new Uint8Array(mintPublicRaw);
-      const mintPrivateBytes = new Uint8Array(mintPrivateRaw);
-      
-      // Extract 32-byte seed from PKCS8 and build 64-byte Solana keypair
-      const mintSeed = mintPrivateBytes.slice(mintPrivateBytes.length - 32);
-      const mintFullSecret = new Uint8Array(64);
-      mintFullSecret.set(mintSeed, 0);
-      mintFullSecret.set(mintPublicBytes, 32);
-      
-      const mintPublicKeyB58 = base58Encode(mintPublicBytes);
-      const mintKeypairB58 = base58Encode(mintFullSecret);
+      console.log('🔑 Mint CA:', mintCA);
 
-      console.log('🔑 Generated mint address (CA):', mintPublicKeyB58);
-
-      // Step 3: Create token via PumpPortal Lightning API
-      console.log('📡 Submitting creation to PumpPortal Lightning API...');
+      // Step 3: PumpPortal Lightning API (uses PumpPortal's funded wallet)
+      console.log('📡 Submitting to PumpPortal Lightning API...');
       
-      const createPayload = {
-        action: 'create',
-        tokenMetadata: {
-          name,
-          symbol,
-          uri: metadataUri,
-        },
-        mint: mintKeypairB58,
-        denominatedInSol: 'true',
-        amount: initialBuySol,
-        slippage: 10,
-        priorityFee: 0.0005,
-        pool: 'pump',
-      };
-
-      const portalUrl = `https://pumpportal.fun/api/trade?api-key=${pumpPortalApiKey}`;
-      
-      const createRes = await fetch(portalUrl, {
+      const createRes = await fetch(`https://pumpportal.fun/api/trade?api-key=${pumpPortalApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createPayload),
+        body: JSON.stringify({
+          action: 'create',
+          tokenMetadata: { name, symbol, uri: metadataUri },
+          mint: mintKeypairB58,
+          denominatedInSol: 'true',
+          amount: initialBuySol,
+          slippage: 10,
+          priorityFee: 0.0005,
+          pool: 'pump',
+        }),
       });
 
-      const createResultText = await createRes.text();
-      console.log('PumpPortal response status:', createRes.status);
-      console.log('PumpPortal response:', createResultText);
+      const resultText = await createRes.text();
+      console.log('PumpPortal status:', createRes.status, 'response:', resultText);
 
       if (!createRes.ok) {
         return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'PumpPortal creation failed',
-          details: createResultText,
-          mintAddress: mintPublicKeyB58,
+          success: false, error: 'PumpPortal creation failed', 
+          details: resultText, httpStatus: createRes.status 
         }), {
           status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
-      // PumpPortal Lightning API returns the tx signature directly as text
-      const txSignature = createResultText.replace(/"/g, '').trim();
+      // Parse response - could be JSON or plain text
+      let txSignature = '';
+      try {
+        const parsed = JSON.parse(resultText);
+        txSignature = parsed.signature || parsed.txid || resultText;
+        if (parsed.errors && parsed.errors.length > 0) {
+          console.error('PumpPortal errors:', parsed.errors);
+          return new Response(JSON.stringify({ 
+            success: false, error: 'PumpPortal reported errors', 
+            details: parsed.errors, mintCA 
+          }), {
+            status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      } catch {
+        txSignature = resultText.replace(/"/g, '').trim();
+      }
 
-      console.log('✅ TOKEN LAUNCHED ON PUMP.FUN!');
-      console.log('📋 CA (Contract Address):', mintPublicKeyB58);
-      console.log('📋 TX Signature:', txSignature);
-      console.log(`🔗 Pump.fun: https://pump.fun/coin/${mintPublicKeyB58}`);
+      console.log('✅ LAUNCHED! CA:', mintCA, 'TX:', txSignature);
 
-      // Send webhook notification
+      // Verify transaction landed on-chain
+      console.log('🔍 Verifying transaction on-chain...');
+      await new Promise(r => setTimeout(r, 3000)); // Wait 3s for confirmation
+      
+      const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+      const verifyRes = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'getTransaction',
+          params: [txSignature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }],
+        }),
+      });
+      const verifyResult = await verifyRes.json();
+      const confirmed = !!verifyResult.result;
+      const txError = verifyResult.result?.meta?.err;
+
+      console.log('On-chain status:', confirmed ? (txError ? `FAILED: ${JSON.stringify(txError)}` : 'CONFIRMED ✅') : 'NOT FOUND (may still be pending)');
+
+      // Webhook
       const webhookUrl = Deno.env.get('ADMIN_WEBHOOK_URL');
       if (webhookUrl) {
-        try {
-          await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              embeds: [{
-                title: '🚀 CF BLOCKCHAIN TOKEN LAUNCHED ON PUMP.FUN!',
-                color: 0x00ff88,
-                fields: [
-                  { name: '📛 Name', value: `${name} ($${symbol})`, inline: true },
-                  { name: '📋 Contract Address (CA)', value: `\`${mintPublicKeyB58}\``, inline: false },
-                  { name: '🔗 Pump.fun', value: `https://pump.fun/coin/${mintPublicKeyB58}`, inline: false },
-                  { name: '🔗 Solscan', value: `https://solscan.io/tx/${txSignature}`, inline: false },
-                  { name: '💼 Deployer', value: `\`${PLATFORM_PUBLIC_KEY}\``, inline: false },
-                  { name: '📄 Metadata', value: metadataUri, inline: false },
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: 'CF Blockchain — Pump.fun Launch' },
-              }],
-            }),
-          });
-        } catch (e) {
-          console.error('Webhook failed:', e);
-        }
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            embeds: [{
+              title: confirmed && !txError ? '🚀 CF BLOCKCHAIN LAUNCHED!' : '⚠️ Token Launch — Pending Verification',
+              color: confirmed && !txError ? 0x00ff88 : 0xffaa00,
+              fields: [
+                { name: '📛 Token', value: `${name} ($${symbol})`, inline: true },
+                { name: '📋 CA', value: `\`${mintCA}\``, inline: false },
+                { name: '🔗 Pump.fun', value: `https://pump.fun/coin/${mintCA}`, inline: false },
+                { name: '📝 TX', value: `\`${txSignature}\``, inline: false },
+                { name: '✅ Confirmed', value: confirmed ? (txError ? `❌ Error: ${JSON.stringify(txError)}` : 'Yes') : 'Pending...', inline: true },
+              ],
+              timestamp: new Date().toISOString(),
+            }],
+          }),
+        }).catch(() => {});
       }
 
       return new Response(JSON.stringify({
         success: true,
+        confirmed,
+        txError: txError || null,
         token: {
-          name,
-          symbol,
-          contractAddress: mintPublicKeyB58,
+          name, symbol,
+          contractAddress: mintCA,
           metadataUri,
           txSignature,
-          pumpfunUrl: `https://pump.fun/coin/${mintPublicKeyB58}`,
+          pumpfunUrl: `https://pump.fun/coin/${mintCA}`,
           solscanUrl: `https://solscan.io/tx/${txSignature}`,
           deployer: PLATFORM_PUBLIC_KEY,
         },
@@ -212,12 +242,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: false, error: 'Invalid action. Use "launch"' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Use action: "launch" or "check_tx"' }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
-    console.error('Launch error:', error);
+    console.error('Error:', error);
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
