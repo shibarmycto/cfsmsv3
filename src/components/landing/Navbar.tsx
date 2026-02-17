@@ -12,6 +12,7 @@ export default function Navbar() {
 
   const navLinks = [
     { label: 'About', path: '/about' },
+    { label: '$CFB Token', path: '/token' },
     { label: 'FAQs', path: '/faqs' },
     { label: 'Forum', path: '/forum' },
     { label: 'Exchange', path: '/exchange' },
