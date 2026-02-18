@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect, memo } from 'react';
-import { Maximize2, Minimize2, Mic, Menu, MessageSquare, Crosshair } from 'lucide-react';
+import { Maximize2, Minimize2, Mic, Menu, MessageSquare, Crosshair, Volume2, VolumeX } from 'lucide-react';
+import { gameSounds } from './GameSoundSystem';
 
 interface EnhancedMobileControlsProps {
   onMove: (x: number, z: number) => void;
@@ -18,41 +19,60 @@ interface EnhancedMobileControlsProps {
   equippedWeapon: string;
 }
 
-// Large 120px+ joystick with auto-sprint at edges
-const Joystick = memo(function Joystick({ 
+// ─── FIXED JOYSTICK ───────────────────────────────────────────────────
+// Stays at a fixed position in bottom-left. Much more reliable than dynamic.
+const FixedJoystick = memo(function FixedJoystick({ 
   onMove, 
   onSprint 
 }: { 
   onMove: (x: number, z: number) => void;
   onSprint: (active: boolean) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const outerRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef({ x: 0, y: 0 });
+  const [pos, setPos] = useState({ x: 0, y: 0 });
   const [active, setActive] = useState(false);
-  const [origin, setOrigin] = useState({ x: 0, y: 0 });
   const touchIdRef = useRef<number | null>(null);
-  const autoSprintRef = useRef(false);
+  const moveTimerRef = useRef<number | null>(null);
 
-  const handleStart = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    if (touchIdRef.current !== null) return;
-    
-    const touch = e.touches[0];
-    touchIdRef.current = touch.identifier;
-    setActive(true);
-    
-    // Dynamic positioning - joystick appears where touched
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setOrigin({
-        x: Math.max(60, Math.min(touch.clientX - rect.left, rect.width - 60)),
-        y: Math.max(60, Math.min(touch.clientY - rect.top, rect.height - 60))
-      });
+  // Continuous movement emission for smooth gameplay
+  const emitMove = useCallback(() => {
+    const { x, y } = posRef.current;
+    onMove(x, y);
+  }, [onMove]);
+
+  const startContinuousMove = useCallback(() => {
+    if (moveTimerRef.current) return;
+    const loop = () => {
+      emitMove();
+      moveTimerRef.current = requestAnimationFrame(loop);
+    };
+    moveTimerRef.current = requestAnimationFrame(loop);
+  }, [emitMove]);
+
+  const stopContinuousMove = useCallback(() => {
+    if (moveTimerRef.current) {
+      cancelAnimationFrame(moveTimerRef.current);
+      moveTimerRef.current = null;
     }
   }, []);
 
+  useEffect(() => () => stopContinuousMove(), [stopContinuousMove]);
+
+  const handleStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (touchIdRef.current !== null) return;
+    const touch = e.changedTouches[0];
+    touchIdRef.current = touch.identifier;
+    setActive(true);
+    startContinuousMove();
+  }, [startContinuousMove]);
+
   const handleMove = useCallback((e: React.TouchEvent) => {
-    if (touchIdRef.current === null || !containerRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (touchIdRef.current === null || !outerRef.current) return;
 
     let touch: React.Touch | null = null;
     for (let i = 0; i < e.touches.length; i++) {
@@ -63,157 +83,120 @@ const Joystick = memo(function Joystick({
     }
     if (!touch) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const touchX = touch.clientX - rect.left;
-    const touchY = touch.clientY - rect.top;
+    const rect = outerRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
 
-    let dx = touchX - origin.x;
-    let dy = touchY - origin.y;
-    
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const maxDistance = 55; // Max stick travel
-    const sprintThreshold = 50; // Auto-sprint at edge
-    
-    // Clamp to max distance
-    if (distance > maxDistance) {
-      dx = (dx / distance) * maxDistance;
-      dy = (dy / distance) * maxDistance;
-    }
-    
-    setPosition({ x: dx, y: dy });
-    
-    // Normalize for movement (-1 to 1)
-    const normalizedX = dx / maxDistance;
-    const normalizedZ = dy / maxDistance;
-    onMove(normalizedX, normalizedZ);
-    
-    // Auto-sprint when pushed to edge
-    const shouldSprint = distance >= sprintThreshold;
-    if (shouldSprint !== autoSprintRef.current) {
-      autoSprintRef.current = shouldSprint;
-      onSprint(shouldSprint);
-    }
-  }, [origin, onMove, onSprint]);
+    let dx = touch.clientX - cx;
+    let dy = touch.clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxR = rect.width / 2 - 15;
 
-  const handleEnd = useCallback(() => {
-    touchIdRef.current = null;
-    setActive(false);
-    setPosition({ x: 0, y: 0 });
-    onMove(0, 0);
-    if (autoSprintRef.current) {
-      autoSprintRef.current = false;
+    if (dist > maxR) {
+      dx = (dx / dist) * maxR;
+      dy = (dy / dist) * maxR;
+    }
+
+    setPos({ x: dx, y: dy });
+
+    const nx = dx / maxR;
+    const ny = dy / maxR;
+    posRef.current = { x: nx, y: ny };
+
+    // Auto-sprint at edge
+    const shouldSprint = dist / maxR > 0.85;
+    onSprint(shouldSprint);
+  }, [onSprint]);
+
+  const handleEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    // Check if our touch ended
+    let found = false;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === touchIdRef.current) { found = true; break; }
+    }
+    if (!found) {
+      touchIdRef.current = null;
+      setActive(false);
+      setPos({ x: 0, y: 0 });
+      posRef.current = { x: 0, y: 0 };
+      onMove(0, 0);
       onSprint(false);
+      stopContinuousMove();
     }
-  }, [onMove, onSprint]);
+  }, [onMove, onSprint, stopContinuousMove]);
 
   return (
     <div 
-      ref={containerRef}
-      className="absolute bottom-0 left-0 w-[45%] h-[60%] touch-none"
+      ref={outerRef}
+      className="absolute bottom-6 left-6 w-[140px] h-[140px] touch-none pointer-events-auto"
       onTouchStart={handleStart}
       onTouchMove={handleMove}
       onTouchEnd={handleEnd}
       onTouchCancel={handleEnd}
     >
-      {/* Joystick visualization */}
+      {/* Outer ring */}
+      <div className={`absolute inset-0 rounded-full transition-colors duration-150 ${
+        active 
+          ? 'bg-white/15 border-2 border-cyan-400/60' 
+          : 'bg-white/8 border-2 border-white/25'
+      }`}>
+        {/* Cardinal direction arrows */}
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 text-white/50 text-xs font-bold">▲</div>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-white/50 text-xs font-bold">▼</div>
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 text-xs font-bold">◀</div>
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 text-xs font-bold">▶</div>
+      </div>
+      
+      {/* Inner stick - 56px */}
       <div 
-        className="absolute w-[130px] h-[130px] pointer-events-none"
+        className={`absolute w-14 h-14 rounded-full border-2 ${
+          active 
+            ? 'bg-gradient-to-br from-cyan-400 to-blue-600 border-cyan-300 shadow-xl shadow-cyan-500/40'
+            : 'bg-gradient-to-br from-gray-500 to-gray-700 border-white/30'
+        }`}
         style={{
-          left: active ? origin.x - 65 : 30,
-          top: active ? origin.y - 65 : 'auto',
-          bottom: active ? 'auto' : 30,
-          transition: active ? 'none' : 'all 0.2s ease-out'
+          left: `calc(50% - 28px + ${pos.x}px)`,
+          top: `calc(50% - 28px + ${pos.y}px)`,
+          transition: active ? 'none' : 'all 0.12s ease-out'
         }}
       >
-        {/* Outer ring with glow */}
-        <div className={`absolute inset-0 rounded-full transition-all duration-150 ${
-          active 
-            ? 'bg-white/15 border-2 border-cyan-400/60 shadow-lg shadow-cyan-500/20' 
-            : 'bg-white/10 border-2 border-white/20'
-        }`}>
-          {/* Direction indicators */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-transparent border-b-white/40" />
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[10px] border-transparent border-t-white/40" />
-          <div className="absolute left-2 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-b-[6px] border-r-[10px] border-transparent border-r-white/40" />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-b-[6px] border-l-[10px] border-transparent border-l-white/40" />
-        </div>
-        
-        {/* Inner stick - 60px diameter */}
-        <div 
-          className={`absolute w-[60px] h-[60px] rounded-full border-2 transition-all ${
-            active 
-              ? autoSprintRef.current
-                ? 'bg-gradient-to-br from-orange-400 to-red-500 border-orange-300 shadow-xl shadow-orange-500/40'
-                : 'bg-gradient-to-br from-cyan-400 to-blue-500 border-cyan-300 shadow-xl shadow-cyan-500/40'
-              : 'bg-gradient-to-br from-gray-400 to-gray-600 border-white/30'
-          }`}
-          style={{
-            left: 35 + position.x,
-            top: 35 + position.y,
-            transform: 'translate(0, 0)',
-            transition: active ? 'none' : 'all 0.15s ease-out'
-          }}
-        >
-          <div className="absolute inset-0 rounded-full bg-gradient-to-t from-transparent to-white/30" />
-        </div>
-        
-        {/* Sprint indicator */}
-        {active && autoSprintRef.current && (
-          <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-orange-400 text-xs font-bold animate-pulse">
-            SPRINT
-          </div>
-        )}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-t from-transparent to-white/25" />
       </div>
     </div>
   );
 });
 
-// Action button with haptic feedback visual
-const ActionButton = memo(function ActionButton({
+// ─── ACTION BUTTON ────────────────────────────────────────────────────
+const ActionBtn = memo(function ActionBtn({
   children,
   onPress,
+  onRelease,
   className = '',
-  size = 'normal',
-  disabled = false
+  size = 64,
 }: {
   children: React.ReactNode;
   onPress: () => void;
+  onRelease?: () => void;
   className?: string;
-  size?: 'small' | 'normal' | 'large';
-  disabled?: boolean;
+  size?: number;
 }) {
   const [pressed, setPressed] = useState(false);
-  
-  const sizeClasses = {
-    small: 'w-12 h-12',
-    normal: 'w-16 h-16',
-    large: 'w-20 h-20'
-  };
-
-  const handleTouch = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (disabled) return;
-    setPressed(true);
-    onPress();
-  };
 
   return (
     <button
-      onTouchStart={handleTouch}
-      onTouchEnd={() => setPressed(false)}
-      onTouchCancel={() => setPressed(false)}
-      onClick={() => !disabled && onPress()}
-      disabled={disabled}
-      className={`${sizeClasses[size]} rounded-full flex items-center justify-center transition-all 
-        ${pressed ? 'scale-90' : 'scale-100'} 
-        ${disabled ? 'opacity-50' : ''} 
-        ${className}`}
+      onTouchStart={(e) => { e.preventDefault(); setPressed(true); onPress(); }}
+      onTouchEnd={(e) => { e.preventDefault(); setPressed(false); onRelease?.(); }}
+      onTouchCancel={() => { setPressed(false); onRelease?.(); }}
+      className={`rounded-full flex items-center justify-center transition-transform ${pressed ? 'scale-90' : 'scale-100'} ${className}`}
+      style={{ width: size, height: size }}
     >
       {children}
     </button>
   );
 });
 
+// ─── MAIN CONTROLS ───────────────────────────────────────────────────
 export default function EnhancedMobileControls({
   onMove,
   onAttack,
@@ -231,6 +214,7 @@ export default function EnhancedMobileControls({
   equippedWeapon
 }: EnhancedMobileControlsProps) {
   const [jumpCooldown, setJumpCooldown] = useState(false);
+  const [sfxEnabled, setSfxEnabled] = useState(gameSounds.isEnabled());
 
   const handleJump = useCallback(() => {
     if (jumpCooldown) return;
@@ -239,35 +223,63 @@ export default function EnhancedMobileControls({
     setTimeout(() => setJumpCooldown(false), 400);
   }, [jumpCooldown, onJump]);
 
-  // Get weapon icon
-  const getWeaponIcon = () => {
+  const handleAttack = useCallback(() => {
+    onAttack();
+    if (equippedWeapon && equippedWeapon !== 'fists' && equippedWeapon !== 'knife' && equippedWeapon !== 'bat') {
+      gameSounds.playGunshot();
+    } else {
+      gameSounds.playHit();
+    }
+  }, [onAttack, equippedWeapon]);
+
+  const toggleSfx = useCallback(() => {
+    const next = !sfxEnabled;
+    setSfxEnabled(next);
+    gameSounds.setEnabled(next);
+  }, [sfxEnabled]);
+
+  const weaponIcon = (() => {
     switch (equippedWeapon) {
       case 'knife': return '🔪';
       case 'bat': return '🏏';
-      case 'pistol': return '🔫';
-      case 'rifle': return '🔫';
+      case 'pistol': case 'rifle': case 'smg': return '🔫';
       default: return '👊';
     }
-  };
+  })();
+
+  // Prevent scroll on game controls area
+  useEffect(() => {
+    const prevent = (e: TouchEvent) => {
+      if (e.target instanceof Element && e.target.closest('.game-mobile-ctrl')) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', prevent, { passive: false });
+    return () => document.removeEventListener('touchmove', prevent);
+  }, []);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-30">
+    <div className="fixed inset-0 pointer-events-none z-30 game-mobile-ctrl">
       {/* Top bar */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
         <button 
-          onClick={onToggleFullscreen}
-          className="p-2.5 bg-black/50 backdrop-blur-sm rounded-xl border border-white/20"
+          onClick={toggleSfx}
+          className="p-2 bg-black/50 backdrop-blur-sm rounded-xl border border-white/20"
         >
-          {isLandscape ? (
-            <Minimize2 className="w-5 h-5 text-white" />
-          ) : (
-            <Maximize2 className="w-5 h-5 text-white" />
-          )}
+          {sfxEnabled 
+            ? <Volume2 className="w-5 h-5 text-green-400" /> 
+            : <VolumeX className="w-5 h-5 text-red-400" />
+          }
         </button>
-        
+        <button 
+          onClick={onToggleFullscreen}
+          className="p-2 bg-black/50 backdrop-blur-sm rounded-xl border border-white/20"
+        >
+          {isLandscape ? <Minimize2 className="w-5 h-5 text-white" /> : <Maximize2 className="w-5 h-5 text-white" />}
+        </button>
         <button 
           onClick={onOpenMenu}
-          className="p-2.5 bg-black/50 backdrop-blur-sm rounded-xl border border-white/20"
+          className="p-2 bg-black/50 backdrop-blur-sm rounded-xl border border-white/20"
         >
           <Menu className="w-5 h-5 text-white" />
         </button>
@@ -279,80 +291,69 @@ export default function EnhancedMobileControls({
           <div className="bg-gray-900 rounded-2xl p-8 text-center border border-white/10 mx-6">
             <Maximize2 className="w-20 h-20 text-cyan-400 mx-auto mb-4 animate-pulse" />
             <p className="text-white font-bold text-2xl mb-2">Rotate Your Device</p>
-            <p className="text-gray-400">For the best gameplay experience,<br/>please use landscape mode</p>
+            <p className="text-gray-400">For the best gameplay,<br/>use landscape mode</p>
           </div>
         </div>
       )}
 
-      {/* LEFT SIDE - Joystick area (45% of screen width) */}
-      <div className="pointer-events-auto">
-        <Joystick onMove={onMove} onSprint={onSprint} />
-      </div>
+      {/* LEFT: Fixed Joystick */}
+      <FixedJoystick onMove={onMove} onSprint={onSprint} />
 
-      {/* RIGHT SIDE - Action buttons */}
-      <div className="absolute bottom-6 right-6 flex flex-col gap-3 pointer-events-auto">
-        {/* Voice chat */}
-        <ActionButton
+      {/* RIGHT: Action buttons - vertical stack */}
+      <div className="absolute bottom-6 right-4 flex flex-col gap-2.5 pointer-events-auto">
+        {/* Voice */}
+        <ActionBtn
           onPress={onToggleVoice}
-          size="normal"
-          className={`border-2 ${
-            voiceActive 
-              ? 'bg-green-500/60 border-green-400 shadow-lg shadow-green-500/30' 
-              : 'bg-black/50 border-white/20'
-          }`}
+          size={48}
+          className={`border-2 ${voiceActive ? 'bg-green-500/60 border-green-400' : 'bg-black/50 border-white/20'}`}
         >
-          <Mic className={`w-6 h-6 ${voiceActive ? 'text-white' : 'text-gray-300'}`} />
-        </ActionButton>
+          <Mic className={`w-5 h-5 ${voiceActive ? 'text-white' : 'text-gray-300'}`} />
+        </ActionBtn>
 
         {/* Chat */}
-        <ActionButton
+        <ActionBtn
           onPress={onOpenChat}
-          size="normal"
+          size={48}
           className="bg-black/50 border-2 border-white/20"
         >
-          <MessageSquare className="w-6 h-6 text-gray-300" />
-        </ActionButton>
+          <MessageSquare className="w-5 h-5 text-gray-300" />
+        </ActionBtn>
 
         {/* Jump */}
-        <ActionButton
+        <ActionBtn
           onPress={handleJump}
-          size="normal"
-          disabled={jumpCooldown}
-          className={`border-2 ${
-            jumpCooldown 
-              ? 'bg-gray-600/50 border-gray-500' 
-              : 'bg-gradient-to-br from-emerald-500 to-green-600 border-emerald-300 shadow-lg shadow-emerald-500/30'
-          }`}
+          size={56}
+          className={`border-2 ${jumpCooldown ? 'bg-gray-600/50 border-gray-500' : 'bg-emerald-500 border-emerald-300 shadow-lg shadow-emerald-500/30'}`}
         >
-          <span className="text-white font-black text-sm">JUMP</span>
-        </ActionButton>
+          <span className="text-white font-black text-xs">JUMP</span>
+        </ActionBtn>
 
-        {/* Interact - only show when near something */}
+        {/* Interact - show when near */}
         {nearbyInteraction && (
-          <ActionButton
+          <ActionBtn
             onPress={onInteract}
-            size="normal"
-            className="bg-gradient-to-br from-amber-500 to-orange-600 border-2 border-amber-300 shadow-lg shadow-amber-500/30"
+            size={56}
+            className="bg-amber-500 border-2 border-amber-300 shadow-lg shadow-amber-500/30"
           >
             <span className="text-white font-black text-lg">E</span>
-          </ActionButton>
+          </ActionBtn>
         )}
 
-        {/* Attack - LARGE button */}
-        <ActionButton
-          onPress={onAttack}
-          size="large"
-          className="bg-gradient-to-br from-red-500 to-red-700 border-4 border-red-400 shadow-xl shadow-red-500/40"
+        {/* ATTACK - largest button */}
+        <ActionBtn
+          onPress={handleAttack}
+          size={72}
+          className="bg-red-600 border-4 border-red-400 shadow-xl shadow-red-500/40"
         >
-          <span className="text-4xl">{getWeaponIcon()}</span>
-        </ActionButton>
+          <span className="text-3xl">{weaponIcon}</span>
+        </ActionBtn>
       </div>
 
-      {/* Sprint indicator (when manually enabled) */}
+      {/* Sprint indicator */}
       {isSprinting && (
-        <div className="absolute bottom-40 left-48 pointer-events-none">
+        <div className="absolute bottom-[170px] left-[170px] pointer-events-none">
           <div className="bg-orange-500/30 border border-orange-400 rounded-lg px-3 py-1">
-            <span className="text-orange-400 font-bold text-sm">🏃 SPRINTING</span>
+            <span className="text-orange-400 font-bold text-xs">🏃 SPRINT</span>
           </div>
         </div>
       )}
@@ -361,14 +362,14 @@ export default function EnhancedMobileControls({
       {nearbyInteraction && (
         <div className="absolute bottom-[30%] left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-black/80 backdrop-blur-sm rounded-xl px-4 py-2 border border-cyan-500/50">
-            <span className="text-cyan-400 font-bold">Press E to {nearbyInteraction}</span>
+            <span className="text-cyan-400 font-bold text-sm">Press E to {nearbyInteraction}</span>
           </div>
         </div>
       )}
 
       {/* Center crosshair */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-40">
-        <Crosshair className="w-6 h-6 text-white" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-30">
+        <Crosshair className="w-5 h-5 text-white" />
       </div>
     </div>
   );

@@ -35,6 +35,7 @@ export default function GameSideMenu({
     { id: 'gangs', icon: <Skull className="w-6 h-6" />, label: 'GANGS', badge: 7 },
     { id: 'factions', icon: <Users className="w-6 h-6" />, label: 'FACTIONS' },
     { id: 'jobs', icon: <Briefcase className="w-6 h-6" />, label: 'JOBS' },
+    { id: 'airdrop', icon: <Gift className="w-6 h-6" />, label: 'AIRDROPS', badge: 1 },
     { id: 'events', icon: <Star className="w-6 h-6" />, label: 'EVENTS', badge: 1 },
     { id: 'profile', icon: <User className="w-6 h-6" />, label: 'PROFILE', badge: 1 },
     { id: 'tasks', icon: <Ticket className="w-6 h-6" />, label: 'TASKS', badge: 1 },
