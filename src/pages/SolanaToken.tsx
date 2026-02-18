@@ -5,6 +5,9 @@ import { toast } from 'sonner';
 import cfLogo from '@/assets/cf-blockchain-logo.png';
 import Navbar from '@/components/landing/Navbar';
 import Footer from '@/components/landing/Footer';
+import TokenLiveStats from '@/components/token/TokenLiveStats';
+import TokenCalculator from '@/components/token/TokenCalculator';
+import TokenGainsChart from '@/components/token/TokenGainsChart';
 
 const TOKEN_CA = '8hiQpxRxqiW31B6LZsJbdLPhxGT4DA2kX2TMZXLDjoy9';
 const PUMP_FUN_URL = `https://pump.fun/coin/${TOKEN_CA}`;
@@ -85,6 +88,22 @@ export default function SolanaToken() {
               CFGPT.ORG <ExternalLink className="w-3 h-3" />
             </a>
           </div>
+        </div>
+      </section>
+
+      {/* Live Stats */}
+      <section className="container mx-auto px-6 pb-12">
+        <TokenLiveStats />
+      </section>
+
+      {/* Calculator & Gains Chart */}
+      <section className="container mx-auto px-6 py-12">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-8">
+          Calculate Your <span className="text-gradient">Potential</span>
+        </h2>
+        <div className="grid lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+          <TokenCalculator />
+          <TokenGainsChart />
         </div>
       </section>
 
