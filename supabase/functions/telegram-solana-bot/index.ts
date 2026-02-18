@@ -33,6 +33,7 @@ interface TokenData {
   priceChange24h: number;
   pairName: string;
   dexId: string;
+  isPumpFun: boolean;
 }
 
 async function fetchTokenData(): Promise<TokenData | null> {
@@ -41,13 +42,33 @@ async function fetchTokenData(): Promise<TokenData | null> {
     const json = await res.json();
     const pair = json.pairs?.[0];
     if (!pair) return null;
+
+    let liquidity = pair.liquidity?.usd || 0;
+
+    // PumpFun uses bonding curve — estimate liquidity from MCap if DexScreener returns 0
+    if (liquidity === 0 && pair.dexId === 'pumpfun') {
+      // Bonding curve liquidity ≈ market cap (tokens are backed by the curve)
+      liquidity = pair.marketCap || pair.fdv || 0;
+    }
+
+    // Fallback: try Birdeye for liquidity if still 0
+    if (liquidity === 0) {
+      try {
+        const birdRes = await fetch(`https://public-api.birdeye.so/defi/token_overview?address=${TOKEN_CA}`, {
+          headers: { 'accept': 'application/json' }
+        });
+        const birdJson = await birdRes.json();
+        if (birdJson.data?.liquidity) liquidity = birdJson.data.liquidity;
+      } catch (_) { /* ignore fallback errors */ }
+    }
+
     return {
       priceUsd: pair.priceUsd || '0',
       priceNative: pair.priceNative || '0',
       marketCap: pair.marketCap || pair.fdv || 0,
       fdv: pair.fdv || 0,
       volume24h: pair.volume?.h24 || 0,
-      liquidity: pair.liquidity?.usd || 0,
+      liquidity,
       buysTxns: pair.txns?.h24?.buys || 0,
       sellsTxns: pair.txns?.h24?.sells || 0,
       priceChange5m: pair.priceChange?.m5 || 0,
@@ -56,6 +77,7 @@ async function fetchTokenData(): Promise<TokenData | null> {
       priceChange24h: pair.priceChange?.h24 || 0,
       pairName: pair.baseToken?.name || 'CF Token',
       dexId: pair.dexId || 'unknown',
+      isPumpFun: pair.dexId === 'pumpfun',
     };
   } catch (e) {
     console.error('DexScreener fetch error:', e);
@@ -97,7 +119,7 @@ ${title}
 
 📈 <b>Market Data:</b>
    💎 MCap: <b>$${data.marketCap.toLocaleString()}</b>
-   💧 Liquidity: <b>$${data.liquidity.toLocaleString()}</b>
+   💧 Liquidity: <b>${data.isPumpFun && data.liquidity === data.marketCap ? '🔄 Bonding Curve' : '$' + data.liquidity.toLocaleString()}</b>
    📊 24h Vol: <b>$${data.volume24h.toLocaleString()}</b>
 
 🔄 <b>24h Transactions:</b>
