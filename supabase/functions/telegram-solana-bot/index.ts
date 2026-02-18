@@ -1,87 +1,249 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const BOT_TOKEN = Deno.env.get('TELEGRAM_SOLANA_BOT_TOKEN');
-const VERSION = "v2.0.0"; // bump on deploy
+const BOT_TOKEN = Deno.env.get('TELEGRAM_SOLANA_BOT_TOKEN')!;
+const TOKEN_CA = '8hiQpxRxqiW31B6LZsJbdLPhxGT4DA2kX2TMZXLDjoy9';
+const VERSION = "v3.0.0";
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// Helper to send messages with optional inline keyboard
-async function sendMessage(chatId: number, text: string, keyboard?: object) {
-  const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: 'HTML' };
+const BUY_LINKS = {
+  jupiter: `https://jup.ag/swap/SOL-${TOKEN_CA}`,
+  raydium: `https://raydium.io/swap/?inputMint=So11111111111111111111111111111111111111112&outputMint=${TOKEN_CA}`,
+  dexscreener: `https://dexscreener.com/solana/${TOKEN_CA}`,
+  birdeye: `https://birdeye.so/token/${TOKEN_CA}?chain=solana`,
+};
+
+interface TokenData {
+  priceUsd: string;
+  priceNative: string;
+  marketCap: number;
+  fdv: number;
+  volume24h: number;
+  liquidity: number;
+  buysTxns: number;
+  sellsTxns: number;
+  priceChange5m: number;
+  priceChange1h: number;
+  priceChange6h: number;
+  priceChange24h: number;
+  pairName: string;
+  dexId: string;
+}
+
+async function fetchTokenData(): Promise<TokenData | null> {
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${TOKEN_CA}`);
+    const json = await res.json();
+    const pair = json.pairs?.[0];
+    if (!pair) return null;
+    return {
+      priceUsd: pair.priceUsd || '0',
+      priceNative: pair.priceNative || '0',
+      marketCap: pair.marketCap || pair.fdv || 0,
+      fdv: pair.fdv || 0,
+      volume24h: pair.volume?.h24 || 0,
+      liquidity: pair.liquidity?.usd || 0,
+      buysTxns: pair.txns?.h24?.buys || 0,
+      sellsTxns: pair.txns?.h24?.sells || 0,
+      priceChange5m: pair.priceChange?.m5 || 0,
+      priceChange1h: pair.priceChange?.h1 || 0,
+      priceChange6h: pair.priceChange?.h6 || 0,
+      priceChange24h: pair.priceChange?.h24 || 0,
+      pairName: pair.baseToken?.name || 'CF Token',
+      dexId: pair.dexId || 'unknown',
+    };
+  } catch (e) {
+    console.error('DexScreener fetch error:', e);
+    return null;
+  }
+}
+
+function formatPrice(p: string): string {
+  const n = parseFloat(p);
+  if (n < 0.0001) return n.toExponential(2);
+  if (n < 1) return n.toFixed(6);
+  return n.toFixed(4);
+}
+
+function changeEmoji(v: number): string {
+  return v >= 0 ? `🟢 +${v.toFixed(2)}%` : `🔴 ${v.toFixed(2)}%`;
+}
+
+function buildStatsMessage(data: TokenData, title: string): string {
+  const totalTxns = data.buysTxns + data.sellsTxns;
+  const buyRatio = totalTxns > 0 ? ((data.buysTxns / totalTxns) * 100).toFixed(0) : '50';
+  const sentiment = data.buysTxns > data.sellsTxns ? '🐂 BULLISH' : data.buysTxns < data.sellsTxns ? '🐻 BEARISH' : '➡️ NEUTRAL';
+
+  return `
+${title}
+━━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>${data.pairName}</b>
+📍 DEX: ${data.dexId.toUpperCase()}
+
+💰 <b>Price:</b> $${formatPrice(data.priceUsd)}
+⟡ <b>SOL:</b> ${formatPrice(data.priceNative)} SOL
+
+📊 <b>Price Changes:</b>
+   5m: ${changeEmoji(data.priceChange5m)}
+   1h: ${changeEmoji(data.priceChange1h)}
+   6h: ${changeEmoji(data.priceChange6h)}
+   24h: ${changeEmoji(data.priceChange24h)}
+
+📈 <b>Market Data:</b>
+   💎 MCap: <b>$${data.marketCap.toLocaleString()}</b>
+   💧 Liquidity: <b>$${data.liquidity.toLocaleString()}</b>
+   📊 24h Vol: <b>$${data.volume24h.toLocaleString()}</b>
+
+🔄 <b>24h Transactions:</b>
+   🟢 Buys: <b>${data.buysTxns.toLocaleString()}</b>
+   🔴 Sells: <b>${data.sellsTxns.toLocaleString()}</b>
+   📊 Buy Ratio: <b>${buyRatio}%</b>
+   ${sentiment}
+
+━━━━━━━━━━━━━━━━━━━━━━
+🕐 <i>${new Date().toUTCString()}</i>
+`;
+}
+
+function buildBuyKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: '🚀 Buy on Jupiter', url: BUY_LINKS.jupiter }],
+      [{ text: '💹 Raydium', url: BUY_LINKS.raydium }, { text: '📊 DexScreener', url: BUY_LINKS.dexscreener }],
+      [{ text: '🦅 Birdeye', url: BUY_LINKS.birdeye }],
+      [{ text: '📈 Live Stats', callback_data: 'live_stats' }, { text: '🔔 Alerts Info', callback_data: 'alerts_info' }],
+    ]
+  };
+}
+
+function buildTradeAlert(type: 'buy' | 'sell', data: TokenData): string {
+  const emoji = type === 'buy' ? '🟢🟢🟢' : '🔴🔴🔴';
+  const action = type === 'buy' ? 'BUY DETECTED' : 'SELL DETECTED';
+  return `
+${emoji} <b>${action}</b> ${emoji}
+━━━━━━━━━━━━━━━━━━━━━━
+
+🪙 <b>${data.pairName}</b>
+
+💰 Price: <b>$${formatPrice(data.priceUsd)}</b>
+📊 5m Change: ${changeEmoji(data.priceChange5m)}
+💎 MCap: $${data.marketCap.toLocaleString()}
+💧 Liq: $${data.liquidity.toLocaleString()}
+
+🔄 24h: ${data.buysTxns} buys / ${data.sellsTxns} sells
+
+━━━━━━━━━━━━━━━━━━━━━━
+⚡ <a href="${BUY_LINKS.jupiter}">Trade Now on Jupiter</a>
+`;
+}
+
+async function sendMessage(chatId: number | string, text: string, keyboard?: object) {
+  const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true };
   if (keyboard) body.reply_markup = keyboard;
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  return res.json();
 }
 
-// Inline keyboard for trading controls
-const tradingKeyboard = {
-  inline_keyboard: [
-    [{ text: '🚀 Trade Now', callback_data: 'trade_now' }],
-    [{ text: '▶️ Start Trading', callback_data: 'start_trading' }, { text: '⏹ Stop Trading', callback_data: 'stop_trading' }],
-    [{ text: '📊 My Stats', callback_data: 'stats' }, { text: '⚙️ Settings', callback_data: 'settings' }]
-  ]
-};
+async function broadcastToAllChats(supabase: any, text: string, keyboard?: object) {
+  // Send to registered groups from telegram_bot_groups
+  const { data: groups } = await supabase
+    .from('telegram_bot_groups')
+    .select('chat_id')
+    .eq('is_active', true);
+
+  let sent = 0;
+  if (groups) {
+    for (const g of groups) {
+      try {
+        await sendMessage(g.chat_id, text, keyboard);
+        sent++;
+      } catch (e) {
+        console.error(`Failed broadcast to ${g.chat_id}:`, e);
+      }
+    }
+  }
+  return sent;
+}
 
 serve(async (req) => {
-  console.log(`[${VERSION}] Request received`);
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   try {
+    // === POST: Telegram webhook ===
     if (req.method === 'POST') {
       const update = await req.json();
-      console.log(`[${VERSION}] Update:`, JSON.stringify(update));
 
       // Handle commands
       if (update.message) {
         const chatId = update.message.chat.id;
         const text = (update.message.text || '').trim();
+        const isGroup = update.message.chat.type === 'group' || update.message.chat.type === 'supergroup';
 
-        if (text === '/start') {
-          await sendMessage(chatId,
-            `<b>🤖 CF Solana Soldier MEV Bot</b>\n\nWelcome! I can help you trade Solana tokens with MEV protection.\n\nUse the buttons below to start trading.`,
-            tradingKeyboard
+        // Auto-register groups
+        if (isGroup) {
+          await supabase.from('telegram_bot_groups').upsert(
+            { chat_id: String(chatId), bot_name: 'CF Solana Soldier', is_active: true },
+            { onConflict: 'chat_id' }
           );
-        } else if (text === '/trade' || text === '/menu') {
-          await sendMessage(chatId, '<b>Trading Panel</b>\nSelect an option:', tradingKeyboard);
-        } else if (text === '/help') {
-          await sendMessage(chatId,
-            `<b>Commands</b>\n/start - Main menu\n/trade - Trading panel\n/help - Show this help`,
-            tradingKeyboard
-          );
+        }
+
+        if (text === '/start' || text === '/start@CFSolanaSoldierBot') {
+          const data = await fetchTokenData();
+          if (data) {
+            await sendMessage(chatId, buildStatsMessage(data, '🤖 <b>CF SOLANA SOLDIER — LIVE TRACKER</b>'), buildBuyKeyboard());
+          } else {
+            await sendMessage(chatId, '🤖 <b>CF Solana Soldier Bot</b>\n\nTracking CF Token in real-time. Use /price for live stats.', buildBuyKeyboard());
+          }
+        } else if (text === '/price' || text === '/price@CFSolanaSoldierBot') {
+          const data = await fetchTokenData();
+          if (data) {
+            await sendMessage(chatId, buildStatsMessage(data, '📊 <b>LIVE TOKEN STATS</b>'), buildBuyKeyboard());
+          } else {
+            await sendMessage(chatId, '❌ Could not fetch token data. Try again shortly.');
+          }
+        } else if (text === '/buy' || text === '/buy@CFSolanaSoldierBot') {
+          await sendMessage(chatId, `🚀 <b>BUY CF TOKEN</b>\n\n📍 CA: <code>${TOKEN_CA}</code>\n\nChoose your platform:`, buildBuyKeyboard());
+        } else if (text === '/help' || text === '/help@CFSolanaSoldierBot') {
+          await sendMessage(chatId, `<b>🤖 CF Solana Soldier Commands</b>\n\n/start — Dashboard & live stats\n/price — Current price & market data\n/buy — Quick buy links\n/ca — Copy contract address\n/help — Show this help\n\n<b>Auto Alerts:</b>\n✅ Hourly price updates\n✅ Buy & sell movement alerts\n✅ Real-time market sentiment`, buildBuyKeyboard());
+        } else if (text === '/ca' || text === '/ca@CFSolanaSoldierBot') {
+          await sendMessage(chatId, `📋 <b>Contract Address:</b>\n\n<code>${TOKEN_CA}</code>\n\nTap to copy ☝️`);
         }
       }
 
-      // Handle button callbacks
+      // Handle callbacks
       if (update.callback_query) {
         const cbq = update.callback_query;
         const chatId = cbq.message.chat.id;
-        const data = cbq.data;
 
-        // Acknowledge callback immediately
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ callback_query_id: cbq.id }),
         });
 
-        if (data === 'trade_now') {
-          await sendMessage(chatId, '🚀 <b>Trade Now</b>\n\nSend a Solana token address to analyze and trade.\n\nExample:\n<code>Enter token address here</code>', tradingKeyboard);
-        } else if (data === 'start_trading') {
-          await sendMessage(chatId, '▶️ <b>Auto-trading started!</b>\n\nThe bot is now monitoring for profitable opportunities. You will receive alerts when trades are executed.', tradingKeyboard);
-        } else if (data === 'stop_trading') {
-          await sendMessage(chatId, '⏹ <b>Auto-trading stopped.</b>\n\nYou can restart anytime using the button below.', tradingKeyboard);
-        } else if (data === 'stats') {
-          await sendMessage(chatId, '📊 <b>Your Stats</b>\n\nTrades today: 0\nProfit: $0.00\nWin rate: --', tradingKeyboard);
-        } else if (data === 'settings') {
-          await sendMessage(chatId, '⚙️ <b>Settings</b>\n\nSettings panel coming soon!', tradingKeyboard);
+        if (cbq.data === 'live_stats') {
+          const data = await fetchTokenData();
+          if (data) {
+            await sendMessage(chatId, buildStatsMessage(data, '📊 <b>LIVE TOKEN STATS</b>'), buildBuyKeyboard());
+          }
+        } else if (cbq.data === 'alerts_info') {
+          await sendMessage(chatId, `🔔 <b>Alert System Active</b>\n\nThis bot automatically sends:\n\n⏰ <b>Hourly Updates</b> — Price, volume, sentiment\n🟢 <b>Buy Alerts</b> — When buying pressure increases\n🔴 <b>Sell Alerts</b> — When selling pressure increases\n📊 <b>Milestone Alerts</b> — Price & MCap milestones\n\nAlerts are sent to all groups where this bot is added.\n\n<i>Add this bot to your group to receive alerts!</i>`, buildBuyKeyboard());
         }
       }
 
@@ -90,25 +252,67 @@ serve(async (req) => {
       });
     }
 
-    // GET: health check or webhook management
+    // === GET: Actions (hourly update, test, webhook setup) ===
     if (req.method === 'GET') {
       const url = new URL(req.url);
       const action = url.searchParams.get('action');
 
       if (action === 'setWebhook') {
-        const webhookUrl = `https://vdvijwzkultowrambvhe.supabase.co/functions/v1/telegram-solana-bot`;
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+        const webhookUrl = `${supabaseUrl}/functions/v1/telegram-solana-bot`;
+        const res = await fetch(`${TELEGRAM_API}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
         const result = await res.json();
         return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       if (action === 'getWebhookInfo') {
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo`);
+        const res = await fetch(`${TELEGRAM_API}/getWebhookInfo`);
         const result = await res.json();
         return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      return new Response(JSON.stringify({ status: 'ok', bot: 'CF Solana Soldier Bot', _version: VERSION }), {
+      // Hourly update broadcast
+      if (action === 'hourly_update') {
+        const data = await fetchTokenData();
+        if (!data) {
+          return new Response(JSON.stringify({ error: 'No token data' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const msg = buildStatsMessage(data, '⏰ <b>HOURLY UPDATE — CF TOKEN</b>');
+        const sent = await broadcastToAllChats(supabase, msg, buildBuyKeyboard());
+        return new Response(JSON.stringify({ success: true, groups_notified: sent }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Trade alert (called externally when buy/sell detected)
+      if (action === 'trade_alert') {
+        const type = (url.searchParams.get('type') || 'buy') as 'buy' | 'sell';
+        const data = await fetchTokenData();
+        if (!data) {
+          return new Response(JSON.stringify({ error: 'No token data' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const msg = buildTradeAlert(type, data);
+        const sent = await broadcastToAllChats(supabase, msg, buildBuyKeyboard());
+        return new Response(JSON.stringify({ success: true, type, groups_notified: sent }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Test message — send current stats to all groups
+      if (action === 'test') {
+        const chatId = url.searchParams.get('chat_id');
+        const data = await fetchTokenData();
+        if (!data) {
+          return new Response(JSON.stringify({ error: 'No token data available' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const msg = buildStatsMessage(data, '🧪 <b>TEST — CF SOLANA SOLDIER LIVE</b>');
+
+        if (chatId) {
+          const result = await sendMessage(chatId, msg, buildBuyKeyboard());
+          return new Response(JSON.stringify({ success: true, result }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        } else {
+          const sent = await broadcastToAllChats(supabase, msg, buildBuyKeyboard());
+          return new Response(JSON.stringify({ success: true, groups_notified: sent }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      }
+
+      // Default health
+      return new Response(JSON.stringify({ status: 'ok', bot: 'CF Solana Soldier', token_ca: TOKEN_CA, _version: VERSION }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
