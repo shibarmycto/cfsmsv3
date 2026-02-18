@@ -358,10 +358,10 @@ Automated volume booster for <b>$CFB</b> token on Solana.
         if (keyBytes.length !== 64) throw new Error('Invalid key length');
 
         // Derive public key
+        // Validate the seed can be imported as Ed25519
         const seed = keyBytes.slice(0, 32);
-        const cryptoKey = await crypto.subtle.importKey('pkcs8', buildPkcs8(seed), { name: 'Ed25519' }, true, ['sign']);
-        const exported = await crypto.subtle.exportKey('raw', cryptoKey);
-        // For Ed25519, the public key is the last 32 bytes of the 64-byte secret key
+        await crypto.subtle.importKey('pkcs8', buildPkcs8(seed), { name: 'Ed25519' }, false, ['sign']);
+        // Public key is the last 32 bytes of the 64-byte secret key
         const pubKeyBytes = keyBytes.slice(32, 64);
         // Base58 encode public key
         let pubKey = base58Encode(pubKeyBytes);
