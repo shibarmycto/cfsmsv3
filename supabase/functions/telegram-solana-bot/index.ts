@@ -242,9 +242,59 @@ serve(async (req) => {
         } else if (text === '/buy' || text === '/buy@CFSolanaSoldierBot') {
           await sendMessage(chatId, `🚀 <b>BUY CF TOKEN</b>\n\n📍 CA: <code>${TOKEN_CA}</code>\n\nChoose your platform:`, buildBuyKeyboard());
         } else if (text === '/help' || text === '/help@CFSolanaSoldierBot') {
-          await sendMessage(chatId, `<b>🤖 CF Solana Soldier Commands</b>\n\n/start — Dashboard & live stats\n/price — Current price & market data\n/buy — Quick buy links\n/ca — Copy contract address\n/help — Show this help\n\n<b>Auto Alerts:</b>\n✅ Hourly price updates\n✅ Buy & sell movement alerts\n✅ Real-time market sentiment`, buildBuyKeyboard());
+          await sendMessage(chatId, `<b>🤖 CF Solana Soldier Commands</b>\n\n/start — Dashboard & live stats\n/price — Current price & market data\n/buy — Quick buy links\n/ca — Copy contract address\n/checktoken — All CF Exchange tokens & prices\n/help — Show this help\n\n<b>Auto Alerts:</b>\n✅ Hourly price updates\n✅ Buy & sell movement alerts\n✅ Real-time market sentiment`, buildBuyKeyboard());
         } else if (text === '/ca' || text === '/ca@CFSolanaSoldierBot') {
           await sendMessage(chatId, `📋 <b>Contract Address:</b>\n\n<code>${TOKEN_CA}</code>\n\nTap to copy ☝️`);
+        } else if (text === '/checktoken' || text === '/checktoken@CFSolanaSoldierBot') {
+          // Fetch all active tokens from CF Exchange
+          const { data: tokens } = await supabase
+            .from('user_tokens')
+            .select('symbol, name, logo_emoji, price_per_token, market_cap, total_volume, status, solana_ca')
+            .neq('status', 'suspended')
+            .order('market_cap', { ascending: false });
+
+          if (!tokens || tokens.length === 0) {
+            await sendMessage(chatId, '📭 No tokens currently listed on CF Exchange.');
+          } else {
+            // Also fetch $CFB live data
+            const cfbData = await fetchTokenData();
+            let msg = `🪙🪙🪙 <b>CF BLOCKCHAIN TOKENS</b> 🪙🪙🪙\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+            // Show $CFB (mainnet PumpFun token) first
+            if (cfbData) {
+              msg += `🚀 <b>${cfbData.pairName}</b> ($CFB) — <b>FLAGSHIP</b>\n`;
+              msg += `   💰 $${formatPrice(cfbData.priceUsd)} | MCap: $${cfbData.marketCap.toLocaleString()}\n`;
+              msg += `   📊 24h: ${changeEmoji(cfbData.priceChange24h)}\n`;
+              msg += `   📍 <code>${TOKEN_CA}</code>\n`;
+              msg += `   🔗 <a href="${BUY_LINKS.jupiter}">Buy on Jupiter</a>\n\n`;
+            }
+
+            msg += `📋 <b>CF EXCHANGE LISTINGS:</b>\n\n`;
+
+            tokens.forEach((t: any, i: number) => {
+              const emoji = t.logo_emoji || '🪙';
+              msg += `${i + 1}. ${emoji} <b>${t.name}</b> ($${t.symbol})\n`;
+              msg += `   💰 Price: $${Number(t.price_per_token).toFixed(4)}\n`;
+              msg += `   💎 MCap: $${(t.market_cap || 0).toLocaleString()}\n`;
+              if (t.solana_ca) {
+                msg += `   📍 CA: <code>${t.solana_ca}</code>\n`;
+                msg += `   🔗 <a href="https://jup.ag/swap/SOL-${t.solana_ca}">Buy on Jupiter</a>\n`;
+              }
+              msg += `\n`;
+            });
+
+            msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+            msg += `🌐 <a href="https://www.cfblockchains.com/exchange">Trade All Tokens on CF Exchange</a>\n`;
+            msg += `\n#CFBlockchain #Solana #PumpFun`;
+
+            await sendMessage(chatId, msg, {
+              inline_keyboard: [
+                [{ text: '🚀 Buy $CFB on Jupiter', url: BUY_LINKS.jupiter }],
+                [{ text: '📊 CF Exchange', url: 'https://www.cfblockchains.com/exchange' }],
+                [{ text: '📈 DexScreener', url: BUY_LINKS.dexscreener }],
+              ]
+            });
+          }
         }
       }
 
