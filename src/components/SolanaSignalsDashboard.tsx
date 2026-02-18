@@ -55,9 +55,9 @@ interface TradeEntry {
 export default function SolanaSignalsDashboard() {
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [hasAccess, setHasAccess] = useState(false);
-  const [isApproved, setIsApproved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(true);
+  const [isApproved, setIsApproved] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Wallet state
   const [wallet, setWallet] = useState<WalletData | null>(null);
@@ -381,9 +381,9 @@ export default function SolanaSignalsDashboard() {
     const { data: roleData } = await supabase
       .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').single();
     setIsAdmin(!!roleData);
-    const { data: accessData } = await supabase
-      .from('signal_access').select('*').eq('user_id', user.id).single();
-    if (accessData) { setHasAccess(true); setIsApproved(accessData.is_approved); }
+    // All users have access — no approval gate
+    setHasAccess(true);
+    setIsApproved(true);
     setIsLoading(false);
   };
 

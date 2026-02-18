@@ -51,7 +51,7 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 // HELIUS PRO SCALPER — CONFIGURATION
 // ══════════════════════════════════════════════════════════════
 const PLATFORM_FEE_WALLET = '8ce3F3D6kbCv3Q4yPphJwXVebN3uGWwQhyzH6yQtS44t';
-const PLATFORM_FLAT_FEE_SOL = 0.001; // Mandatory 0.001 SOL flat fee per scalp
+const PLATFORM_FLAT_FEE_SOL = 0.01; // Mandatory 0.01 SOL platform fee per trade initiation
 const PLATFORM_PROFIT_FEE_PERCENT = 0.02; // 2% of profit (only on winning trades)
 
 const SCALPER_CONFIG = {
