@@ -62,31 +62,28 @@ async function signTransaction(message: Uint8Array, secretKeyBytes: Uint8Array):
 }
 
 // ── Jupiter endpoints ──
-const JUPITER_QUOTE_ENDPOINTS = [
-  'https://lite-api.jup.ag/swap/v1/quote',
-  'https://api.jup.ag/swap/v1/quote',
-];
-const JUPITER_SWAP_ENDPOINTS = [
-  'https://lite-api.jup.ag/swap/v1/swap',
-  'https://api.jup.ag/swap/v1/swap',
-];
+const JUPITER_API_KEY = Deno.env.get('JUPITER_API_KEY') || '';
+const JUPITER_QUOTE_URL = 'https://api.jup.ag/swap/v1/quote';
+const JUPITER_SWAP_URL = 'https://api.jup.ag/swap/v1/swap';
+const jupiterHeaders: Record<string, string> = {
+  'Content-Type': 'application/json',
+  ...(JUPITER_API_KEY ? { 'x-api-key': JUPITER_API_KEY } : {}),
+};
 
-async function fetchWithFallback(urls: string[], options?: RequestInit): Promise<Response> {
-  let lastError: Error | null = null;
-  for (const url of urls) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timeout);
-      if (res.ok) return res;
-      const errBody = await res.text().catch(() => '');
-      lastError = new Error(`HTTP ${res.status}: ${errBody.slice(0, 100)}`);
-    } catch (e) {
-      lastError = e;
-    }
+async function jupiterFetch(url: string, options?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...jupiterHeaders, ...(options?.headers || {}) },
+    signal: controller.signal,
+  });
+  clearTimeout(timeout);
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 100)}`);
   }
-  throw lastError || new Error('All endpoints failed');
+  return res;
 }
 
 // ── Get SOL balance ──
@@ -126,10 +123,8 @@ async function executeSwap(
   publicKey: string, privateKeyB58: string, heliusRpc: string,
 ): Promise<{ success: boolean; signature?: string; outputAmount?: number; error?: string }> {
   try {
-    const quoteUrls = JUPITER_QUOTE_ENDPOINTS.map(u =>
-      `${u}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${VOLUME_CONFIG.MAX_SLIPPAGE_BPS}`
-    );
-    const quoteRes = await fetchWithFallback(quoteUrls);
+    const quoteUrl = `${JUPITER_QUOTE_URL}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${VOLUME_CONFIG.MAX_SLIPPAGE_BPS}`;
+    const quoteRes = await jupiterFetch(quoteUrl);
     const quote = await quoteRes.json();
 
     if (quote.error || !quote.outAmount || quote.outAmount === '0') {
@@ -139,24 +134,21 @@ async function executeSwap(
     let swapTransaction: string | null = null;
     let swapError: string | null = null;
 
-    for (const swapUrl of JUPITER_SWAP_ENDPOINTS) {
-      try {
-        const swapRes = await fetch(swapUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            quoteResponse: quote,
-            userPublicKey: publicKey,
-            wrapAndUnwrapSol: true,
-            dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: Math.floor(VOLUME_CONFIG.PRIORITY_FEE_SOL * 1e9),
-          }),
-        });
-        const swapData = await swapRes.json();
-        if (swapData.swapTransaction) { swapTransaction = swapData.swapTransaction; break; }
-        swapError = swapData.error || 'No swapTransaction';
-      } catch (e) { swapError = e.message; }
-    }
+    try {
+      const swapRes = await jupiterFetch(JUPITER_SWAP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          quoteResponse: quote,
+          userPublicKey: publicKey,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: Math.floor(VOLUME_CONFIG.PRIORITY_FEE_SOL * 1e9),
+        }),
+      });
+      const swapData = await swapRes.json();
+      if (swapData.swapTransaction) { swapTransaction = swapData.swapTransaction; }
+      else { swapError = swapData.error || 'No swapTransaction'; }
+    } catch (e) { swapError = e.message; }
 
     if (!swapTransaction) return { success: false, error: `Swap failed: ${swapError}` };
 
