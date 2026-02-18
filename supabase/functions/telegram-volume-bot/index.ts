@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const BOT_TOKEN = Deno.env.get('TELEGRAM_VOLUME_BOT_TOKEN')!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const TOKEN_CA = '8hiQpxRxqiW31B6LZsJbdPhxGT4DA2kX2TMZXLDjoy9';
+const TOKEN_CA = '8hiQpxRxqiW31B6LZsJbdLPhxGT4DA2kX2TMZXLDjoy9';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const VERSION = 'v1.0.0';
 
