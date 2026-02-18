@@ -249,7 +249,7 @@ serve(async (req) => {
           // Fetch all active tokens from CF Exchange
           const { data: tokens } = await supabase
             .from('user_tokens')
-            .select('symbol, name, logo_emoji, price_per_token, market_cap, total_volume, status, solana_ca')
+            .select('symbol, name, logo_emoji, price_per_token, market_cap, total_volume, status')
             .neq('status', 'suspended')
             .order('market_cap', { ascending: false });
 
@@ -273,13 +273,12 @@ serve(async (req) => {
 
             tokens.forEach((t: any, i: number) => {
               const emoji = t.logo_emoji || '🪙';
+              const vol = t.total_volume || 0;
               msg += `${i + 1}. ${emoji} <b>${t.name}</b> ($${t.symbol})\n`;
-              msg += `   💰 Price: $${Number(t.price_per_token).toFixed(4)}\n`;
+              msg += `   💰 Price: <b>$${Number(t.price_per_token).toFixed(4)}</b>\n`;
               msg += `   💎 MCap: $${(t.market_cap || 0).toLocaleString()}\n`;
-              if (t.solana_ca) {
-                msg += `   📍 CA: <code>${t.solana_ca}</code>\n`;
-                msg += `   🔗 <a href="https://jup.ag/swap/SOL-${t.solana_ca}">Buy on Jupiter</a>\n`;
-              }
+              msg += `   📊 Volume: ${vol.toLocaleString()} tokens traded\n`;
+              msg += `   🔗 <a href="https://www.cfblockchains.com/exchange">Buy on CF Exchange</a>\n`;
               msg += `\n`;
             });
 
