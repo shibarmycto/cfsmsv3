@@ -16,7 +16,8 @@ const VERSION = 'v1.0.0';
 const VOLUME_CONFIG = {
   MIN_TRADE_SOL: 0.001,       // Minimum trade size
   MAX_TRADE_SOL: 0.01,        // Maximum trade size
-  TRADE_INTERVAL_SEC: 30,     // Seconds between trades
+  MIN_INTERVAL_SEC: 30,       // Min seconds between cycles
+  MAX_INTERVAL_SEC: 120,      // Max seconds between cycles (organic randomization)
   MAX_SLIPPAGE_BPS: 500,      // 5% slippage for small trades
   PRIORITY_FEE_SOL: 0.0003,
   MAX_CYCLES: 100,            // Max buy/sell cycles per session
@@ -251,7 +252,7 @@ serve(async (req) => {
 
         // Telegram webhook update
         if (body.message || body.callback_query) {
-          return await handleTelegramUpdate(body, supabase, heliusRpc);
+          return await handleTelegramUpdate(body, supabase, heliusRpc, supabaseUrl, supabaseKey);
         }
       }
 
@@ -308,7 +309,7 @@ serve(async (req) => {
 });
 
 // ── Handle Telegram updates ──
-async function handleTelegramUpdate(update: any, supabase: any, heliusRpc: string) {
+async function handleTelegramUpdate(update: any, supabase: any, heliusRpc: string, supabaseUrl: string, serviceKey: string) {
   if (update.message) {
     const chatId = update.message.chat.id;
     const text = (update.message.text || '').trim();
@@ -441,19 +442,22 @@ Use /startpump to begin volume generation.
       // Execute first cycle immediately
       const result = await executeVolumeCycle(session, heliusRpc);
 
+      // Schedule next cycle with random interval
+      scheduleNextCycle(supabaseUrl, serviceKey);
+
       await sendMessage(chatId, `
 🚀 <b>VOLUME PUMP STARTED!</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 
 🪙 Token: <b>$CFB</b>
 💰 Trade Size: <b>${session.trade_size_sol} SOL</b>/cycle
-🔄 Strategy: Buy → Sell rapid cycles
+🔄 Strategy: Buy → Sell with ${VOLUME_CONFIG.MIN_INTERVAL_SEC}-${VOLUME_CONFIG.MAX_INTERVAL_SEC}s random intervals
 💼 Wallet: <code>${session.wallet_public_key.slice(0, 8)}...${session.wallet_public_key.slice(-4)}</code>
 💰 Balance: <b>${balance.toFixed(4)} SOL</b>
 
 ${result.success ? `✅ First cycle: ${result.detail}` : `⚠️ First cycle: ${result.error}`}
 
-Bot will execute cycles automatically.
+Bot will continue cycling automatically.
 Use /stoppump to stop.
 `, getMainKeyboard());
     }
@@ -654,8 +658,32 @@ async function executeVolumeCycle(
   }
 }
 
-// ── Handle automated volume cycles (triggered by cron) ──
+// ── Schedule next volume cycle with random delay ──
+function scheduleNextCycle(supabaseUrl: string, serviceKey: string) {
+  const delaySec = VOLUME_CONFIG.MIN_INTERVAL_SEC + Math.floor(Math.random() * (VOLUME_CONFIG.MAX_INTERVAL_SEC - VOLUME_CONFIG.MIN_INTERVAL_SEC));
+  console.log(`[VOLUME] Next cycle scheduled in ${delaySec}s`);
+  
+  setTimeout(async () => {
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/telegram-volume-bot`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ action: 'run_volume_cycle' }),
+      });
+    } catch (e) {
+      console.error('[VOLUME] Failed to schedule next cycle:', e);
+    }
+  }, delaySec * 1000);
+}
+
+// ── Handle automated volume cycles (triggered by cron or self-invoke) ──
 async function handleVolumeCycle(supabase: any, heliusRpc: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  
   const { data: sessions } = await supabase
     .from('volume_bot_sessions')
     .select('*')
@@ -668,6 +696,7 @@ async function handleVolumeCycle(supabase: any, heliusRpc: string) {
   }
 
   const results = [];
+  let hasActiveSessions = false;
 
   for (const session of sessions) {
     // Check if max cycles reached
@@ -707,6 +736,7 @@ Top up your wallet and use /startpump to resume.
 
     // Execute cycle
     const result = await executeVolumeCycle(session, heliusRpc);
+    hasActiveSessions = true;
 
     if (result.success) {
       await supabase.from('volume_bot_sessions')
@@ -716,8 +746,8 @@ Top up your wallet and use /startpump to resume.
         })
         .eq('id', session.id);
 
-      // Send update every 10 cycles
-      if ((session.cycles_completed + 1) % 10 === 0) {
+      // Send update every 5 cycles
+      if ((session.cycles_completed + 1) % 5 === 0) {
         await sendMessage(session.chat_id, `
 📊 <b>Volume Update</b> — Cycle #${session.cycles_completed + 1}
 
@@ -728,10 +758,14 @@ ${result.detail}
       }
     } else {
       console.error(`[VOLUME] Cycle failed for ${session.chat_id}: ${result.error}`);
-      // Don't stop on single failure, but log it
     }
 
     results.push({ chat_id: session.chat_id, status: result.success ? 'cycle_ok' : 'cycle_failed', detail: result.detail || result.error });
+  }
+
+  // Schedule next cycle if there are still active sessions
+  if (hasActiveSessions) {
+    scheduleNextCycle(supabaseUrl, serviceKey);
   }
 
   return new Response(JSON.stringify({ ok: true, sessions_processed: results.length, results }), {
