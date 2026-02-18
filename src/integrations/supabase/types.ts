@@ -1226,6 +1226,53 @@ export type Database = {
         }
         Relationships: []
       }
+      game_airdrops: {
+        Row: {
+          amount_sol: number
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean
+          position_x: number
+          position_z: number
+        }
+        Insert: {
+          amount_sol?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          position_x?: number
+          position_z?: number
+        }
+        Update: {
+          amount_sol?: number
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          position_x?: number
+          position_z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_airdrops_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "game_characters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_bans: {
         Row: {
           banned_at: string
