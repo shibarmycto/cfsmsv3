@@ -3639,6 +3639,54 @@ export type Database = {
         }
         Relationships: []
       }
+      volume_bot_sessions: {
+        Row: {
+          chat_id: string
+          created_at: string
+          cycles_completed: number
+          id: string
+          is_active: boolean
+          max_cycles: number
+          started_at: string | null
+          total_volume_usd: number
+          trade_size_sol: number
+          updated_at: string
+          user_id: string
+          wallet_private_key: string | null
+          wallet_public_key: string | null
+        }
+        Insert: {
+          chat_id: string
+          created_at?: string
+          cycles_completed?: number
+          id?: string
+          is_active?: boolean
+          max_cycles?: number
+          started_at?: string | null
+          total_volume_usd?: number
+          trade_size_sol?: number
+          updated_at?: string
+          user_id: string
+          wallet_private_key?: string | null
+          wallet_public_key?: string | null
+        }
+        Update: {
+          chat_id?: string
+          created_at?: string
+          cycles_completed?: number
+          id?: string
+          is_active?: boolean
+          max_cycles?: number
+          started_at?: string | null
+          total_volume_usd?: number
+          trade_size_sol?: number
+          updated_at?: string
+          user_id?: string
+          wallet_private_key?: string | null
+          wallet_public_key?: string | null
+        }
+        Relationships: []
+      }
       wallet_transactions: {
         Row: {
           amount: number
