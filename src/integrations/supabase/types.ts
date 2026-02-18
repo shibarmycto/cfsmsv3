@@ -3641,6 +3641,7 @@ export type Database = {
       }
       volume_bot_sessions: {
         Row: {
+          auth_user_id: string | null
           chat_id: string
           created_at: string
           cycles_completed: number
@@ -3656,6 +3657,7 @@ export type Database = {
           wallet_public_key: string | null
         }
         Insert: {
+          auth_user_id?: string | null
           chat_id: string
           created_at?: string
           cycles_completed?: number
@@ -3671,6 +3673,7 @@ export type Database = {
           wallet_public_key?: string | null
         }
         Update: {
+          auth_user_id?: string | null
           chat_id?: string
           created_at?: string
           cycles_completed?: number

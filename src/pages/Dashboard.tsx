@@ -10,6 +10,7 @@ import BuyCreditsTab from '@/components/BuyCreditsTab';
 import AIAgentTab from '@/components/AIAgentTab';
 import SolanaSignalsDashboard from '@/components/SolanaSignalsDashboard';
 import PlatformInfoTab from '@/components/PlatformInfoTab';
+import VolumeBotTab from '@/components/VolumeBotTab';
 import {
   MessageSquare,
   CreditCard,
@@ -29,6 +30,7 @@ import {
   Info,
   Users,
   Rocket,
+  Activity,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -180,6 +182,7 @@ export default function Dashboard() {
                 { id: 'miner', icon: Pickaxe, label: 'Miner', isLink: true, href: '/miner' },
                 { id: 'roleplay', icon: Gamepad2, label: 'RP', isLink: true, href: '/roleplay' },
                 { id: 'crm', icon: Users, label: 'CRM', isLink: true, href: '/crm' },
+                { id: 'volume', icon: Activity, label: 'Volume' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -223,6 +226,12 @@ export default function Dashboard() {
             {activeTab === 'signals' && (
               <div className="glass-card p-8 animate-fade-in">
                 <SolanaSignalsDashboard />
+              </div>
+            )}
+
+            {activeTab === 'volume' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <VolumeBotTab />
               </div>
             )}
 
