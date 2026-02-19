@@ -12,6 +12,7 @@ import SolanaSignalsDashboard from '@/components/SolanaSignalsDashboard';
 import PlatformInfoTab from '@/components/PlatformInfoTab';
 import VolumeBotTab from '@/components/VolumeBotTab';
 import FaucetTab from '@/components/FaucetTab';
+import BundlerTab from '@/components/BundlerTab';
 import {
   MessageSquare,
   CreditCard,
@@ -33,6 +34,7 @@ import {
   Rocket,
   Activity,
   Droplets,
+  Link,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -186,6 +188,7 @@ export default function Dashboard() {
                 { id: 'crm', icon: Users, label: 'CRM', isLink: true, href: '/crm' },
                 { id: 'volume', icon: Activity, label: 'Volume' },
                 { id: 'faucet', icon: Droplets, label: 'Faucet' },
+                { id: 'bundler', icon: Link, label: 'Bundler' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -241,6 +244,12 @@ export default function Dashboard() {
             {activeTab === 'faucet' && user && (
               <div className="glass-card p-4 md:p-8 animate-fade-in">
                 <FaucetTab userId={user.id} />
+              </div>
+            )}
+
+            {activeTab === 'bundler' && user && (
+              <div className="glass-card p-4 md:p-8 animate-fade-in">
+                <BundlerTab userId={user.id} />
               </div>
             )}
 

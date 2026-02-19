@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.telegram-volume-bot]
 verify_jwt = false
+
+[functions.bundler-api]
+verify_jwt = false
