@@ -577,6 +577,119 @@ export type Database = {
         }
         Relationships: []
       }
+      bundler_access: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          id: string
+          is_approved: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          is_approved?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          is_approved?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      bundler_sessions: {
+        Row: {
+          created_at: string | null
+          credits_charged: number | null
+          id: string
+          main_wallet_public_key: string | null
+          sol_per_wallet: number | null
+          status: string | null
+          token_address: string | null
+          total_wallets: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits_charged?: number | null
+          id?: string
+          main_wallet_public_key?: string | null
+          sol_per_wallet?: number | null
+          status?: string | null
+          token_address?: string | null
+          total_wallets?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credits_charged?: number | null
+          id?: string
+          main_wallet_public_key?: string | null
+          sol_per_wallet?: number | null
+          status?: string | null
+          token_address?: string | null
+          total_wallets?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      bundler_wallets: {
+        Row: {
+          balance_sol: number | null
+          created_at: string | null
+          id: string
+          private_key: string
+          public_key: string
+          session_id: string
+          token_balance: number | null
+          user_id: string
+          wallet_index: number
+        }
+        Insert: {
+          balance_sol?: number | null
+          created_at?: string | null
+          id?: string
+          private_key: string
+          public_key: string
+          session_id: string
+          token_balance?: number | null
+          user_id: string
+          wallet_index: number
+        }
+        Update: {
+          balance_sol?: number | null
+          created_at?: string | null
+          id?: string
+          private_key?: string
+          public_key?: string
+          session_id?: string
+          token_balance?: number | null
+          user_id?: string
+          wallet_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bundler_wallets_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "bundler_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           created_at: string
