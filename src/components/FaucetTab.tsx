@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, Zap, Bot, TrendingUp, ArrowRight, Trash2, Search, Shield } from 'lucide-react';
+import { Lock, Zap, Bot, TrendingUp, ArrowRight, Shield, Square, RotateCw } from 'lucide-react';
 
 interface FaucetAccess {
   id: string;
@@ -19,24 +19,19 @@ interface ChatMessage {
 }
 
 interface FaucetSource {
+  id: string;
   name: string;
   coin: string;
   emoji: string;
   reward: string;
-  feasibility: number;
-  status: 'idle' | 'active' | 'done' | 'error';
+  status: 'idle' | 'working' | 'claimed' | 'cooldown' | 'error';
+  lastClaimed: string | null;
+  earnedThisCycle: number;
 }
 
-const DEFAULT_FAUCETS: FaucetSource[] = [
-  { name: 'FreeBitcoin', coin: 'BTC', emoji: '₿', reward: '~0.00000050 BTC', feasibility: 85, status: 'idle' },
-  { name: 'FaucetPay DOGE', coin: 'DOGE', emoji: '🐕', reward: '~0.05 DOGE', feasibility: 90, status: 'idle' },
-  { name: 'Fire Faucet', coin: 'LTC', emoji: 'Ł', reward: '~0.0001 LTC', feasibility: 70, status: 'idle' },
-  { name: 'FaucetCrypto', coin: 'ETH', emoji: 'Ξ', reward: '~0.000005 ETH', feasibility: 65, status: 'idle' },
-  { name: 'Cointiply', coin: 'BTC', emoji: '₿', reward: '~0.00000100 BTC', feasibility: 80, status: 'idle' },
-  { name: 'Allcoins Faucet', coin: 'TRX', emoji: '⟐', reward: '~0.5 TRX', feasibility: 75, status: 'idle' },
-  { name: 'GlobalHive', coin: 'BNB', emoji: '◆', reward: '~0.0001 BNB', feasibility: 55, status: 'idle' },
-  { name: 'ClaimFreeCoins', coin: 'MATIC', emoji: '⬡', reward: '~0.01 MATIC', feasibility: 60, status: 'idle' },
-];
+const FAUCET_EMOJIS: Record<string, string> = {
+  BTC: '₿', ETH: 'Ξ', DOGE: '🐕', LTC: 'Ł', TRX: '⟐', BNB: '◆', MATIC: '⬡',
+};
 
 export default function FaucetTab({ userId }: { userId: string }) {
   const { toast } = useToast();
@@ -44,29 +39,31 @@ export default function FaucetTab({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
 
-  // Faucet agent state
   const [agentRunning, setAgentRunning] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: '1', type: 'agent', text: "Hello! I'm your AI Faucet Agent. I'll analyze available faucets for feasibility, automate task completion strategies, and help you maximize your crypto earnings convertible to SOL. Enter your Solana wallet above and click START to begin." },
+    { id: '1', type: 'agent', text: "🤖 Autonomous Faucet Agent ready. I will scan, solve captchas, claim rewards, and earn crypto — all automatically. Enter your SOL wallet and hit START. I'll go to work." },
   ]);
-  const [chatInput, setChatInput] = useState('');
-  const [faucets, setFaucets] = useState<FaucetSource[]>(DEFAULT_FAUCETS);
-  const [earnedToday, setEarnedToday] = useState(0);
+  const [faucets, setFaucets] = useState<FaucetSource[]>([]);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [totalSOL, setTotalSOL] = useState(0);
+  const [cyclesCompleted, setCyclesCompleted] = useState(0);
   const [tasksDone, setTasksDone] = useState(0);
+  const [currentFaucet, setCurrentFaucet] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [convertFrom, setConvertFrom] = useState('BTC');
-  const [convertAmount, setConvertAmount] = useState('');
   const chatRef = useRef<HTMLDivElement>(null);
+  const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runningRef = useRef(false);
 
   useEffect(() => {
     fetchAccess();
+    return () => {
+      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
+    };
   }, [userId]);
 
   useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
 
   const fetchAccess = async () => {
@@ -82,13 +79,11 @@ export default function FaucetTab({ userId }: { userId: string }) {
 
   const requestAccess = async () => {
     setRequesting(true);
-    const { error } = await supabase
-      .from('faucet_access')
-      .insert({ user_id: userId });
+    const { error } = await supabase.from('faucet_access').insert({ user_id: userId });
     if (error) {
       toast({ title: 'Request Failed', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: 'Access Requested', description: 'Waiting for admin approval. 1 credit/day will be charged once active.' });
+      toast({ title: 'Access Requested', description: 'Waiting for admin approval. 1 credit/day once active.' });
       fetchAccess();
     }
     setRequesting(false);
@@ -96,27 +91,39 @@ export default function FaucetTab({ userId }: { userId: string }) {
 
   const chargeDaily = async () => {
     const today = new Date().toISOString().split('T')[0];
-    if (access?.last_charged_at === today) return true; // Already charged today
-
-    // Deduct 1 credit
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('sms_credits')
-      .eq('user_id', userId)
-      .single();
-
+    if (access?.last_charged_at === today) return true;
+    const { data: profile } = await supabase.from('profiles').select('sms_credits').eq('user_id', userId).single();
     if (!profile || profile.sms_credits < 1) {
-      toast({ title: 'Insufficient Credits', description: 'You need at least 1 credit to use the faucet agent today.', variant: 'destructive' });
+      toast({ title: 'Insufficient Credits', description: 'Need at least 1 credit to run the agent today.', variant: 'destructive' });
       return false;
     }
-
     await supabase.from('profiles').update({ sms_credits: profile.sms_credits - 1 }).eq('user_id', userId);
     await supabase.from('faucet_access').update({ last_charged_at: today }).eq('user_id', userId);
     return true;
   };
 
-  const addMessage = (type: ChatMessage['type'], text: string) => {
-    setMessages(prev => [...prev, { id: Date.now().toString(), type, text }]);
+  const addMsg = useCallback((type: ChatMessage['type'], text: string) => {
+    setMessages(prev => [...prev, { id: Date.now().toString() + Math.random(), type, text }]);
+  }, []);
+
+  const callAgent = async (action: string, extra?: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/faucet-agent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, wallet_address: walletAddress, ...extra }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error || 'Agent call failed');
+    }
+    return res.json();
   };
 
   const startAgent = async () => {
@@ -129,57 +136,128 @@ export default function FaucetTab({ userId }: { userId: string }) {
     if (!charged) return;
 
     setAgentRunning(true);
-    addMessage('system', `✅ Daily credit charged. Agent activated for wallet: ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`);
-    addMessage('agent', '🔍 Scanning faucet sources for availability and feasibility...');
+    runningRef.current = true;
+    addMsg('system', `✅ 1 credit charged. Agent activated for ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`);
+    addMsg('agent', '🔍 Analyzing all faucet sources... Claude AI is building an execution plan.');
+    setProgress(10);
 
-    // Simulate scanning
-    setTimeout(() => {
-      setFaucets(prev => prev.map(f => ({ ...f, status: 'idle' as const })));
-      addMessage('agent', `Found ${DEFAULT_FAUCETS.length} faucet sources. Analyzing feasibility scores...`);
-      setProgress(25);
-
-      setTimeout(() => {
-        setFaucets(DEFAULT_FAUCETS.map(f => ({
-          ...f,
-          feasibility: Math.min(100, f.feasibility + Math.floor(Math.random() * 15) - 5),
+    try {
+      const startData = await callAgent('start');
+      
+      // Populate faucet list from backend
+      if (startData.faucets) {
+        setFaucets(startData.faucets.map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          coin: f.coin,
+          emoji: FAUCET_EMOJIS[f.coin] || '●',
+          reward: `${f.minReward}-${f.maxReward} ${f.coin}`,
+          status: 'idle' as const,
+          lastClaimed: null,
+          earnedThisCycle: 0,
         })));
-        addMessage('agent', '📊 Feasibility analysis complete. Top sources: FaucetPay DOGE (90%), FreeBitcoin (85%), Cointiply (80%). Ready to guide you through claiming.');
-        setProgress(50);
-      }, 2000);
-    }, 1500);
+      }
+
+      addMsg('agent', `📊 AI Plan ready. ${startData.faucets?.length || 0} faucets targeted. Beginning autonomous work cycle...`);
+      if (startData.aiPlan) {
+        addMsg('agent', `🧠 ${typeof startData.aiPlan === 'string' ? startData.aiPlan.slice(0, 500) : 'Plan generated.'}`);
+      }
+      setProgress(20);
+
+      // Start first cycle
+      runCycle();
+    } catch (e) {
+      addMsg('error', `❌ Failed to start: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      setAgentRunning(false);
+      runningRef.current = false;
+    }
+  };
+
+  const runCycle = async () => {
+    if (!runningRef.current) return;
+
+    addMsg('agent', `🔄 Starting work cycle #${cyclesCompleted + 1}... Working through all faucets autonomously.`);
+    setProgress(30);
+
+    try {
+      // Mark all faucets as working
+      setFaucets(prev => prev.map(f => ({ ...f, status: 'working' as const })));
+
+      const cycleData = await callAgent('cycle');
+
+      if (cycleData.results) {
+        let cycleTasksDone = 0;
+        
+        // Update faucet statuses based on results
+        setFaucets(prev => prev.map(f => {
+          const result = cycleData.results.find((r: any) => r.faucetId === f.id);
+          if (!result) return f;
+          
+          if (result.success) cycleTasksDone++;
+
+          return {
+            ...f,
+            status: result.success ? 'claimed' as const : 'cooldown' as const,
+            lastClaimed: result.success ? new Date().toLocaleTimeString() : f.lastClaimed,
+            earnedThisCycle: result.success ? result.reward : 0,
+          };
+        }));
+
+        setTasksDone(prev => prev + cycleTasksDone);
+
+        // Log each result
+        for (const r of cycleData.results) {
+          if (r.success) {
+            addMsg('system', `💰 ${r.faucetName}: Earned ${r.reward.toFixed(8)} ${r.coin} (~$${r.usdValue.toFixed(6)})`);
+          } else {
+            addMsg('agent', `⏳ ${r.faucetName}: ${r.message}`);
+          }
+        }
+      }
+
+      if (cycleData.totalEarnedUSD > 0) {
+        setTotalEarned(prev => prev + cycleData.totalEarnedUSD);
+        setTotalSOL(prev => prev + cycleData.totalSOL);
+        addMsg('system', `✅ Cycle earned: $${cycleData.totalEarnedUSD.toFixed(6)} (~${cycleData.totalSOL.toFixed(8)} SOL)`);
+      } else {
+        addMsg('agent', '⏳ No claims this cycle — faucets on cooldown. Will retry next cycle.');
+      }
+
+      if (cycleData.aiSummary) {
+        addMsg('agent', `🧠 ${typeof cycleData.aiSummary === 'string' ? cycleData.aiSummary.slice(0, 400) : 'Cycle analysis complete.'}`);
+      }
+
+      setCyclesCompleted(prev => prev + 1);
+      setProgress(100);
+
+      // Schedule next cycle
+      const nextIn = (cycleData.nextCycleIn || 300) * 1000;
+      addMsg('agent', `⏰ Next cycle in ${Math.round(nextIn / 60000)} minutes. Agent is working autonomously...`);
+
+      if (runningRef.current) {
+        // Reset progress for next cycle
+        setTimeout(() => setProgress(0), 2000);
+        cycleTimerRef.current = setTimeout(() => {
+          if (runningRef.current) runCycle();
+        }, nextIn);
+      }
+    } catch (e) {
+      addMsg('error', `❌ Cycle error: ${e instanceof Error ? e.message : 'Unknown'}. Retrying in 2 minutes...`);
+      if (runningRef.current) {
+        cycleTimerRef.current = setTimeout(() => {
+          if (runningRef.current) runCycle();
+        }, 120000);
+      }
+    }
   };
 
   const stopAgent = () => {
+    runningRef.current = false;
     setAgentRunning(false);
-    addMessage('system', '⏹ Agent stopped.');
+    if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
+    addMsg('system', `⏹ Agent stopped. Total earned: $${totalEarned.toFixed(6)} (~${totalSOL.toFixed(8)} SOL)`);
     setProgress(0);
-  };
-
-  const handleChat = () => {
-    if (!chatInput.trim()) return;
-    addMessage('user', chatInput);
-    const input = chatInput.toLowerCase();
-    setChatInput('');
-
-    setTimeout(() => {
-      if (input.includes('analyze') || input.includes('scan')) {
-        addMessage('agent', '🔍 Re-scanning all faucet sources... Checking claim timers, captcha requirements, and payout thresholds. Top earners today: FreeBitcoin (hourly rolls), FaucetPay (multi-coin), Cointiply (offers + faucet).');
-      } else if (input.includes('feasible') || input.includes('best')) {
-        const top = [...faucets].sort((a, b) => b.feasibility - a.feasibility).slice(0, 3);
-        addMessage('agent', `🏆 Most feasible faucets right now:\n${top.map((f, i) => `${i + 1}. ${f.name} (${f.coin}) — ${f.feasibility}% feasibility — ${f.reward}`).join('\n')}`);
-      } else if (input.includes('strategy')) {
-        addMessage('agent', '📋 Recommended strategy:\n1. Start with high-feasibility faucets (DOGE, BTC)\n2. Complete captchas during cooldown periods\n3. Accumulate to minimum withdrawal threshold\n4. Convert small coins to SOL via DEX aggregators\n5. Repeat every 30-60 minutes for maximum yield');
-      } else if (input.includes('convert') || input.includes('sol')) {
-        addMessage('agent', '🔄 To convert earnings to SOL:\n• Use ChangeNOW or SimpleSwap for small amounts\n• SideShift.ai for no-account swaps\n• Jupiter aggregator on Solana for best on-chain rates\n• Minimum recommended: accumulate $1+ before converting to save on fees');
-      } else {
-        addMessage('agent', "I can help you with: analyzing faucets, finding the most feasible sources, building a strategy, or converting earnings to SOL. What would you like to do?");
-      }
-    }, 800);
-  };
-
-  const clearLog = () => {
-    setEarnedToday(0);
-    setTasksDone(0);
+    setCurrentFaucet(null);
   };
 
   if (loading) {
@@ -190,7 +268,6 @@ export default function FaucetTab({ userId }: { userId: string }) {
     );
   }
 
-  // Not requested yet
   if (!access) {
     return (
       <div className="glass-card p-8 animate-fade-in text-center space-y-6">
@@ -199,7 +276,7 @@ export default function FaucetTab({ userId }: { userId: string }) {
         </div>
         <h2 className="text-2xl font-bold">SOL Faucet AI Agent</h2>
         <p className="text-muted-foreground max-w-md mx-auto">
-          AI-powered crypto faucet scanner that finds and guides you through legitimate faucet tasks, converting earnings to SOL. Requires admin approval. <strong>1 credit per day</strong> to use.
+          Autonomous AI agent that claims crypto from faucets, solves captchas, and earns SOL — all automatically. Requires admin approval. <strong>1 credit/day</strong>.
         </p>
         <Button onClick={requestAccess} disabled={requesting} size="lg">
           {requesting ? 'Requesting...' : 'Request Access'}
@@ -208,7 +285,6 @@ export default function FaucetTab({ userId }: { userId: string }) {
     );
   }
 
-  // Pending approval
   if (!access.is_approved) {
     return (
       <div className="glass-card p-8 animate-fade-in text-center space-y-6">
@@ -216,31 +292,30 @@ export default function FaucetTab({ userId }: { userId: string }) {
           <Shield className="w-8 h-8 text-yellow-500" />
         </div>
         <h2 className="text-2xl font-bold">Access Pending</h2>
-        <p className="text-muted-foreground">Your faucet agent access request is pending admin approval. You'll be notified when approved.</p>
+        <p className="text-muted-foreground">Your request is pending admin approval.</p>
         <span className="inline-block text-xs px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400">Pending Approval</span>
       </div>
     );
   }
 
-  // Approved — show full faucet UI
   return (
     <div className="animate-fade-in space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-green-400 flex items-center justify-center text-xl">◎</div>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-green-400 flex items-center justify-center text-xl">🤖</div>
           <div>
-            <h2 className="text-xl font-bold bg-gradient-to-r from-foreground to-green-400 bg-clip-text text-transparent">SOL Faucet Agent</h2>
-            <p className="text-xs text-muted-foreground font-mono tracking-wider">AI-POWERED CRYPTO EARNING</p>
+            <h2 className="text-xl font-bold bg-gradient-to-r from-foreground to-green-400 bg-clip-text text-transparent">Autonomous Faucet Agent</h2>
+            <p className="text-xs text-muted-foreground font-mono tracking-wider">AI CLAIMS • CAPTCHA SOLVING • AUTO EARN</p>
           </div>
         </div>
         <div className="flex items-center gap-2 bg-secondary/50 border border-border rounded-full px-4 py-2 text-xs font-mono">
           <span className={`w-2 h-2 rounded-full ${agentRunning ? 'bg-green-400 shadow-[0_0_6px] shadow-green-400 animate-pulse' : 'bg-destructive'}`} />
-          {agentRunning ? 'AGENT ACTIVE' : 'AGENT OFFLINE'}
+          {agentRunning ? 'AGENT WORKING' : 'AGENT OFFLINE'}
         </div>
       </div>
 
-      {/* Wallet Config */}
+      {/* Wallet + Controls */}
       <div className="bg-card/50 border border-border rounded-xl p-4 flex items-center gap-3 flex-wrap">
         <span className="text-xs font-mono text-primary tracking-wider">SOL WALLET:</span>
         <Input
@@ -248,28 +323,32 @@ export default function FaucetTab({ userId }: { userId: string }) {
           onChange={e => setWalletAddress(e.target.value)}
           placeholder="Your Solana wallet address..."
           className="flex-1 min-w-[200px] bg-background font-mono text-sm"
+          disabled={agentRunning}
         />
         {!agentRunning ? (
           <Button onClick={startAgent} className="bg-gradient-to-r from-primary to-green-500 text-primary-foreground">
-            <Zap className="w-4 h-4 mr-1" /> START
+            <Zap className="w-4 h-4 mr-1" /> START AGENT
           </Button>
         ) : (
-          <Button onClick={stopAgent} variant="destructive" size="sm">■ STOP</Button>
+          <Button onClick={stopAgent} variant="destructive" size="sm">
+            <Square className="w-3 h-3 mr-1" /> STOP
+          </Button>
         )}
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          { label: 'EARNED TODAY', value: `$${earnedToday.toFixed(3)}`, sub: 'USD VALUE', color: 'text-foreground' },
-          { label: 'TASKS DONE', value: tasksDone.toString(), sub: 'THIS SESSION', color: 'text-foreground' },
-          { label: 'FAUCETS ACTIVE', value: faucets.filter(f => f.status === 'active').length.toString(), sub: `OF ${faucets.length} AVAILABLE`, color: 'text-green-400' },
+          { label: 'EARNED TOTAL', value: `$${totalEarned.toFixed(4)}`, sub: 'USD VALUE', color: 'text-green-400' },
+          { label: 'EST. SOL', value: totalSOL.toFixed(6), sub: 'ACCUMULATED', color: 'text-green-400' },
+          { label: 'TASKS DONE', value: tasksDone.toString(), sub: 'CLAIMS MADE', color: 'text-foreground' },
+          { label: 'CYCLES', value: cyclesCompleted.toString(), sub: 'COMPLETED', color: 'text-primary' },
           { label: 'DAILY COST', value: '1 Credit', sub: 'PER DAY', color: 'text-primary' },
         ].map((s, i) => (
           <div key={i} className="bg-card/50 border border-border rounded-xl p-4 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent" />
             <p className="text-[10px] font-mono text-muted-foreground tracking-widest mb-1">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
             <p className="text-[10px] font-mono text-muted-foreground mt-1">{s.sub}</p>
           </div>
         ))}
@@ -278,135 +357,115 @@ export default function FaucetTab({ userId }: { userId: string }) {
       {/* Main Grid */}
       <div className="grid lg:grid-cols-5 gap-5">
         {/* Faucet Sources — 3 cols */}
-        <div className="lg:col-span-3 space-y-5">
-          <div className="bg-card/50 border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-sm font-bold tracking-widest uppercase">Faucet Sources</h3>
+        <div className="lg:col-span-3 bg-card/50 border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <h3 className="text-sm font-bold tracking-widest uppercase">Faucet Workers</h3>
+            <div className="flex items-center gap-2">
+              {agentRunning && <RotateCw className="w-3 h-3 text-green-400 animate-spin" />}
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
-                {agentRunning ? 'SCANNING' : 'READY'}
+                {agentRunning ? 'AUTONOMOUS' : 'IDLE'}
               </span>
             </div>
-            <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
-              {faucets.map((f, i) => (
-                <div key={i} className={`bg-background/50 border rounded-xl p-3 flex items-center gap-3 transition-all ${
-                  f.status === 'active' ? 'border-green-400/40 bg-green-400/5' : 'border-border hover:border-primary/30'
+          </div>
+          <div className="p-3 space-y-2 max-h-[450px] overflow-y-auto">
+            {faucets.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm font-mono">
+                Start the agent to load faucet sources
+              </div>
+            ) : (
+              faucets.map((f) => (
+                <div key={f.id} className={`bg-background/50 border rounded-xl p-3 flex items-center gap-3 transition-all ${
+                  f.status === 'working' ? 'border-yellow-400/40 bg-yellow-400/5 animate-pulse' :
+                  f.status === 'claimed' ? 'border-green-400/40 bg-green-400/5' :
+                  f.status === 'cooldown' ? 'border-muted/40 opacity-60' :
+                  f.status === 'error' ? 'border-destructive/40 bg-destructive/5' :
+                  'border-border hover:border-primary/30'
                 }`}>
                   <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-lg font-bold flex-shrink-0">
                     {f.emoji}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm">{f.name}</p>
-                    <p className="text-[10px] font-mono text-muted-foreground">{f.coin} • {f.reward}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-sm">{f.name}</p>
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                        f.status === 'working' ? 'bg-yellow-400/20 text-yellow-400' :
+                        f.status === 'claimed' ? 'bg-green-400/20 text-green-400' :
+                        f.status === 'cooldown' ? 'bg-muted/20 text-muted-foreground' :
+                        f.status === 'error' ? 'bg-destructive/20 text-destructive' :
+                        'bg-secondary text-muted-foreground'
+                      }`}>
+                        {f.status === 'working' ? '⚙️ WORKING' :
+                         f.status === 'claimed' ? '✅ CLAIMED' :
+                         f.status === 'cooldown' ? '⏳ COOLDOWN' :
+                         f.status === 'error' ? '❌ ERROR' : '● IDLE'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-mono text-muted-foreground">
+                      {f.coin} • {f.reward}
+                      {f.lastClaimed && ` • Last: ${f.lastClaimed}`}
+                    </p>
                   </div>
-                  <div className="w-14 h-1.5 bg-secondary rounded-full overflow-hidden flex-shrink-0">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${f.feasibility}%`,
-                        background: f.feasibility > 70 ? '#14F195' : f.feasibility > 40 ? '#FFD700' : '#FF4444',
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono text-muted-foreground w-8 text-right">{f.feasibility}%</span>
+                  {f.earnedThisCycle > 0 && (
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-mono text-green-400 font-bold">+{f.earnedThisCycle.toFixed(8)}</p>
+                      <p className="text-[9px] font-mono text-muted-foreground">{f.coin}</p>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Crypto → SOL Conversion */}
-          <div className="bg-card/50 border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-sm font-bold tracking-widest uppercase">Crypto → SOL Converter</h3>
-            </div>
-            <div className="p-4 space-y-3">
-              <select
-                value={convertFrom}
-                onChange={e => setConvertFrom(e.target.value)}
-                className="w-full bg-background border border-border rounded-lg p-2 text-sm font-mono"
-              >
-                {['BTC', 'ETH', 'DOGE', 'LTC', 'TRX', 'BNB', 'MATIC', 'FTM'].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={convertAmount}
-                  onChange={e => setConvertAmount(e.target.value)}
-                  placeholder="Amount..."
-                  className="font-mono text-sm"
-                />
-                <ArrowRight className="w-5 h-5 text-green-400 flex-shrink-0" />
-                <Input disabled placeholder="SOL estimate" className="font-mono text-sm" />
-              </div>
-              <p className="text-[10px] text-muted-foreground font-mono">
-                ⚡ Use ChangeNOW, SimpleSwap, or SideShift for best rates. Agent will guide you.
-              </p>
-            </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* AI Chat — 2 cols */}
+        {/* AI Agent Log — 2 cols */}
         <div className="lg:col-span-2 bg-card/50 border border-border rounded-xl flex flex-col overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <h3 className="text-sm font-bold tracking-widest uppercase">AI Agent</h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">AI POWERED</span>
+            <h3 className="text-sm font-bold tracking-widest uppercase">Agent Activity</h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-green-400/20 text-green-400 border border-green-400/30">
+              {agentRunning ? 'LIVE' : 'OFFLINE'}
+            </span>
           </div>
 
-          <div ref={chatRef} className="flex-1 p-3 space-y-2 overflow-y-auto max-h-[350px] min-h-[250px]">
+          <div ref={chatRef} className="flex-1 p-3 space-y-2 overflow-y-auto max-h-[400px] min-h-[300px]">
             {messages.map(msg => (
               <div key={msg.id} className={`text-xs font-mono p-2.5 rounded-lg leading-relaxed ${
                 msg.type === 'agent' ? 'bg-primary/10 border border-primary/20 text-primary-foreground/80' :
                 msg.type === 'system' ? 'bg-green-400/10 border border-green-400/20 text-green-400' :
                 msg.type === 'error' ? 'bg-destructive/10 border border-destructive/20 text-destructive' :
-                'bg-secondary/50 border border-border self-end'
+                'bg-secondary/50 border border-border'
               }`}>
-                <p className="text-[9px] opacity-50 mb-1 uppercase tracking-wider">{msg.type}</p>
+                <p className="text-[9px] opacity-50 mb-1 uppercase tracking-wider">
+                  {msg.type === 'agent' ? '🤖 AI AGENT' : msg.type === 'system' ? '💰 EARNINGS' : msg.type === 'error' ? '⚠️ ERROR' : 'USER'}
+                </p>
                 <p className="whitespace-pre-wrap">{msg.text}</p>
               </div>
             ))}
+            {agentRunning && faucets.some(f => f.status === 'working') && (
+              <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground p-2">
+                <RotateCw className="w-3 h-3 animate-spin text-primary" />
+                Working on faucets...
+              </div>
+            )}
           </div>
 
           {/* Progress */}
           {agentRunning && (
             <div className="px-4 pb-3">
               <div className="flex justify-between text-[10px] font-mono text-muted-foreground mb-1">
-                <span>AGENT PROGRESS</span>
+                <span>CYCLE PROGRESS</span>
                 <span>{progress}%</span>
               </div>
               <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-primary to-green-400 transition-all" style={{ width: `${progress}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-primary to-green-400 transition-all duration-500" style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
-
-          <div className="p-3 border-t border-border flex gap-2">
-            <Input
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleChat()}
-              placeholder="Ask the agent..."
-              className="text-xs font-mono"
-            />
-            <Button size="sm" onClick={handleChat} className="px-3">↑</Button>
-          </div>
-
-          <div className="px-3 pb-3 flex flex-wrap gap-1.5">
-            {['🔍 Analyze', '✅ Feasible', '📋 Strategy', '🔄 SOL Convert'].map(label => (
-              <button
-                key={label}
-                onClick={() => { setChatInput(label.split(' ')[1]); setTimeout(handleChat, 50); }}
-                className="text-[10px] font-mono px-2 py-1 rounded bg-secondary/50 border border-border hover:border-primary/30 transition-colors"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
       {/* Disclaimer */}
       <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 text-[10px] font-mono text-yellow-500/70 leading-relaxed">
-        ⚠️ This tool helps you find and track real crypto faucets and uses AI to advise on strategy. Actual faucet tasks are completed by you through legitimate faucet websites. Never share your seed phrase. Faucet earnings are small — typically $0.01–$0.50/day. Convert earnings to SOL via DEX aggregators or exchanges.
+        ⚠️ Autonomous AI agent that works faucets on your behalf. Uses Claude AI for strategy and 2Captcha for captcha solving. Earnings are small ($0.01–$0.50/day). Agent runs continuously and converts earnings to SOL estimates. Never share your seed phrase.
       </div>
     </div>
   );
