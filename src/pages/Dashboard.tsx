@@ -11,6 +11,7 @@ import AIAgentTab from '@/components/AIAgentTab';
 import SolanaSignalsDashboard from '@/components/SolanaSignalsDashboard';
 import PlatformInfoTab from '@/components/PlatformInfoTab';
 import VolumeBotTab from '@/components/VolumeBotTab';
+import FaucetTab from '@/components/FaucetTab';
 import {
   MessageSquare,
   CreditCard,
@@ -31,6 +32,7 @@ import {
   Users,
   Rocket,
   Activity,
+  Droplets,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -183,6 +185,7 @@ export default function Dashboard() {
                 { id: 'roleplay', icon: Gamepad2, label: 'RP', isLink: true, href: '/roleplay' },
                 { id: 'crm', icon: Users, label: 'CRM', isLink: true, href: '/crm' },
                 { id: 'volume', icon: Activity, label: 'Volume' },
+                { id: 'faucet', icon: Droplets, label: 'Faucet' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -232,6 +235,12 @@ export default function Dashboard() {
             {activeTab === 'volume' && (
               <div className="glass-card p-8 animate-fade-in">
                 <VolumeBotTab />
+              </div>
+            )}
+
+            {activeTab === 'faucet' && user && (
+              <div className="glass-card p-4 md:p-8 animate-fade-in">
+                <FaucetTab userId={user.id} />
               </div>
             )}
 
