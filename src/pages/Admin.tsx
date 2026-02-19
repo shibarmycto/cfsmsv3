@@ -49,6 +49,7 @@ import UserVMRental from '@/components/UserVMRental';
 import AdminVMApprovalTab from '@/components/AdminVMApprovalTab';
 import AdminRPTab from '@/components/AdminRPTab';
 import AdminSignalAccessTab from '@/components/AdminSignalAccessTab';
+import AdminFaucetTab from '@/components/AdminFaucetTab';
 
 interface UserProfile {
   id: string;
@@ -1012,6 +1013,7 @@ export default function Admin() {
                 { id: 'vm-approval', icon: Monitor, label: 'VM Approvals', count: 0 },
                 { id: 'super-admin-vm', icon: Shield, label: 'Super Admin VM', count: 0 },
                 { id: 'user-vm', icon: Terminal, label: 'User VM Rentals', count: 0 },
+                { id: 'faucet', icon: Zap, label: 'Faucet Access', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2116,6 +2118,13 @@ export default function Admin() {
             {activeTab === 'user-vm' && (
               <div className="glass-card p-8 animate-fade-in">
                 <UserVMRental />
+              </div>
+            )}
+
+            {/* Faucet Access Tab */}
+            {activeTab === 'faucet' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <AdminFaucetTab />
               </div>
             )}
 
