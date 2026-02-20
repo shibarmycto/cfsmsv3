@@ -35,6 +35,7 @@ import {
   Gamepad2,
   Terminal,
   Monitor,
+  Landmark,
 } from 'lucide-react';
 import AdminBankTab from '@/components/AdminBankTab';
 import AdminForumTab from '@/components/AdminForumTab';
@@ -51,6 +52,7 @@ import AdminRPTab from '@/components/AdminRPTab';
 import AdminSignalAccessTab from '@/components/AdminSignalAccessTab';
 import AdminFaucetTab from '@/components/AdminFaucetTab';
 import AdminBundlerTab from '@/components/AdminBundlerTab';
+import AdminYesBankTab from '@/components/AdminYesBankTab';
 
 interface UserProfile {
   id: string;
@@ -1016,6 +1018,7 @@ export default function Admin() {
                 { id: 'user-vm', icon: Terminal, label: 'User VM Rentals', count: 0 },
                 { id: 'faucet', icon: Zap, label: 'Faucet Access', count: 0 },
                 { id: 'bundler', icon: Link, label: 'Bundler Access', count: 0 },
+                { id: 'yes-bank', icon: Landmark, label: 'YES Bank 🏦', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2134,6 +2137,20 @@ export default function Admin() {
             {activeTab === 'bundler' && (
               <div className="glass-card p-8 animate-fade-in">
                 <AdminBundlerTab />
+              </div>
+            )}
+
+            {/* YES Bank Admin Tab */}
+            {activeTab === 'yes-bank' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Landmark className="text-amber-400" />
+                    YES Bank Management 🏦
+                  </h2>
+                  <p className="text-muted-foreground">Manage virtual cards, applications, and access control</p>
+                </div>
+                <AdminYesBankTab />
               </div>
             )}
 

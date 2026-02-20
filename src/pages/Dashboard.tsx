@@ -35,7 +35,9 @@ import {
   Activity,
   Droplets,
   Link,
+  Landmark,
 } from 'lucide-react';
+import YesBankTab from '@/components/YesBankTab';
 
 export default function Dashboard() {
   const { user, profile, isAdmin, signOut, loading, refreshProfile } = useAuth();
@@ -189,6 +191,7 @@ export default function Dashboard() {
                 { id: 'volume', icon: Activity, label: 'Volume' },
                 { id: 'faucet', icon: Droplets, label: 'Faucet' },
                 { id: 'bundler', icon: Link, label: 'Bundler' },
+                { id: 'yes-bank', icon: Landmark, label: 'Bank 🏦' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -250,6 +253,12 @@ export default function Dashboard() {
             {activeTab === 'bundler' && user && (
               <div className="glass-card p-4 md:p-8 animate-fade-in">
                 <BundlerTab userId={user.id} />
+              </div>
+            )}
+
+            {activeTab === 'yes-bank' && user && (
+              <div className="glass-card p-4 md:p-8 animate-fade-in">
+                <YesBankTab userId={user.id} />
               </div>
             )}
 

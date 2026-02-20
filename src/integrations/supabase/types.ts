@@ -4000,6 +4000,155 @@ export type Database = {
           },
         ]
       }
+      yes_bank_access: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          id: string
+          is_approved: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          is_approved?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          is_approved?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      yes_bank_applications: {
+        Row: {
+          applicant_name: string
+          created_at: string | null
+          email: string
+          id: string
+          notes: string | null
+          purpose: string | null
+          requested_amount: number
+          reviewed_by: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          applicant_name: string
+          created_at?: string | null
+          email: string
+          id?: string
+          notes?: string | null
+          purpose?: string | null
+          requested_amount: number
+          reviewed_by?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          applicant_name?: string
+          created_at?: string | null
+          email?: string
+          id?: string
+          notes?: string | null
+          purpose?: string | null
+          requested_amount?: number
+          reviewed_by?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      yes_bank_cards: {
+        Row: {
+          balance: number | null
+          card_number: string
+          created_at: string | null
+          cvv: string
+          expiry: string
+          holder_name: string
+          id: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          balance?: number | null
+          card_number: string
+          created_at?: string | null
+          cvv: string
+          expiry: string
+          holder_name: string
+          id?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          balance?: number | null
+          card_number?: string
+          created_at?: string | null
+          cvv?: string
+          expiry?: string
+          holder_name?: string
+          id?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      yes_bank_transactions: {
+        Row: {
+          admin_note: string | null
+          amount: number
+          card_id: string | null
+          created_at: string | null
+          created_by: string | null
+          holder_name: string | null
+          id: string
+          transaction_type: string | null
+        }
+        Insert: {
+          admin_note?: string | null
+          amount: number
+          card_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          holder_name?: string | null
+          id?: string
+          transaction_type?: string | null
+        }
+        Update: {
+          admin_note?: string | null
+          amount?: number
+          card_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          holder_name?: string | null
+          id?: string
+          transaction_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_bank_transactions_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "yes_bank_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
