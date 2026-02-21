@@ -4149,6 +4149,329 @@ export type Database = {
           },
         ]
       }
+      yes_card_topups: {
+        Row: {
+          card_id: string | null
+          created_at: string | null
+          credits_converted: number
+          id: string
+          usd_amount: number
+          user_id: string
+        }
+        Insert: {
+          card_id?: string | null
+          created_at?: string | null
+          credits_converted: number
+          id?: string
+          usd_amount: number
+          user_id: string
+        }
+        Update: {
+          card_id?: string | null
+          created_at?: string | null
+          credits_converted?: number
+          id?: string
+          usd_amount?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_card_topups_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "yes_bank_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yes_marketplace_listings: {
+        Row: {
+          category: string
+          condition: string | null
+          created_at: string | null
+          description: string
+          digital_download_url: string | null
+          id: string
+          images: string[] | null
+          is_active: boolean | null
+          is_approved: boolean | null
+          item_type: string
+          price: number
+          quantity: number | null
+          seller_id: string
+          title: string
+          total_sold: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string
+          condition?: string | null
+          created_at?: string | null
+          description: string
+          digital_download_url?: string | null
+          id?: string
+          images?: string[] | null
+          is_active?: boolean | null
+          is_approved?: boolean | null
+          item_type?: string
+          price?: number
+          quantity?: number | null
+          seller_id: string
+          title: string
+          total_sold?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          condition?: string | null
+          created_at?: string | null
+          description?: string
+          digital_download_url?: string | null
+          id?: string
+          images?: string[] | null
+          is_active?: boolean | null
+          is_approved?: boolean | null
+          item_type?: string
+          price?: number
+          quantity?: number | null
+          seller_id?: string
+          title?: string
+          total_sold?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_marketplace_listings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "yes_marketplace_sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yes_marketplace_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          order_id: string
+          sender_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          order_id: string
+          sender_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          order_id?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_marketplace_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "yes_marketplace_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yes_marketplace_orders: {
+        Row: {
+          accepted_at: string | null
+          buyer_id: string
+          cancelled_at: string | null
+          created_at: string | null
+          delivered_at: string | null
+          delivery_notes: string | null
+          digital_download_url: string | null
+          dispatched_at: string | null
+          id: string
+          is_digital: boolean | null
+          listing_id: string
+          order_number: string
+          placed_at: string | null
+          quantity: number | null
+          seller_id: string
+          shipping_address: string | null
+          status: string | null
+          total_price: number
+          tracking_number: string | null
+          tracking_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          buyer_id: string
+          cancelled_at?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          delivery_notes?: string | null
+          digital_download_url?: string | null
+          dispatched_at?: string | null
+          id?: string
+          is_digital?: boolean | null
+          listing_id: string
+          order_number: string
+          placed_at?: string | null
+          quantity?: number | null
+          seller_id: string
+          shipping_address?: string | null
+          status?: string | null
+          total_price: number
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          buyer_id?: string
+          cancelled_at?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          delivery_notes?: string | null
+          digital_download_url?: string | null
+          dispatched_at?: string | null
+          id?: string
+          is_digital?: boolean | null
+          listing_id?: string
+          order_number?: string
+          placed_at?: string | null
+          quantity?: number | null
+          seller_id?: string
+          shipping_address?: string | null
+          status?: string | null
+          total_price?: number
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_marketplace_orders_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "yes_marketplace_listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yes_marketplace_orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "yes_marketplace_sellers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      yes_marketplace_sellers: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          is_approved: boolean | null
+          store_banner_url: string | null
+          store_description: string | null
+          store_logo_url: string | null
+          store_name: string
+          store_slug: string
+          total_revenue: number | null
+          total_sales: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_approved?: boolean | null
+          store_banner_url?: string | null
+          store_description?: string | null
+          store_logo_url?: string | null
+          store_name: string
+          store_slug: string
+          total_revenue?: number | null
+          total_sales?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_approved?: boolean | null
+          store_banner_url?: string | null
+          store_description?: string | null
+          store_logo_url?: string | null
+          store_name?: string
+          store_slug?: string
+          total_revenue?: number | null
+          total_sales?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      yes_marketplace_wallets: {
+        Row: {
+          balance: number | null
+          card_id: string | null
+          created_at: string | null
+          id: string
+          total_received: number | null
+          total_spent: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          balance?: number | null
+          card_id?: string | null
+          created_at?: string | null
+          id?: string
+          total_received?: number | null
+          total_spent?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          balance?: number | null
+          card_id?: string | null
+          created_at?: string | null
+          id?: string
+          total_received?: number | null
+          total_spent?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "yes_marketplace_wallets_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "yes_bank_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

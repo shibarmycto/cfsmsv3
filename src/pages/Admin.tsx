@@ -53,6 +53,7 @@ import AdminSignalAccessTab from '@/components/AdminSignalAccessTab';
 import AdminFaucetTab from '@/components/AdminFaucetTab';
 import AdminBundlerTab from '@/components/AdminBundlerTab';
 import AdminYesBankTab from '@/components/AdminYesBankTab';
+import AdminYesMarketplaceTab from '@/components/AdminYesMarketplaceTab';
 
 interface UserProfile {
   id: string;
@@ -1019,6 +1020,7 @@ export default function Admin() {
                 { id: 'faucet', icon: Zap, label: 'Faucet Access', count: 0 },
                 { id: 'bundler', icon: Link, label: 'Bundler Access', count: 0 },
                 { id: 'yes-bank', icon: Landmark, label: 'YES Bank 🏦', count: 0 },
+                { id: 'yes-marketplace', icon: ShoppingCart, label: 'Marketplace', count: 0 },
                 { id: 'whatsapp-test', icon: Send, label: 'Test WhatsApp', count: 0 },
               ].map((item) => (
                 <button
@@ -2151,6 +2153,20 @@ export default function Admin() {
                   <p className="text-muted-foreground">Manage virtual cards, applications, and access control</p>
                 </div>
                 <AdminYesBankTab />
+              </div>
+            )}
+
+            {/* YES Marketplace Admin Tab */}
+            {activeTab === 'yes-marketplace' && (
+              <div className="glass-card p-8 animate-fade-in">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <ShoppingCart className="text-amber-400" />
+                    Yes Marketplace Management
+                  </h2>
+                  <p className="text-muted-foreground">Manage sellers, listings, and orders</p>
+                </div>
+                <AdminYesMarketplaceTab />
               </div>
             )}
 
