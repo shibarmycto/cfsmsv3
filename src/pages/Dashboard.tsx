@@ -13,6 +13,7 @@ import PlatformInfoTab from '@/components/PlatformInfoTab';
 import VolumeBotTab from '@/components/VolumeBotTab';
 import FaucetTab from '@/components/FaucetTab';
 import BundlerTab from '@/components/BundlerTab';
+import YesMarketplaceTab from '@/components/YesMarketplaceTab';
 import {
   MessageSquare,
   CreditCard,
@@ -36,6 +37,7 @@ import {
   Droplets,
   Link,
   Landmark,
+  Store,
 } from 'lucide-react';
 import YesBankTab from '@/components/YesBankTab';
 
@@ -192,6 +194,7 @@ export default function Dashboard() {
                 { id: 'faucet', icon: Droplets, label: 'Faucet' },
                 { id: 'bundler', icon: Link, label: 'Bundler' },
                 { id: 'yes-bank', icon: Landmark, label: 'Bank 🏦' },
+                { id: 'yes-market', icon: Store, label: 'Market' },
                 { id: 'settings', icon: Settings, label: 'Settings' },
               ].map((item) => (
                 <button
@@ -260,6 +263,10 @@ export default function Dashboard() {
               <div className="glass-card p-4 md:p-8 animate-fade-in">
                 <YesBankTab userId={user.id} />
               </div>
+            )}
+
+            {activeTab === 'yes-market' && user && (
+              <YesMarketplaceTab userId={user.id} />
             )}
 
             {activeTab === 'settings' && (
